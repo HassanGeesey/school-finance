@@ -3,6 +3,8 @@
 ## Working rules
 
 - **Grilling session rule:** During design/grilling conversations, after every user answer, record the question and answer in `project-decisions.md`. Keep that file updated as the single source of truth for project decisions.
+- **chromedev toolmcp** whe using it try to use as fast as possible .
+
 
 ## Agent skills
 
