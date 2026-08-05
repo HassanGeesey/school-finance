@@ -35,6 +35,13 @@ def test_to_cents_accepts_common_inputs():
     assert to_cents(500) == 500
 
 
+def test_to_cents_converts_floats_without_binary_artifacts():
+    assert to_cents(12.99) == 1299
+    assert to_cents(12.5) == 1250
+    assert to_cents(0.1) == 10
+    assert to_cents(12.345) == 1235  # half-up rounding
+
+
 def test_format_cents_formats_usd():
     assert format_cents(1250) == "$12.50"
     assert format_cents(10000) == "$100.00"
