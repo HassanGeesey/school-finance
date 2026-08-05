@@ -29,6 +29,8 @@ from .config import settings
 from .db import Database, make_engine
 from .models import User, UserRoles
 from .money import format_cents, format_input_cents
+from .students.routes import router as students_router
+from .students.service import StudentService
 
 ROLE_LABELS = {
     UserRoles.ADMIN: "Admin",
@@ -73,6 +75,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     audit = AuditService(db)
     auth = AuthService(db, audit=audit)
     classes = ClassService(db, audit=audit)
+    students = StudentService(db, audit=audit)
     templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
     _register_template_globals(templates)
 
@@ -86,6 +89,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.state.auth = auth
     app.state.audit = audit
     app.state.classes = classes
+    app.state.students = students
     app.state.templates = templates
 
     @app.middleware("http")
@@ -102,6 +106,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(audit_router)
     app.include_router(classes_router)
+    app.include_router(students_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:

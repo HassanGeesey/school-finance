@@ -30,6 +30,13 @@ class AuditActions:
     FEE_ITEM_UPDATE = "fee_item_update"
     FEE_ITEM_REMOVE = "fee_item_remove"
 
+    # Students.
+    STUDENT_ADD = "student_add"
+    STUDENT_UPDATE = "student_update"
+    STUDENT_ARCHIVE = "student_archive"
+    STUDENT_RESTORE = "student_restore"
+    STUDENT_IMPORT = "student_import"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
@@ -40,6 +47,11 @@ class AuditActions:
         FEE_ITEM_ADD: "Fee item added",
         FEE_ITEM_UPDATE: "Fee item updated",
         FEE_ITEM_REMOVE: "Fee item removed",
+        STUDENT_ADD: "Student added",
+        STUDENT_UPDATE: "Student updated",
+        STUDENT_ARCHIVE: "Student archived",
+        STUDENT_RESTORE: "Student restored",
+        STUDENT_IMPORT: "Students imported",
     }
 
 

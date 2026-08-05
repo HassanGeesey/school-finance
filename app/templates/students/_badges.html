@@ -1,0 +1,11 @@
+{% macro student_status_badge(status) %}
+{% set colors = {
+  "active": "bg-emerald-100 text-emerald-800",
+  "inactive": "bg-slate-100 text-slate-600",
+} %}
+{% set labels = {
+  "active": "Active",
+  "inactive": "Inactive",
+} %}
+<span class="rounded-full text-xs font-semibold px-2 py-0.5 {{ colors.get(status, 'bg-slate-100 text-slate-700') }}">{{ labels.get(status, status) }}</span>
+{% endmacro %}

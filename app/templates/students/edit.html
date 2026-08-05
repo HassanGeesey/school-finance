@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ student.full_name }} — {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 max-w-2xl">
+  <a href="/classes/{{ student.class_id }}" class="text-sm text-slate-500 hover:text-slate-800">&larr; {{ student.school_class.name }}</a>
+  <h1 class="mt-2 text-2xl font-bold text-slate-900">Edit student</h1>
+  <p class="mt-1 text-sm text-slate-600">Change the student's name. History and charges are untouched.</p>
+
+  {% if error %}
+  <div class="mt-6 rounded-md bg-red-50 border border-red-200 text-red-800 px-4 py-2 text-sm">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/students/{{ student.id }}/edit" class="mt-6">
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="edit-first" class="block text-sm font-medium text-slate-700">First name</label>
+        <input id="edit-first" name="first_name" type="text" required value="{{ first_name }}"
+               class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+      </div>
+      <div>
+        <label for="edit-last" class="block text-sm font-medium text-slate-700">Last name</label>
+        <input id="edit-last" name="last_name" type="text" required value="{{ last_name }}"
+               class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+      </div>
+    </div>
+    <div class="mt-6 flex items-center gap-3">
+      <button type="submit" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Save changes</button>
+      <a href="/classes/{{ student.class_id }}" class="text-sm text-slate-500 hover:text-slate-800">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

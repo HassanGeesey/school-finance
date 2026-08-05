@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "classes/_badges.html" import class_status_badge %}
+{% from "students/_badges.html" import student_status_badge %}
+
+{% block title %}Students — {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+  <div class="flex items-center justify-between flex-wrap gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Students</h1>
+      <p class="mt-2 text-slate-600">
+        Search every student in the school by first name, last name, or full name.
+        Archived students stay searchable — their history and arrears remain.
+      </p>
+    </div>
+  </div>
+
+  <form method="get" action="/students" class="mt-6 flex gap-3">
+    <input name="q" type="text" value="{{ q }}" placeholder="Search by name…"
+           class="w-full max-w-sm rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+    <button type="submit" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Search</button>
+  </form>
+
+  {% if q %}
+  <p class="mt-4 text-sm text-slate-600">
+    {{ rows | length }} result{{ "s" if rows | length != 1 else "" }} for
+    <span class="font-semibold text-slate-800">&ldquo;{{ q }}&rdquo;</span>
+  </p>
+  {% endif %}
+
+  <table class="mt-4 w-full text-sm text-left text-slate-700">
+    <thead>
+      <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+        <th class="py-2 pr-4">Name</th>
+        <th class="py-2 pr-4">Class</th>
+        <th class="py-2">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for student in rows %}
+      <tr class="border-b border-slate-100">
+        <td class="py-2 pr-4 font-medium text-slate-800">{{ student.full_name }}</td>
+        <td class="py-2 pr-4">
+          <a href="/classes/{{ student.class_id }}" class="text-emerald-700 hover:underline">{{ student.school_class.name }}</a>
+        </td>
+        <td class="py-2">{{ student_status_badge(student.status) }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="py-6 text-center text-slate-500">
+          {% if q %}No students match &ldquo;{{ q }}&rdquo;.{% else %}No students yet. Add them inside a class.{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -56,6 +56,7 @@ def _detail_response(
         summary = service.class_summary(class_id)
     except ClassNotFound:
         raise HTTPException(status_code=404, detail="Class not found.")
+    students = request.app.state.students.list_students(class_id)
     return _templates(request).TemplateResponse(
         request=request,
         name="classes/detail.html",
@@ -64,12 +65,13 @@ def _detail_response(
             "items": summary.items,
             "monthly_total_cents": summary.monthly_total_cents,
             "status_options": _status_options(),
-            "error": error,
+            "error": error or request.query_params.get("err", ""),
             "msg": msg,
             "fee_name": fee_name,
             "fee_amount": fee_amount,
             "class_name": class_name if class_name is not None else summary.cls.name,
             "class_status": class_status if class_status is not None else summary.cls.status,
+            "students": students,
         },
         status_code=400 if error else 200,
     )

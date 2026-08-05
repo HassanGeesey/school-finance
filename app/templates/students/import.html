@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Import students — {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 max-w-2xl">
+  <a href="/classes/{{ class_id }}" class="text-sm text-slate-500 hover:text-slate-800">&larr; {{ class_name }}</a>
+  <h1 class="mt-2 text-2xl font-bold text-slate-900">Import students</h1>
+  <p class="mt-1 text-sm text-slate-600">
+    Upload a CSV of student names. Every imported student joins
+    <span class="font-semibold text-slate-800">{{ class_name }}</span> and is billed
+    with this class's fee structure.
+  </p>
+
+  {% if error %}
+  <div class="mt-6 rounded-md bg-red-50 border border-red-200 text-red-800 px-4 py-2 text-sm">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/classes/{{ class_id }}/students/import" enctype="multipart/form-data" class="mt-6">
+    <label for="file" class="block text-sm font-medium text-slate-700">CSV file</label>
+    <input id="file" name="file" type="file" accept=".csv,text/csv" required
+           class="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200">
+    <div class="mt-6 flex items-center gap-3">
+      <button type="submit" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Import</button>
+      <a href="/classes/{{ class_id }}" class="text-sm text-slate-500 hover:text-slate-800">Cancel</a>
+    </div>
+  </form>
+
+  <div class="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+    <h2 class="text-sm font-semibold text-slate-700">CSV format</h2>
+    <p class="mt-2">Two columns: first name, last name. A header row is optional and recognised automatically.</p>
+    <pre class="mt-3 rounded-md bg-white border border-slate-200 p-3 text-xs text-slate-700">first_name,last_name
+Ada,Lovelace
+Grace,Hopper</pre>
+    <ul class="mt-3 list-disc list-inside text-xs text-slate-500">
+      <li>Blank lines are ignored.</li>
+      <li>Rows missing a name are skipped and reported.</li>
+      <li>Rows duplicated within the same file are skipped and reported.</li>
+      <li>Extra columns beyond the first two are ignored.</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}
