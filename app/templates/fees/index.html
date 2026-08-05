@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import page_header %}
+
+{% block title %}Fee generation — {{ app_name }}{% endblock %}
+{% block topbar_title %}Fee generation{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {{ page_header("Fee generation", "Pick a class (or All classes), a month and a year, review the per-class breakdown, then generate one monthly bill per active student. A class can only be generated once per month, so nothing is ever double-charged.") }}
+  <div id="fee-form-card">
+    {% include "fees/_generate_card.html" %}
+  </div>
+</div>
+{% endblock %}

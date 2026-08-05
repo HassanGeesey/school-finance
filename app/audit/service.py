@@ -37,6 +37,9 @@ class AuditActions:
     STUDENT_RESTORE = "student_restore"
     STUDENT_IMPORT = "student_import"
 
+    # Monthly fee generation.
+    FEE_GENERATE = "fee_generate"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
@@ -52,6 +55,7 @@ class AuditActions:
         STUDENT_ARCHIVE: "Student archived",
         STUDENT_RESTORE: "Student restored",
         STUDENT_IMPORT: "Students imported",
+        FEE_GENERATE: "Monthly fees generated",
     }
 
 

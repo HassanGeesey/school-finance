@@ -1,0 +1,66 @@
+{% from "components/ui.html" import badge, alert %}
+{% from "components/icons.html" import icon %}
+
+<dialog id="fee-preview-modal" class="modal">
+  <div class="modal-box">
+    <form method="dialog">
+      <button type="button" class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close" onclick="this.closest('dialog').close()">{{ icon("x-mark", "h-4 w-4") }}</button>
+    </form>
+    {% if error %}
+    <h3 class="text-lg font-semibold">Fee generation</h3>
+    <div class="mt-4">{{ alert("error", error) }}</div>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Close</button>
+    </div>
+    {% else %}
+    <h3 class="text-lg font-semibold">Confirm fee generation</h3>
+    <p class="mt-1 text-sm text-base-content/60">{{ period }}{% if preview.class_name %} · {{ preview.class_name }}{% else %} · All classes{% endif %}</p>
+    <div class="mt-4 overflow-x-auto">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Class</th>
+            <th>Students</th>
+            <th>Fee / student</th>
+            <th>Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in preview.lines %}
+          <tr>
+            <td class="font-medium">{{ line.class_name }}</td>
+            <td>{{ line.student_count }}</td>
+            <td>{{ money(line.per_student_cents) }}</td>
+            <td>{{ money(line.total_cents) }}</td>
+            <td>{% if line.will_generate %}{{ badge("Will bill", "info") }}{% else %}{{ badge(line.skip_reason, "warning") }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if preview.generatable_lines %}
+    <div class="mt-4 rounded-box bg-base-200/60 p-3 text-sm">
+      <p class="font-medium">Summary</p>
+      <p class="mt-0.5 text-base-content/70">{{ preview.total_students }} student{{ "s" if preview.total_students != 1 }} will be billed a total of {{ money(preview.total_cents) }}.</p>
+    </div>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+      <form method="post" action="/fees/generate" class="flex gap-2">
+        <input type="hidden" name="class_id" value="{{ preview.class_id if preview.class_id is not none else '' }}">
+        <input type="hidden" name="month" value="{{ preview.month }}">
+        <input type="hidden" name="year" value="{{ preview.year }}">
+        <button type="submit" hx-post="/fees/generate" hx-target="#fee-form-card" hx-swap="innerHTML" class="btn btn-primary">{{ icon("receipt-percent", "h-4 w-4") }} Generate</button>
+      </form>
+    </div>
+    {% else %}
+    <div class="mt-4">{{ alert("warning", "Nothing to generate — every class in scope was already generated for this month or is not eligible.") }}</div>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Close</button>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+<script>(document.getElementById('fee-preview-modal')).showModal()</script>

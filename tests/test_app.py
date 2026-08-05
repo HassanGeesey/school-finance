@@ -49,6 +49,7 @@ def test_authenticated_pages_use_the_design_system_shell():
     assert "Fee generation" in html
     assert 'href="/classes"' in html
     assert 'href="/students"' in html
+    assert 'href="/fees"' in html
     assert 'href="/audit"' in html
     assert "Head Teacher" in html
     assert "Admin" in html
