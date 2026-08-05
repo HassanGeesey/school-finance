@@ -34,5 +34,5 @@ officer) can generate; the fees page lists Active classes with their monthly fee
 and shows an empty state when none exist. Verified by the full suite (service +
 route tests) and mypy.
 
-Commit: `[filled at commit]`
+Commit: `2978a0e`
 
