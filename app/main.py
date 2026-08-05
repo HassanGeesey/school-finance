@@ -23,9 +23,12 @@ from .audit.service import AuditService
 from .auth.deps import require_admin, require_login
 from .auth.routes import router as auth_router
 from .auth.service import AuthService
+from .classes.routes import router as classes_router
+from .classes.service import CLASS_STATUS_LABELS, ClassService
 from .config import settings
 from .db import Database, make_engine
 from .models import User, UserRoles
+from .money import format_cents, format_input_cents
 
 ROLE_LABELS = {
     UserRoles.ADMIN: "Admin",
@@ -44,12 +47,18 @@ def _register_template_globals(templates: Jinja2Templates) -> None:
     def role_label(role: str) -> str:
         return ROLE_LABELS.get(role, role)
 
+    def class_status_label(status: str) -> str:
+        return CLASS_STATUS_LABELS.get(status, status)
+
     templates.env.globals.update(
         app_name=settings.APP_NAME,
         app_version=settings.VERSION,
         year=datetime.now(timezone.utc).year,
         current_user=current_user,
         role_label=role_label,
+        class_status_label=class_status_label,
+        money=format_cents,
+        money_input=format_input_cents,
     )
 
 
@@ -63,6 +72,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     db = Database(make_engine(url))
     audit = AuditService(db)
     auth = AuthService(db, audit=audit)
+    classes = ClassService(db, audit=audit)
     templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
     _register_template_globals(templates)
 
@@ -75,6 +85,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.state.db = db
     app.state.auth = auth
     app.state.audit = audit
+    app.state.classes = classes
     app.state.templates = templates
 
     @app.middleware("http")
@@ -90,6 +101,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
     app.include_router(auth_router)
     app.include_router(audit_router)
+    app.include_router(classes_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:

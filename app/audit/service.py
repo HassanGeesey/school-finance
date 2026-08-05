@@ -22,10 +22,24 @@ class AuditActions:
     LOGIN = "login"
     LOGOUT = "logout"
 
+    # Classes & fee structures.
+    CLASS_CREATE = "class_create"
+    CLASS_RENAME = "class_rename"
+    CLASS_STATUS = "class_status"
+    FEE_ITEM_ADD = "fee_item_add"
+    FEE_ITEM_UPDATE = "fee_item_update"
+    FEE_ITEM_REMOVE = "fee_item_remove"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
         LOGOUT: "Logout",
+        CLASS_CREATE: "Class created",
+        CLASS_RENAME: "Class renamed",
+        CLASS_STATUS: "Class status changed",
+        FEE_ITEM_ADD: "Fee item added",
+        FEE_ITEM_UPDATE: "Fee item updated",
+        FEE_ITEM_REMOVE: "Fee item removed",
     }
 
 

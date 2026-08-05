@@ -50,3 +50,8 @@ def format_cents(cents: Money) -> str:
     sign = "-" if cents < 0 else ""
     amount = Decimal(abs(int(cents))) / Decimal(100)
     return f"{sign}${amount:,.2f}"
+
+
+def format_input_cents(cents: Money) -> str:
+    """Format integer cents as a bare USD number for form inputs, e.g. 1250 -> ``12.50``."""
+    return f"{Decimal(int(cents)) / 100:.2f}"

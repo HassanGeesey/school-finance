@@ -19,11 +19,12 @@
       {% set user = current_user() %}
       {% if user %}
       <div class="flex items-center gap-4">
-        {% if user.role == "admin" %}
         <nav class="flex items-center gap-3">
+          <a href="/classes" class="text-sm font-medium text-slate-600 hover:text-emerald-700">Classes</a>
+          {% if user.role == "admin" %}
           <a href="/audit" class="text-sm font-medium text-slate-600 hover:text-emerald-700">Audit log</a>
+          {% endif %}
         </nav>
-        {% endif %}
         <div class="flex items-center gap-2">
           <span class="text-sm font-medium text-slate-800">{{ user.name }}</span>
           <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5">{{ role_label(user.role) }}</span>
