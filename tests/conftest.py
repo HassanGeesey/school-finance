@@ -23,3 +23,14 @@ def db() -> Database:
 def session(db: Database) -> Session:
     with db.session() as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def fast_password_hashing():
+    """Lower the PBKDF2 work factor so auth tests stay fast (prod uses 600k)."""
+    from app.config import settings
+
+    original = settings.PBKDF2_ITERATIONS
+    settings.PBKDF2_ITERATIONS = 1000
+    yield
+    settings.PBKDF2_ITERATIONS = original

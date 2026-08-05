@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Set up {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="max-w-md mx-auto bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+  <h1 class="text-xl font-bold text-slate-900">Create your admin account</h1>
+  <p class="mt-1 text-sm text-slate-500">
+    This is the first launch. Create the Admin account that will manage {{ app_name }}.
+  </p>
+
+  {% if error %}
+  <p class="mt-4 rounded-lg bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">{{ error }}</p>
+  {% endif %}
+
+  <form method="post" action="/setup" class="mt-6 space-y-4">
+    <div>
+      <label for="name" class="block text-sm font-medium text-slate-700">Full name</label>
+      <input id="name" name="name" type="text" required autofocus value="{{ name or '' }}"
+             class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+    </div>
+    <div>
+      <label for="username" class="block text-sm font-medium text-slate-700">Username</label>
+      <input id="username" name="username" type="text" required value="{{ username or '' }}"
+             class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+    </div>
+    <div>
+      <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
+      <input id="password" name="password" type="password" required
+             class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+    </div>
+    <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+      Create admin account
+    </button>
+  </form>
+</section>
+{% endblock %}

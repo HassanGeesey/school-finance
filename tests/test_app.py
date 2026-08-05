@@ -7,12 +7,12 @@ from app.db import make_engine
 from app.main import create_app
 
 
-def test_home_page_served():
+def test_home_requires_login_and_redirects_on_fresh_install():
     app = create_app(database_url="sqlite://")
     with TestClient(app) as client:
-        response = client.get("/")
-    assert response.status_code == 200
-    assert "School Finance" in response.text
+        response = client.get("/", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/login")
 
 
 def test_static_assets_are_served_locally():

@@ -7,6 +7,7 @@ from app.models import Class, FeeItem, User
 
 EXPECTED_TABLES = {
     "users",
+    "sessions",
     "classes",
     "fee_items",
     "students",

@@ -24,5 +24,11 @@ class Settings:
     STATIC_DIR = BASE_DIR / "app" / "static"
     TEMPLATES_DIR = BASE_DIR / "app" / "templates"
 
+    # Auth
+    SESSION_COOKIE = os.environ.get("SCHOOL_FINANCE_SESSION_COOKIE", "school_finance_session")
+    SESSION_TTL_DAYS = int(os.environ.get("SCHOOL_FINANCE_SESSION_TTL_DAYS", "30"))
+    # OWASP-recommended work factor for PBKDF2-HMAC-SHA256; tests lower it.
+    PBKDF2_ITERATIONS = int(os.environ.get("SCHOOL_FINANCE_PBKDF2_ITERATIONS", "600000"))
+
 
 settings = Settings()
