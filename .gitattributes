@@ -1,0 +1,3 @@
+* text=auto eol=lf
+*.min.js text eol=lf
+*.png binary

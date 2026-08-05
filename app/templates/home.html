@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} — Home{% endblock %}
+
+{% block content %}
+<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+  <h1 class="text-2xl font-bold text-slate-900">Welcome to {{ app_name }}</h1>
+  <p class="mt-2 text-slate-600">
+    Fee collection, expenses, and arrears tracking for your school.
+  </p>
+
+  <div class="mt-6 grid gap-4 sm:grid-cols-3">
+    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Database</h2>
+      <p class="mt-1 text-slate-700">Connected</p>
+      <p class="mt-1 text-xs text-slate-400 break-all">{{ database_url }}</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Assets</h2>
+      <p class="mt-1 text-slate-700">Bundled locally</p>
+      <p class="mt-1 text-xs text-slate-400">Tailwind CSS, HTMX, Chart.js — offline</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Money</h2>
+      <p class="mt-1 text-slate-700">Integer cents</p>
+      <p class="mt-1 text-xs text-slate-400">No floats anywhere amounts appear</p>
+    </div>
+  </div>
+
+  <p class="mt-6 text-sm text-slate-400">Set up is coming next: classes, students, and billing.</p>
+</section>
+{% endblock %}

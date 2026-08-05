@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/* Where Tailwind should look for class names (relative to this file). */
+@source "../app/templates";
+@source "../app/static";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

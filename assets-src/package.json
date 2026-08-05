@@ -1,0 +1,13 @@
+{
+  "name": "school-finance-assets",
+  "private": true,
+  "description": "Builds the bundled Tailwind CSS for the School Finance app (offline-capable).",
+  "scripts": {
+    "build": "tailwindcss -i ./input.css -o ../app/static/css/app.css --minify",
+    "watch": "tailwindcss -i ./input.css -o ../app/static/css/app.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}
