@@ -42,7 +42,9 @@
         <tbody>
           {% for student in rows %}
           <tr>
-            <td class="font-medium text-base-content">{{ student.full_name }}</td>
+            <td class="font-medium text-base-content">
+              <a href="/students/{{ student.id }}/account" class="link link-primary">{{ student.full_name }}</a>
+            </td>
             <td>
               <a href="/classes/{{ student.class_id }}" class="link link-primary">{{ student.school_class.name }}</a>
             </td>

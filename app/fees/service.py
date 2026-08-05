@@ -1,11 +1,19 @@
-"""Fee generation service layer: the core monthly billing mechanic.
+"""Fee service layer: monthly billing and per-student month adjustments.
 
-A Finance officer (or Admin) picks a Class or All classes, a Month and a Year,
-and every student in scope gets one monthly :class:`Charge` summing their
-class's fee items, with the item breakdown snapshotted at generation time so
-later fee-structure edits never rewrite history. Generation is duplicate-safe
-per class+month+year via :class:`GenerationRecord`. Routes are thin adapters
-over this module — it is the single testing seam.
+The core billing mechanic is :class:`FeeService`: a Finance officer (or Admin)
+picks a Class or All classes, a Month and a Year, and every student in scope
+gets one monthly :class:`Charge` summing their class's fee items, with the item
+breakdown snapshotted at generation time so later fee-structure edits never
+rewrite history. Generation is duplicate-safe per class+month+year via
+:class:`GenerationRecord`.
+
+:class:`AdjustmentsService` handles the Admin's per-student month exceptions on
+top of a generated charge: adding an extra item (increases the charge) or
+applying a waiver/discount (decreases it). The net charge is always computed
+live as base + extras - waivers, so an adjustment reflects on the student's
+balance immediately, and a waiver can never drive a charge below zero.
+
+Routes are thin adapters over this module — it is the single testing seam.
 
 Rules that live here:
 - Month must be 1-12 and year must be a sensible value (``InvalidPeriod``).
@@ -20,6 +28,9 @@ Rules that live here:
   (``AlreadyGenerated``) and never doubles charges. "All classes" re-runs skip
   classes that already have a generation record while generating the rest.
 - Every generation (that creates anything) is recorded in the audit log.
+- Adjustments need a label and a positive amount; extras increase and waivers
+  decrease the charge's net amount. A waiver is refused when it would take the
+  net below zero (``WaiverExceedsBalance``). Every adjustment is audited.
 """
 
 from __future__ import annotations
@@ -27,12 +38,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..audit.service import AuditActions, AuditService
 from ..classes.service import ClassNotFound
 from ..db import Database
 from ..models import (
+    Adjustment,
+    AdjustmentKinds,
     Charge,
     Class,
     ClassStatus,
@@ -42,7 +55,7 @@ from ..models import (
     StudentStatus,
     User,
 )
-from ..money import Money, format_cents
+from ..money import Money, format_cents, to_cents
 
 MONTH_NAMES = [
     "January",
@@ -392,3 +405,244 @@ class FeeService:
             f"Generated {period} fees for all classes: {len(generated)} {classes_word}, "
             f"{charges} charge(s), {format_cents(total_cents)}"
         )
+
+
+class AdjustmentError(Exception):
+    """Rejected input or state in a per-student month adjustment."""
+
+
+class ChargeNotFound(AdjustmentError):
+    """No charge exists with the given id."""
+
+
+class WaiverExceedsBalance(AdjustmentError):
+    """A waiver would drive a charge's net amount below zero."""
+
+
+@dataclass
+class ChargeAccountLine:
+    """One monthly charge as shown on a student's account, with its adjustments.
+
+    ``net_cents`` is the live balance of the charge (base + extras - waivers)
+    and is what arrears and the account balance are computed from.
+    """
+
+    charge: Charge
+    base_cents: Money
+    extras_cents: Money
+    waivers_cents: Money
+    net_cents: Money
+    adjustments: list[Adjustment]
+    period_label: str
+
+    @property
+    def adjusted(self) -> bool:
+        return self.extras_cents != 0 or self.waivers_cents != 0
+
+
+class AdjustmentsService:
+    """Per-student month adjustments. Each public method is one unit of work.
+
+    An extra is an additional fee item on a charge (it increases the net);
+    a waiver is a discount (it decreases the net). Both are Admin-only at the
+    route layer. A waiver can only reduce a charge down to zero, never below.
+    """
+
+    def __init__(self, db: Database, audit: AuditService | None = None) -> None:
+        self._db = db
+        self._audit = audit
+
+    def _session(self) -> Session:
+        return self._db.session()
+
+    def _log(self, *, user: User | None, action: str, summary: str) -> None:
+        if self._audit is not None:
+            self._audit.log(user=user, action=action, summary=summary)
+
+    @staticmethod
+    def _period_label(month: int, year: int) -> str:
+        return f"{MONTH_NAMES[month - 1]} {year}"
+
+    def _get_charge(self, session: Session, charge_id: int) -> Charge:
+        charge = (
+            session.query(Charge)
+            .options(joinedload(Charge.student))
+            .filter(Charge.id == charge_id)
+            .one_or_none()
+        )
+        if charge is None:
+            raise ChargeNotFound(f"No charge with id {charge_id} exists.")
+        return charge
+
+    @staticmethod
+    def _validate_label(label: str) -> str:
+        cleaned = (label or "").strip()
+        if not cleaned:
+            raise AdjustmentError("A label is required.")
+        return cleaned
+
+    @staticmethod
+    def _validate_amount(amount: object) -> int:
+        try:
+            cents = to_cents(amount)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            raise AdjustmentError("Enter a valid amount.") from None
+        if cents <= 0:
+            raise AdjustmentError("Amount must be greater than zero.")
+        return cents
+
+    @staticmethod
+    def _net_cents(charge: Charge, adjustments: list[Adjustment]) -> int:
+        extras = sum(
+            a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.EXTRA
+        )
+        waivers = sum(
+            a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.WAIVER
+        )
+        return charge.amount_cents + extras - waivers
+
+    def _charge_net_cents(self, session: Session, charge: Charge) -> int:
+        adjustments = (
+            session.query(Adjustment).filter(Adjustment.charge_id == charge.id).all()
+        )
+        return self._net_cents(charge, adjustments)
+
+    @classmethod
+    def _to_line(cls, charge: Charge) -> ChargeAccountLine:
+        extras = sum(
+            a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.EXTRA
+        )
+        waivers = sum(
+            a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.WAIVER
+        )
+        return ChargeAccountLine(
+            charge=charge,
+            base_cents=charge.amount_cents,
+            extras_cents=extras,
+            waivers_cents=waivers,
+            net_cents=charge.amount_cents + extras - waivers,
+            adjustments=list(charge.adjustments),
+            period_label=cls._period_label(charge.month, charge.year),
+        )
+
+    def add_extra(
+        self,
+        *,
+        user: User | None,
+        charge_id: int,
+        label: str,
+        amount: object,
+    ) -> Adjustment:
+        """Add an extra fee item to a student's month (increases the charge)."""
+        label = self._validate_label(label)
+        amount_cents = self._validate_amount(amount)
+        with self._session() as session:
+            charge = self._get_charge(session, charge_id)
+            student_name = charge.student.full_name
+            period = self._period_label(charge.month, charge.year)
+            adjustment = Adjustment(
+                charge_id=charge.id,
+                kind=AdjustmentKinds.EXTRA,
+                label=label,
+                amount_cents=amount_cents,
+            )
+            session.add(adjustment)
+            session.commit()
+            session.refresh(adjustment)
+        self._log(
+            user=user,
+            action=AuditActions.ADJUSTMENT_ADD,
+            summary=(
+                f"Added extra {label} ({format_cents(amount_cents)}) "
+                f"to {student_name}'s {period} charge"
+            ),
+        )
+        return adjustment
+
+    def apply_waiver(
+        self,
+        *,
+        user: User | None,
+        charge_id: int,
+        label: str,
+        amount: object,
+    ) -> Adjustment:
+        """Apply a waiver/discount to a student's month (decreases the charge).
+
+        The waiver is capped at the charge's current net balance so a charge
+        can be reduced to zero but never below.
+        """
+        label = self._validate_label(label)
+        amount_cents = self._validate_amount(amount)
+        with self._session() as session:
+            charge = self._get_charge(session, charge_id)
+            student_name = charge.student.full_name
+            period = self._period_label(charge.month, charge.year)
+            net = self._charge_net_cents(session, charge)
+            if amount_cents > net:
+                raise WaiverExceedsBalance(
+                    f"A waiver of {format_cents(amount_cents)} would take the "
+                    f"{period} charge below zero (remaining: {format_cents(net)})."
+                )
+            adjustment = Adjustment(
+                charge_id=charge.id,
+                kind=AdjustmentKinds.WAIVER,
+                label=label,
+                amount_cents=amount_cents,
+            )
+            session.add(adjustment)
+            session.commit()
+            session.refresh(adjustment)
+        self._log(
+            user=user,
+            action=AuditActions.ADJUSTMENT_ADD,
+            summary=(
+                f"Applied waiver {label} ({format_cents(amount_cents)}) "
+                f"to {student_name}'s {period} charge"
+            ),
+        )
+        return adjustment
+
+    def get_charge(self, charge_id: int) -> Charge:
+        with self._session() as session:
+            return self._get_charge(session, charge_id)
+
+    def get_charge_line(self, charge_id: int) -> ChargeAccountLine:
+        """One charge as shown on the account, net of its adjustments."""
+        with self._session() as session:
+            charge = (
+                session.query(Charge)
+                .options(joinedload(Charge.adjustments), joinedload(Charge.student))
+                .filter(Charge.id == charge_id)
+                .one_or_none()
+            )
+            if charge is None:
+                raise ChargeNotFound(f"No charge with id {charge_id} exists.")
+            return self._to_line(charge)
+
+    def list_student_charges(self, student_id: int) -> list[ChargeAccountLine]:
+        """A student's monthly charges, most recent period first, net of adjustments."""
+        with self._session() as session:
+            charges = (
+                session.query(Charge)
+                .options(joinedload(Charge.adjustments))
+                .filter(Charge.student_id == student_id)
+                .order_by(Charge.year.desc(), Charge.month.desc(), Charge.id.desc())
+                .all()
+            )
+            return [self._to_line(charge) for charge in charges]
+
+    def student_balance(self, student_id: int) -> Money:
+        """Total outstanding on a student's account: the sum of net charge amounts.
+
+        Waivers never take a charge below zero, so the balance is never negative
+        from adjustments alone. Payments and credits are applied later (ticket 08).
+        """
+        with self._session() as session:
+            charges = (
+                session.query(Charge)
+                .options(joinedload(Charge.adjustments))
+                .filter(Charge.student_id == student_id)
+                .all()
+            )
+        return sum(self._net_cents(charge, list(charge.adjustments)) for charge in charges)

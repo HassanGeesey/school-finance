@@ -40,6 +40,9 @@ class AuditActions:
     # Monthly fee generation.
     FEE_GENERATE = "fee_generate"
 
+    # Per-student month adjustments (extras/waivers).
+    ADJUSTMENT_ADD = "adjustment_add"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
@@ -56,6 +59,7 @@ class AuditActions:
         STUDENT_RESTORE: "Student restored",
         STUDENT_IMPORT: "Students imported",
         FEE_GENERATE: "Monthly fees generated",
+        ADJUSTMENT_ADD: "Adjustment made",
     }
 
 

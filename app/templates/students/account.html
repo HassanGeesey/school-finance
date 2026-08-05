@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import page_header, alert %}
+{% from "components/icons.html" import icon %}
+{% from "students/_badges.html" import student_status_badge %}
+
+{% block title %}{{ student.full_name }} — {{ app_name }}{% endblock %}
+{% block topbar_title %}{{ student.full_name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <a href="/classes/{{ student.class_id }}" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All classes · {{ student.school_class.name }}</a>
+    <div class="mt-2">
+      {{ page_header(student.full_name, student.school_class.name ~ " · " ~ student_status_badge(student.status)) }}
+    </div>
+  </div>
+
+  {% if msg %}
+  <div>{{ alert("success", msg) }}</div>
+  {% endif %}
+  {% if err %}
+  <div>{{ alert("error", err) }}</div>
+  {% endif %}
+
+  <div id="account-finance">
+    {% include "fees/_account_finance.html" %}
+  </div>
+</div>
+{% endblock %}

@@ -91,6 +91,18 @@ def test_fees_page_lists_active_classes_with_their_monthly_fee(client):
     assert "$62.50/month" in response.text
 
 
+def test_fees_page_htmx_attributes_are_not_double_escaped(client):
+    authenticated_admin(client)
+    class_id = create_class(client)
+    add_fee_item(client, class_id)
+
+    response = client.get("/fees")
+    assert response.status_code == 200
+    assert 'hx-post="/fees/preview"' in response.text
+    assert 'hx-target="#fee-preview-modal-container"' in response.text
+    assert "&quot;" not in response.text
+
+
 def test_completed_classes_are_not_offered(client):
     authenticated_admin(client)
     class_id = create_class(client, name="Grade 8", status="completed")

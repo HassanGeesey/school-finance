@@ -1,0 +1,39 @@
+{% from "components/ui.html" import alert, form_field %}
+{% from "components/icons.html" import icon %}
+
+<dialog id="adjust-modal" class="modal">
+  <div class="modal-box">
+    <form method="dialog">
+      <button type="button" class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close" onclick="this.closest('dialog').close()">{{ icon("x-mark", "h-4 w-4") }}</button>
+    </form>
+    <h3 class="text-lg font-semibold">Adjust {{ line.period_label }} charge</h3>
+    <p class="mt-1 text-sm text-base-content/60">
+      {{ money(line.base_cents) }} base{% if line.adjusted %} · current net {{ money(line.net_cents) }}{% endif %}
+    </p>
+    {% if error %}
+    <div class="mt-4">{{ alert("error", error) }}</div>
+    {% endif %}
+    <form method="post" action="/charges/{{ line.charge.id }}/adjust" class="mt-4 space-y-4"
+          hx-post="/charges/{{ line.charge.id }}/adjust" hx-target="#adjust-modal-container" hx-swap="innerHTML">
+      <div>
+        <span class="label"><span class="label-text">Kind</span></span>
+        <div class="flex gap-5">
+          {% for value, text in kinds.items() %}
+          <label class="flex cursor-pointer items-center gap-2">
+            <input type="radio" name="kind" value="{{ value }}" {% if (kind or "extra") == value %}checked{% endif %} class="radio radio-sm">
+            <span class="text-sm">{{ text }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {{ form_field("label", "Label", placeholder="e.g. Lunch (extra) or Hardship discount (waiver)", value=label, required=true, id="adjust-label") }}
+      {{ form_field("amount", "Amount (USD)", placeholder="0.00", value=amount, required=true, id="adjust-amount", hint="An extra adds to the charge; a waiver reduces it down to zero, never below.") }}
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">{{ icon("check", "h-4 w-4") }} Save adjustment</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+<script>(document.getElementById('adjust-modal')).showModal()</script>

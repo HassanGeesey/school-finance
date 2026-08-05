@@ -33,9 +33,9 @@
 {% set vclass = "btn-" ~ variant if variant in ["primary", "secondary", "accent", "neutral", "info", "success", "warning", "error", "outline", "ghost", "soft"] else "" %}
 {% set sclass = "btn-" ~ size if size in ["xs", "sm", "md", "lg"] else "" %}
 {% if href %}
-<a href="{{ href }}" class="btn {{ vclass }} {{ sclass }} {{ class }}" {{ attrs }}>{% if icon %}{{ icon_svg(icon, "w-4 h-4") }}{% endif %}{% if label %}{{ label }}{% endif %}</a>
+<a href="{{ href }}" class="btn {{ vclass }} {{ sclass }} {{ class }}" {{ attrs|safe }}>{% if icon %}{{ icon_svg(icon, "w-4 h-4") }}{% endif %}{% if label %}{{ label }}{% endif %}</a>
 {% else %}
-<button type="{{ type }}" class="btn {{ vclass }} {{ sclass }} {{ class }}" {{ attrs }}>{% if icon %}{{ icon_svg(icon, "w-4 h-4") }}{% endif %}{% if label %}{{ label }}{% endif %}</button>
+<button type="{{ type }}" class="btn {{ vclass }} {{ sclass }} {{ class }}" {{ attrs|safe }}>{% if icon %}{{ icon_svg(icon, "w-4 h-4") }}{% endif %}{% if label %}{{ label }}{% endif %}</button>
 {% endif %}
 {% endmacro %}
 
@@ -103,7 +103,7 @@
   <input id="{{ id or name }}" name="{{ name }}" type="{{ type }}" value="{{ value }}"
          {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
          {% if required %}required{% endif %}
-         class="{{ input_class }}" {{ attrs }}>
+         class="{{ input_class }}" {{ attrs|safe }}>
   {% if hint %}<p class="mt-1 text-xs text-base-content/60">{{ hint }}</p>{% endif %}
 </div>
 {% endmacro %}

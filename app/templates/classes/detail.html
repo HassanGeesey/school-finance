@@ -132,7 +132,7 @@
           {% for student in students %}
           <tr>
             <td class="font-medium text-base-content">
-              {{ student.full_name }}
+              <a href="/students/{{ student.id }}/account" class="link link-primary">{{ student.full_name }}</a>
               {% if is_admin %}
               <a href="/students/{{ student.id }}/edit" class="ml-2 text-xs text-base-content/40 hover:text-primary">{{ icon("pencil-square", "h-3.5 w-3.5 inline") }} Edit</a>
               {% endif %}
