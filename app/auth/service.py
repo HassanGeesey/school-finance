@@ -13,6 +13,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
+from ..audit.service import AuditActions, AuditService
 from ..config import settings
 from ..db import Database
 from ..models import AuthSession, User, UserRoles, utcnow
@@ -71,11 +72,16 @@ def _token_digest(token: str) -> str:
 class AuthService:
     """Auth business rules. Each method is one unit of work on its own session."""
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, audit: AuditService | None = None) -> None:
         self._db = db
+        self._audit = audit
 
     def _session(self) -> Session:
         return self._db.session()
+
+    def _log(self, *, user: User | None, action: str, summary: str) -> None:
+        if self._audit is not None:
+            self._audit.log(user=user, action=action, summary=summary)
 
     def has_users(self) -> bool:
         with self._session() as session:
@@ -106,6 +112,11 @@ class AuthService:
             session.add(user)
             session.commit()
             session.refresh(user)
+        self._log(
+            user=None,
+            action=AuditActions.SETUP,
+            summary=f"Created the first Admin account: {name} ({username})",
+        )
         return user
 
     def authenticate(self, username: str, password: str) -> User | None:
@@ -133,6 +144,15 @@ class AuthService:
             session.commit()
         return token
 
+    def login(self, username: str, password: str) -> tuple[User, str] | None:
+        """Authenticate and create a session, then record the login in the audit log."""
+        user = self.authenticate(username, password)
+        if user is None:
+            return None
+        token = self.create_session(user)
+        self._log(user=user, action=AuditActions.LOGIN, summary=f"{user.name} logged in")
+        return user, token
+
     def user_for_token(self, token: str | None) -> User | None:
         """Resolve a session token to its user, rejecting expired/invalid ones."""
         if not token:
@@ -157,7 +177,11 @@ class AuthService:
             return user
 
     def destroy_session(self, token: str | None) -> None:
-        """Log out: remove the session row so the token stops resolving."""
+        """Log out: remove the session row so the token stops resolving.
+
+        Attribution is read from the session row itself, so a destroyed session
+        is always logged — the caller cannot silently drop the entry.
+        """
         if not token:
             return
         with self._session() as session:
@@ -166,6 +190,10 @@ class AuthService:
                 .filter(AuthSession.token_hash == _token_digest(token))
                 .first()
             )
-            if row is not None:
-                session.delete(row)
-                session.commit()
+            if row is None:
+                return
+            user = session.query(User).filter(User.id == row.user_id).first()
+            session.delete(row)
+            session.commit()
+        if user is not None:
+            self._log(user=user, action=AuditActions.LOGOUT, summary=f"{user.name} logged out")

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Audit log — {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+  <div class="flex items-center justify-between flex-wrap gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Audit log</h1>
+      <p class="mt-2 text-slate-600">
+        Every payment, expense, fee generation, adjustment, and configuration change
+        is recorded here, in order. Entries are append-only and cannot be edited or deleted.
+      </p>
+    </div>
+    <p class="text-sm text-slate-500">{{ total }} entr{{ 'y' if total == 1 else 'ies' }}</p>
+  </div>
+
+  <form method="get" action="/audit" class="mt-6 flex items-center gap-3">
+    <label for="action-filter" class="text-sm font-medium text-slate-700">Action</label>
+    <select id="action-filter" name="action" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm">
+      <option value="">All actions</option>
+      {% for name in actions %}
+      <option value="{{ name }}" {% if action == name %}selected{% endif %}>{{ action_labels.get(name, name) }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700">
+      Filter
+    </button>
+  </form>
+
+  <div class="mt-6 overflow-x-auto">
+    <table class="w-full text-sm text-left text-slate-700">
+      <thead>
+        <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+          <th class="py-2 pr-4">When</th>
+          <th class="py-2 pr-4">User</th>
+          <th class="py-2 pr-4">Action</th>
+          <th class="py-2">Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr class="border-b border-slate-100">
+          <td class="py-2 pr-4 whitespace-nowrap">{{ entry.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td class="py-2 pr-4">{{ entry.user.name if entry.user else "System" }}</td>
+          <td class="py-2 pr-4"><span class="rounded-full bg-slate-100 text-slate-700 text-xs font-semibold px-2 py-0.5">{{ action_labels.get(entry.action, entry.action) }}</span></td>
+          <td class="py-2">{{ entry.summary }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="py-6 text-center text-slate-500">No audit entries.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <nav class="mt-6 flex items-center justify-between text-sm">
+    {% if page > 1 %}
+    <a href="/audit?action={{ action }}&page={{ page - 1 }}" class="text-emerald-700 hover:underline">Previous</a>
+    {% else %}
+    <span></span>
+    {% endif %}
+    {% if page * page_size < total %}
+    <a href="/audit?action={{ action }}&page={{ page + 1 }}" class="text-emerald-700 hover:underline">Next</a>
+    {% endif %}
+  </nav>
+</section>
+{% endblock %}

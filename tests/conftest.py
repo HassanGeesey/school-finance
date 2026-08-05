@@ -6,10 +6,14 @@ never touch the real data file and never interfere with each other.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db import Database, make_engine
+from app.main import create_app
 
 
 @pytest.fixture()
@@ -20,9 +24,16 @@ def db() -> Database:
 
 
 @pytest.fixture()
-def session(db: Database) -> Session:
+def session(db: Database) -> Iterator[Session]:
     with db.session() as session:
         yield session
+
+
+@pytest.fixture()
+def client() -> Iterator[TestClient]:
+    app = create_app(database_url="sqlite://")
+    with TestClient(app) as client:
+        yield client
 
 
 @pytest.fixture(autouse=True)

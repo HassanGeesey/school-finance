@@ -97,8 +97,8 @@ def login_submit(
     password: str = Form(""),
     next: str = Form("/"),
 ) -> Response:
-    user = _auth(request).authenticate(username, password)
-    if user is None:
+    user_and_token = _auth(request).login(username, password)
+    if user_and_token is None:
         return _templates(request).TemplateResponse(
             request=request,
             name="auth/login.html",
@@ -109,7 +109,7 @@ def login_submit(
             },
             status_code=400,
         )
-    token = _auth(request).create_session(user)
+    _user, token = user_and_token
     response = RedirectResponse(safe_post_login_target(next), status_code=303)
     _attach_session_cookie(response, token)
     return response

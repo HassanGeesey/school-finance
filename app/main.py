@@ -18,6 +18,8 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from jinja2.runtime import Context
 
+from .audit.routes import router as audit_router
+from .audit.service import AuditService
 from .auth.deps import require_admin, require_login
 from .auth.routes import router as auth_router
 from .auth.service import AuthService
@@ -59,7 +61,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
         settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     db = Database(make_engine(url))
-    auth = AuthService(db)
+    audit = AuditService(db)
+    auth = AuthService(db, audit=audit)
     templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
     _register_template_globals(templates)
 
@@ -71,6 +74,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app = FastAPI(title=settings.APP_NAME, version=settings.VERSION, lifespan=lifespan)
     app.state.db = db
     app.state.auth = auth
+    app.state.audit = audit
     app.state.templates = templates
 
     @app.middleware("http")
@@ -85,6 +89,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
     app.include_router(auth_router)
+    app.include_router(audit_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:

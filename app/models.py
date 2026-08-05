@@ -240,6 +240,8 @@ class AuditLogEntry(Base):
     summary: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
+    user: Mapped[User | None] = relationship()
+
 
 class GenerationRecord(Base):
     """Marks a class+month+year as already generated (duplicate-safety)."""
