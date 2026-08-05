@@ -2,7 +2,9 @@
 
 **What to build:** The outstanding-money view. Arrears = a student's unpaid charges minus credits. The report lists each student, how much they owe, and how old the debt is (from their oldest unpaid charge). Archived students and completed classes keep their arrears and still appear. This is the report the office uses to chase unpaid fees.
 
-**Blocked by:** 08 — Payments & receipts
+**UI:** Build on the design system from **05b** — arrears report uses the shared report template; debt age color-coded (amber >30 days, red >60 days).
+
+**Blocked by:** 08 — Payments & receipts, 05b — UI design system & app shell
 
 **Status:** ready-for-agent
 

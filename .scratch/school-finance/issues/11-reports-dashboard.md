@@ -2,7 +2,9 @@
 
 **What to build:** The reporting surface. A Dashboard with at-a-glance charts (collections, arrears, expenses). Reports: Income vs Expense for a month, Expense by category, Paid students for a specific month (and by extension unpaid), Summarized finance report, and student lists (per class or all classes). Every report has an Export CSV button. Charts render with Chart.js.
 
-**Blocked by:** 08 — Payments & receipts, 09 — Expenses, 10 — Arrears
+**UI:** Build on the design system from **05b** — one reusable report template (filter bar, summary line, table, Export CSV) used by every report; Dashboard = KPI stat cards, charts, recent activity, quick actions.
+
+**Blocked by:** 08 — Payments & receipts, 09 — Expenses, 10 — Arrears, 05b — UI design system & app shell
 
 **Status:** ready-for-agent
 

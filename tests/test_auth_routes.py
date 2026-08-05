@@ -127,7 +127,7 @@ def test_admin_can_open_admin_pages(client):
 
     response = client.get("/admin")
     assert response.status_code == 200
-    assert "Configuration" in response.text
+    assert "Settings" in response.text
 
 
 def test_finance_officer_is_blocked_from_admin_pages(client):

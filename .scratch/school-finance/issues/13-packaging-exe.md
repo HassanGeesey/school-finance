@@ -2,7 +2,9 @@
 
 **What to build:** Ship the whole app as one hidden Windows .exe. Double-clicking launches the server with no console window, opens the default browser at localhost automatically, and shows a system-tray icon (Open app / Quit). Only one instance can run — a second launch focuses the first instead of starting a second server. Data and backups live next to the app so the school can back up by copying the folder.
 
-**Blocked by:** 11 — Reports & dashboard, 12 — System admin
+**UI:** No UI work — this ticket packages the design-system app; the bundled offline assets (app.css, Inter font, icons, HTMX, Chart.js) must be included in the .exe.
+
+**Blocked by:** 11 — Reports & dashboard, 12 — System admin, 05b — UI design system & app shell
 
 **Status:** ready-for-agent
 

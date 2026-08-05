@@ -80,6 +80,19 @@ The core flow:
 - **Backup:** on startup copy the SQLite file to `backups/` (keep ~30, rotating); manual "Backup now" button; restore is manual (copy a backup file back) in v1.
 - **Deletion policy:** no hard deletes; archive (status flags). All destructive-looking actions are status transitions.
 
+## UI Design (from the UI grilling session, UI-1..UI-15)
+
+- **Look & feel:** clean modern dashboard — light theme, sidebar + topbar, cards, subtle shadows, generous spacing.
+- **Navigation:** grouped sidebar + topbar. Groups: **School** (Classes, Students), **Finance** (Fees, Payments, Expenses), **Reports**, **System** (Audit, Settings). Sidebar collapsible.
+- **Colors:** teal/emerald primary. Semantic: green = money in/paid, red = arrears/expenses/overdue, amber = partial/warnings, slate = neutral. Badges/chips carry meaning — color is never the only signal.
+- **Component library:** **daisyUI + Tailwind**, every control wrapped as a reusable Jinja2 partial/macro. Bundled offline.
+- **Feedback & interactions:** toasts (success/error/warning, auto-dismiss), confirm dialogs for irreversible actions, inline loading states, friendly empty states.
+- **Typography & icons:** **Inter bundled** locally (woff2, system fallback) + **Heroicons inline SVG** macros.
+- **Key screens:** fee generation = single card (Class/All + Month + Year + Generate) with a confirm dialog showing per-class breakdown; record payment = search student with live balance → amount/method → confirmation line → save → toast + print receipt; student account = header with big color-coded balance, expandable charges with item breakdown + adjustments, payments list, balance footer, actions; class page = header (name/status/fee summary), action bar, students table with paid/unpaid/all filter; reports = one reusable template (filter bar, summary line, table, Export CSV), arrears age color-coded.
+- **Print:** print CSS hides app chrome; print-ready receipt and statement templates.
+- **Login & setup:** minimal centered login card (show/hide password, error banner) + 3-step setup wizard (Welcome → Admin account → All set). Only pages without the sidebar.
+- **Devices & accessibility:** desktop-first, adapts down to ~1024px (sidebar collapses). Mobile out of scope. Keyboard-navigable, visible focus rings.
+
 ## Testing Decisions
 
 - **What makes a good test:** a test exercises external behavior of the service layer — given inputs, assert the resulting state and effects (charges created, balances computed, duplicates refused, audit rows written). No test reaches into implementation details of a service.

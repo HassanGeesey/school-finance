@@ -2,7 +2,9 @@
 
 **What to build:** Admin-only per-student month adjustments: add an extra fee item to a student's month, or apply a waiver/discount reducing the charge. Adjustments appear on the student's account and are audited. Finance officer cannot make adjustments.
 
-**Blocked by:** 06 — Monthly fee generation
+**UI:** Build on the design system from **05b** — use shared components; adjustments edit via a modal with a toast on save.
+
+**Blocked by:** 06 — Monthly fee generation, 05b — UI design system & app shell
 
 **Status:** ready-for-agent
 

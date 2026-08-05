@@ -2,7 +2,9 @@
 
 **What to build:** Recording money in. Finance records a payment for a student (amount, method: cash/bank/other). Payments can be partial. A payment clears the oldest unpaid charges first, automatically; any excess becomes a Credit on the student's account. The student's account page shows charges, payments, credits, and the live balance. After each payment a printable receipt is shown (browser-printable HTML). Payment actions are audited.
 
-**Blocked by:** 06 — Monthly fee generation
+**UI:** Build on the design system from **05b** — use shared components; record-payment screen = search student with live balance → amount/method → confirmation line → save → toast + print receipt; student account page = header with big color-coded balance, expandable charges with items/adjustments, payments list, balance footer; print-ready receipt uses the print CSS from 05b.
+
+**Blocked by:** 06 — Monthly fee generation, 05b — UI design system & app shell
 
 **Status:** ready-for-agent
 

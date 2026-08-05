@@ -1,68 +1,75 @@
 {% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, card, btn, stat_card, empty_state, table_scroll %}
+{% from "students/_badges.html" import student_status_badge %}
 
 {% block title %}Import report — {{ app_name }}{% endblock %}
+{% block topbar_title %}Import report{% endblock %}
 
 {% block content %}
-{% from "students/_badges.html" import student_status_badge %}
-<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-  <a href="/classes/{{ result.class_id }}" class="text-sm text-slate-500 hover:text-slate-800">&larr; {{ result.class_name }}</a>
-  <h1 class="mt-2 text-2xl font-bold text-slate-900">Import report</h1>
-
-  <div class="mt-6 grid gap-4 sm:grid-cols-2">
-    <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-      <p class="text-2xl font-bold text-emerald-700">{{ result.imported_count }}</p>
-      <p class="text-sm text-emerald-800">{{ result.imported_count }} student{{ "s" if result.imported_count != 1 else "" }} imported</p>
-    </div>
-    <div class="rounded-lg border {{ 'border-amber-200 bg-amber-50' if result.skipped_count else 'border-slate-200 bg-slate-50' }} p-4">
-      <p class="text-2xl font-bold {{ 'text-amber-700' if result.skipped_count else 'text-slate-700' }}">{{ result.skipped_count }}</p>
-      <p class="text-sm {{ 'text-amber-800' if result.skipped_count else 'text-slate-600' }}">{{ result.skipped_count }} row{{ "s" if result.skipped_count != 1 else "" }} skipped</p>
-    </div>
+<div class="space-y-6">
+  <div>
+    <a href="/classes/{{ result.class_id }}" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} {{ result.class_name }}</a>
+    <div class="mt-2">{{ page_header("Import report") }}</div>
   </div>
 
-  <h2 class="mt-8 text-lg font-semibold text-slate-900">Imported</h2>
-  <table class="mt-3 w-full text-sm text-left text-slate-700">
-    <thead>
-      <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-        <th class="py-2 pr-4">Row</th>
-        <th class="py-2 pr-4">Name</th>
-        <th class="py-2">Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in result.imported %}
-      <tr class="border-b border-slate-100">
-        <td class="py-2 pr-4 text-slate-500">{{ row.row_number }}</td>
-        <td class="py-2 pr-4 font-medium text-slate-800">{{ row.full_name }}</td>
-        <td class="py-2">{{ student_status_badge("active") }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="3" class="py-6 text-center text-slate-500">Nothing was imported.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="grid gap-4 sm:grid-cols-2">
+    {{ stat_card("Imported", result.imported_count, "check-circle", "success", result.imported_count | string ~ " student" ~ ("s" if result.imported_count != 1 else "") ~ " imported") }}
+    {{ stat_card("Skipped", result.skipped_count, "exclamation-triangle", "warning" if result.skipped_count else "neutral", result.skipped_count | string ~ " row" ~ ("s" if result.skipped_count != 1 else "") ~ " skipped") }}
+  </div>
+
+  {% call card(title="Imported") %}
+    {% call table_scroll() %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Name</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.imported %}
+          <tr>
+            <td class="text-base-content/50">{{ row.row_number }}</td>
+            <td class="font-medium text-base-content">{{ row.full_name }}</td>
+            <td>{{ student_status_badge("active") }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="3">{{ empty_state("Nothing was imported", "No rows made it into the class.", "information-circle") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endcall %}
+  {% endcall %}
 
   {% if result.skipped %}
-  <h2 class="mt-8 text-lg font-semibold text-slate-900">Skipped</h2>
-  <table class="mt-3 w-full text-sm text-left text-slate-700">
-    <thead>
-      <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-        <th class="py-2 pr-4">Row</th>
-        <th class="py-2">Reason</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in result.skipped %}
-      <tr class="border-b border-slate-100">
-        <td class="py-2 pr-4 text-slate-500">{{ row.row_number }}</td>
-        <td class="py-2 text-amber-700">{{ row.reason }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% call card(title="Skipped") %}
+    {% call table_scroll() %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.skipped %}
+          <tr>
+            <td class="text-base-content/50">{{ row.row_number }}</td>
+            <td class="text-warning">{{ row.reason }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endcall %}
+  {% endcall %}
   {% endif %}
 
-  <div class="mt-8">
-    <a href="/classes/{{ result.class_id }}" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Done</a>
+  <div>
+    {{ btn(href="/classes/" ~ result.class_id, label="Done", icon="check", variant="primary") }}
   </div>
-</section>
+</div>
 {% endblock %}

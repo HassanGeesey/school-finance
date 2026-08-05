@@ -2,7 +2,9 @@
 
 **What to build:** The operational safety net. Admin manages users (create/disable staff accounts, reset passwords). Backups: the app copies the SQLite file to a `backups/` folder automatically on startup and via a manual "Backup now" button, keeping ~30 copies and rotating. Admin can shut the app down from within the UI. All actions are audited.
 
-**Blocked by:** 02 — Setup wizard + auth
+**UI:** Build on the design system from **05b** — settings pages use shared components; shutdown and disable-user actions use the confirm dialog.
+
+**Blocked by:** 02 — Setup wizard + auth, 05b — UI design system & app shell
 
 **Status:** ready-for-agent
 

@@ -5,6 +5,7 @@ from sqlalchemy import inspect
 
 from app.db import make_engine
 from app.main import create_app
+from tests.helpers import authenticated_admin, setup_admin
 
 
 def test_home_requires_login_and_redirects_on_fresh_install():
@@ -33,3 +34,37 @@ def test_startup_creates_schema():
         tables = set(inspect(app.state.db.engine).get_table_names())
     assert "users" in tables
     assert "charges" in tables
+
+
+def test_authenticated_pages_use_the_design_system_shell():
+    app = create_app(database_url="sqlite://")
+    with TestClient(app) as client:
+        authenticated_admin(client)
+        response = client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    assert "app-sidebar" in html
+    assert "School" in html
+    assert "Finance" in html
+    assert "Fee generation" in html
+    assert 'href="/classes"' in html
+    assert 'href="/students"' in html
+    assert 'href="/audit"' in html
+    assert "Head Teacher" in html
+    assert "Admin" in html
+    assert 'action="/logout"' in html
+    assert "confirm-dialog" in html
+    assert "toast-container" in html
+
+
+def test_login_page_is_standalone_without_the_shell():
+    app = create_app(database_url="sqlite://")
+    with TestClient(app) as client:
+        setup_admin(client)
+        response = client.get("/login")
+    assert response.status_code == 200
+    html = response.text
+    assert "Log in" in html
+    assert "app-sidebar" not in html
+    assert "sidebar-toggle" not in html
+    assert 'action="/logout"' not in html

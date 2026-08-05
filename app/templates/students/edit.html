@@ -1,34 +1,30 @@
 {% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, btn, alert, form_field %}
 
 {% block title %}Edit {{ student.full_name }} — {{ app_name }}{% endblock %}
+{% block topbar_title %}Edit student{% endblock %}
 
 {% block content %}
-<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 max-w-2xl">
-  <a href="/classes/{{ student.class_id }}" class="text-sm text-slate-500 hover:text-slate-800">&larr; {{ student.school_class.name }}</a>
-  <h1 class="mt-2 text-2xl font-bold text-slate-900">Edit student</h1>
-  <p class="mt-1 text-sm text-slate-600">Change the student's name. History and charges are untouched.</p>
+<div class="mx-auto max-w-2xl space-y-6">
+  <div>
+    <a href="/classes/{{ student.class_id }}" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} {{ student.school_class.name }}</a>
+    <div class="mt-2">{{ page_header("Edit student", "Change the student's name. History and charges are untouched.") }}</div>
+  </div>
 
   {% if error %}
-  <div class="mt-6 rounded-md bg-red-50 border border-red-200 text-red-800 px-4 py-2 text-sm">{{ error }}</div>
+  <div>{{ alert("error", error) }}</div>
   {% endif %}
 
-  <form method="post" action="/students/{{ student.id }}/edit" class="mt-6">
+  <form method="post" action="/students/{{ student.id }}/edit" class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
     <div class="grid gap-4 sm:grid-cols-2">
-      <div>
-        <label for="edit-first" class="block text-sm font-medium text-slate-700">First name</label>
-        <input id="edit-first" name="first_name" type="text" required value="{{ first_name }}"
-               class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
-      </div>
-      <div>
-        <label for="edit-last" class="block text-sm font-medium text-slate-700">Last name</label>
-        <input id="edit-last" name="last_name" type="text" required value="{{ last_name }}"
-               class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
-      </div>
+      {{ form_field("first_name", "First name", value=first_name, required=true, id="edit-first") }}
+      {{ form_field("last_name", "Last name", value=last_name, required=true, id="edit-last") }}
     </div>
     <div class="mt-6 flex items-center gap-3">
-      <button type="submit" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Save changes</button>
-      <a href="/classes/{{ student.class_id }}" class="text-sm text-slate-500 hover:text-slate-800">Cancel</a>
+      {{ btn(label="Save changes", icon="check", variant="primary", type="submit") }}
+      {{ btn(href="/classes/" ~ student.class_id, label="Cancel", variant="ghost") }}
     </div>
   </form>
-</section>
+</div>
 {% endblock %}

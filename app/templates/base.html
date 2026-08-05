@@ -1,5 +1,7 @@
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import confirm_dialog %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="schoolfinance">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,44 +10,120 @@
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/js/htmx.min.js" defer></script>
   <script src="/static/js/chart.umd.min.js" defer></script>
+  <script src="/static/js/ui.js" defer></script>
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-900 antialiased">
-  <header class="bg-white border-b border-slate-200">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="inline-block w-3 h-3 rounded-sm bg-emerald-600" aria-hidden="true"></span>
-        <a href="/" class="text-lg font-semibold text-slate-900">{{ app_name }}</a>
+<body class="min-h-screen bg-base-200 text-base-content antialiased">
+{% block layout %}
+{% set user = current_user() %}
+{% set path = request.url.path %}
+{% macro nav_item(href, label, icon_name, active) %}
+<a href="{{ href }}"
+   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {{ 'bg-primary/10 font-semibold text-primary' if active else 'text-base-content/70 hover:bg-base-200 hover:text-base-content' }}">
+  {{ icon(icon_name, "h-5 w-5 shrink-0") }}
+  {{ label }}
+</a>
+{% endmacro %}
+{% macro nav_placeholder(label, icon_name, title) %}
+<span title="{{ title }}" aria-disabled="true"
+      class="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm text-base-content/35">
+  {{ icon(icon_name, "h-5 w-5 shrink-0") }}
+  <span class="flex-1">{{ label }}</span>
+  <span class="badge badge-ghost badge-xs">Soon</span>
+</span>
+{% endmacro %}
+
+<div class="flex min-h-screen">
+  <aside id="app-sidebar" class="no-print fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col border-r border-base-300 bg-base-100 lg:static lg:translate-x-0">
+    <div class="flex h-16 shrink-0 items-center gap-3 border-b border-base-300 px-4">
+      <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-content">{{ icon("banknotes", "h-5 w-5") }}</span>
+      <div class="min-w-0">
+        <p class="truncate text-sm font-bold leading-tight">{{ app_name }}</p>
+        <p class="text-xs text-base-content/50">School finance</p>
       </div>
-      {% set user = current_user() %}
-      {% if user %}
-      <div class="flex items-center gap-4">
-        <nav class="flex items-center gap-3">
-          <a href="/classes" class="text-sm font-medium text-slate-600 hover:text-emerald-700">Classes</a>
-          <a href="/students" class="text-sm font-medium text-slate-600 hover:text-emerald-700">Students</a>
-          {% if user.role == "admin" %}
-          <a href="/audit" class="text-sm font-medium text-slate-600 hover:text-emerald-700">Audit log</a>
-          {% endif %}
-        </nav>
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-medium text-slate-800">{{ user.name }}</span>
-          <span class="rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5">{{ role_label(user.role) }}</span>
-        </div>
-        <form method="post" action="/logout">
-          <button type="submit" class="text-sm text-slate-500 hover:text-slate-800">Log out</button>
-        </form>
-      </div>
-      {% else %}
-      <span class="text-sm text-slate-500">v{{ app_version }}</span>
-      {% endif %}
     </div>
-  </header>
 
-  <main class="max-w-6xl mx-auto px-4 py-8">
-    {% block content %}{% endblock %}
-  </main>
+    <nav class="flex-1 overflow-y-auto px-3 pb-4">
+      <p class="mt-4 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">School</p>
+      <div class="mt-1 space-y-1">
+        {{ nav_item("/", "Dashboard", "home", path == "/") }}
+        {{ nav_item("/classes", "Classes", "rectangle-stack", path.startswith("/classes")) }}
+        {{ nav_item("/students", "Students", "user-group", path.startswith("/students")) }}
+      </div>
 
-  <footer class="max-w-6xl mx-auto px-4 py-6 text-sm text-slate-400">
-    &copy; {{ year }} {{ app_name }}
-  </footer>
+      <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">Finance</p>
+      <div class="mt-1 space-y-1">
+        {{ nav_placeholder("Fee generation", "academic-cap", "Monthly fee generation arrives in a later update.") }}
+        {{ nav_placeholder("Payments", "receipt-percent", "Payment recording arrives in a later update.") }}
+        {{ nav_placeholder("Expenses", "banknotes", "Expense recording arrives in a later update.") }}
+      </div>
+
+      <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">Reports</p>
+      <div class="mt-1 space-y-1">
+        {{ nav_placeholder("Reports", "chart-bar", "Reports and dashboards arrive in a later update.") }}
+      </div>
+
+      {% if user and user.role == "admin" %}
+      <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">System</p>
+      <div class="mt-1 space-y-1">
+        {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
+        {{ nav_item("/admin", "Settings", "cog-6-tooth", path == "/admin") }}
+      </div>
+      {% endif %}
+    </nav>
+
+    <p class="shrink-0 border-t border-base-300 px-4 py-3 text-xs text-base-content/40">v{{ app_version }}</p>
+  </aside>
+
+  <div id="sidebar-backdrop" class="no-print fixed inset-0 z-30 hidden bg-slate-900/40"></div>
+
+  <div class="flex min-h-screen min-w-0 flex-1 flex-col">
+    <header class="no-print sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-base-300 bg-base-100/90 px-4 backdrop-blur sm:px-6">
+      <button id="sidebar-toggle" type="button" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="Toggle navigation">
+        {{ icon("menu", "h-5 w-5") }}
+      </button>
+      <p class="min-w-0 flex-1 truncate text-sm font-semibold">{% block topbar_title %}{{ app_name }}{% endblock %}</p>
+      <form method="get" action="/students" class="hidden md:block">
+        <label class="relative block">
+          <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-base-content/40">{{ icon("magnifying-glass", "h-4 w-4") }}</span>
+          <input name="q" type="search" placeholder="Search students…" class="input input-sm w-52 pl-9">
+        </label>
+      </form>
+      {% if user %}
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-base-200">
+          <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-content">{{ user.name[:1] | upper }}</span>
+          <span class="hidden text-left sm:block">
+            <span class="block text-sm font-medium leading-tight">{{ user.name }}</span>
+            <span class="block text-xs leading-tight text-base-content/50">{{ role_label(user.role) }}</span>
+          </span>
+          {{ icon("chevron-down", "h-4 w-4 text-base-content/40") }}
+        </div>
+        <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-48 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+          {% if user.role == "admin" %}
+          <li><a href="/admin">{{ icon("cog-6-tooth", "h-4 w-4") }} Settings</a></li>
+          {% endif %}
+          <li>
+            <form method="post" action="/logout">
+              <button type="submit" class="w-full">{{ icon("arrow-right-on-rectangle", "h-4 w-4") }} Log out</button>
+            </form>
+          </li>
+        </ul>
+      </div>
+      {% endif %}
+    </header>
+
+    <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="no-print px-6 py-6 text-sm text-base-content/40">
+      &copy; {{ year }} {{ app_name }}
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+<div id="toast-container" class="toast toast-top toast-end z-50"></div>
+{{ confirm_dialog() }}
 </body>
 </html>

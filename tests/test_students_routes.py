@@ -68,7 +68,7 @@ def test_search_page_shows_an_empty_state(client):
     response = client.get("/students?q=zzz")
 
     assert response.status_code == 200
-    assert "No students match" in response.text
+    assert "No students found" in response.text
 
 
 def test_finance_officer_cannot_add_a_student(client):

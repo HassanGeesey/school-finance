@@ -1,32 +1,47 @@
 {% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, card, btn, stat_card, empty_state %}
 
-{% block title %}{{ app_name }} — Home{% endblock %}
+{% block title %}Dashboard — {{ app_name }}{% endblock %}
+{% block topbar_title %}Dashboard{% endblock %}
 
 {% block content %}
-<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-  <h1 class="text-2xl font-bold text-slate-900">Welcome to {{ app_name }}</h1>
-  <p class="mt-2 text-slate-600">
-    Fee collection, expenses, and arrears tracking for your school.
-  </p>
+{% set user = current_user() %}
+<div class="space-y-6">
+  {{ page_header("Welcome back" + (", " ~ user.name if user else ""), "School fee collection, expenses, and arrears at a glance.") }}
 
-  <div class="mt-6 grid gap-4 sm:grid-cols-3">
-    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Database</h2>
-      <p class="mt-1 text-slate-700">Connected</p>
-      <p class="mt-1 text-xs text-slate-400 break-all">{{ database_url }}</p>
-    </div>
-    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Assets</h2>
-      <p class="mt-1 text-slate-700">Bundled locally</p>
-      <p class="mt-1 text-xs text-slate-400">Tailwind CSS, HTMX, Chart.js — offline</p>
-    </div>
-    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Money</h2>
-      <p class="mt-1 text-slate-700">Integer cents</p>
-      <p class="mt-1 text-xs text-slate-400">No floats anywhere amounts appear</p>
-    </div>
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {{ stat_card("Collected this month", "$0.00", "banknotes", "success", "Payments land here after the fees feature ships.") }}
+    {{ stat_card("Outstanding arrears", "$0.00", "exclamation-triangle", "error", "Tracked per student once billing is live.") }}
+    {{ stat_card("Active students", "—", "user-group", "neutral", "Enrolled students across all classes.") }}
+    {{ stat_card("Expenses this month", "$0.00", "arrow-path", "error", "Recorded expenses, ready when expenses ship.") }}
   </div>
 
-  <p class="mt-6 text-sm text-slate-400">Set up is coming next: classes, students, and billing.</p>
-</section>
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% call card(title="Quick actions") %}
+      <div class="grid gap-2 sm:grid-cols-2">
+        {{ btn(href="/classes", label="Manage classes", icon="rectangle-stack", variant="outline") }}
+        {{ btn(href="/students", label="Find a student", icon="magnifying-glass", variant="outline") }}
+        {% if user and user.role == "admin" %}
+        {{ btn(href="/audit", label="View audit log", icon="shield-check", variant="outline") }}
+        {% endif %}
+      </div>
+    {% endcall %}
+
+    {% call card(title="Getting started") %}
+      <ol class="list-decimal space-y-2 pl-5 text-sm text-base-content/70">
+        <li>Create your school's classes and set each class's fee structure.</li>
+        <li>Add students — one at a time or by importing a CSV.</li>
+        <li>Generate monthly fees, record payments, and print receipts (coming soon).</li>
+      </ol>
+      <div class="mt-4">
+        {{ btn(href="/classes", label="Start with classes", icon="arrow-right", variant="primary", size="sm") }}
+      </div>
+    {% endcall %}
+  </div>
+
+  {% call card(title="Recent activity") %}
+    {{ empty_state("No activity yet", "Audit log entries will appear here as the school gets going.", "shield-check") }}
+  {% endcall %}
+</div>
 {% endblock %}

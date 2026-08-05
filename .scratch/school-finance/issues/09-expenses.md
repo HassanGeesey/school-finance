@@ -2,7 +2,9 @@
 
 **What to build:** Recording money out. The Admin manages an expense category list (e.g. Salaries, Utilities, Supplies, Maintenance, Transport, Other). Finance records expenses (date, category, description, amount, method). No attachments. Expense actions are audited.
 
-**Blocked by:** 02 — Setup wizard + auth
+**UI:** Build on the design system from **05b** — use shared components; expense recording via a form card with toast on save; category management with a modal.
+
+**Blocked by:** 02 — Setup wizard + auth, 05b — UI design system & app shell
 
 **Status:** ready-for-agent
 

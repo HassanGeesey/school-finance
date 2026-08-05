@@ -42,6 +42,28 @@ Grilling session log. Updated as decisions are made.
 
 ---
 
+## UI decisions (UI grilling session)
+
+| # | Question | Answer |
+|---|----------|--------|
+| UI-1 | Overall look & feel | **Clean modern dashboard** — light theme, sidebar + topbar, cards, subtle shadows, generous spacing |
+| UI-2 | Navigation layout | **Grouped sidebar + topbar** — groups: School (Classes, Students), Finance (Fees, Payments, Expenses), Reports, System (Audit, Settings). Sidebar collapsible |
+| UI-3 | Colors | **Modern, professional, user-friendly.** Teal/emerald primary. Semantic: green = money in/paid, red = arrears/expenses/overdue, amber = partial/warnings, slate = neutral. Badges/chips carry meaning |
+| UI-4 | Component library | **daisyUI + Tailwind**, components wrapped as reusable Jinja2 partials/macros. Bundled offline |
+| UI-5 | Feedback & interactions | Toasts (success/error/warning, auto-dismiss), confirm dialogs for irreversible actions, inline loading states, friendly empty states |
+| UI-6 | Fonts & icons | **Inter bundled** locally (woff2, system fallback) + **Heroicons inline SVG** |
+| UI-7 | Dashboard | KPI stat cards (collections, arrears, expenses, net), recent activity list, quick actions (Record payment · Generate fees · Record expense · Add student). **Charts deferred — revisit** |
+| UI-8 | Fee generation screen | Single card: Class/All + Month + Year + Generate. Confirm dialog with **per-class breakdown** (class → students → total). Success toast + summary. Red alert on duplicates |
+| UI-9 | Record payment screen | Search student (live balance) → amount + method → live confirmation line → Save → toast + Print receipt. Nudges on overdue |
+| UI-10 | Student account page | Header (name/class/status + big color-coded balance), expandable charges with item breakdown + adjustments, payments list, balance footer, actions (record payment, adjust month, print statement) |
+| UI-11 | Class page | Header (name, status badge, fee summary), action bar (Add student · Import CSV · Generate fees · Edit structure), students table **with paid/unpaid/all filter** |
+| UI-12 | Reports pages | One reusable report template: filter bar, summary line, table, Export CSV. Arrears age color-coded (amber >30d, red >60d) |
+| UI-13 | Print | Print CSS hides app chrome; print-ready **receipt** (school name, receipt no., student, amount, method, date, signature) and **statement** templates |
+| UI-14 | Login & setup wizard | Minimal centered login card (show/hide password, error banner) + 3-step setup wizard (Welcome → Admin account → All set). Only pages without sidebar |
+| UI-15 | Devices & accessibility | **Desktop-first**, adapts down to ~1024px (sidebar collapses). Mobile out of scope. Accessibility: keyboard-navigable, focus rings, color never sole signal |
+
+---
+
 ## Requirements summary
 
 **Project:** School finance web app — real system for a real school, one office PC, USD, English.

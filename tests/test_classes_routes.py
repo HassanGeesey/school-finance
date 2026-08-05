@@ -306,4 +306,4 @@ def test_admin_can_remove_a_fee_item(client):
     assert response.status_code == 303
 
     detail = client.get("/classes/1")
-    assert "No fee items yet." in detail.text
+    assert "No fee items yet" in detail.text

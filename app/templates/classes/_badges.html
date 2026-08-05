@@ -1,8 +1,8 @@
 {% macro class_status_badge(status) %}
-{% set colors = {
-  "active": "bg-emerald-100 text-emerald-800",
-  "completed": "bg-sky-100 text-sky-800",
-  "inactive": "bg-slate-100 text-slate-600",
+{% set tones = {
+  "active": "badge-success",
+  "completed": "badge-info",
+  "inactive": "badge-neutral",
 } %}
-<span class="rounded-full text-xs font-semibold px-2 py-0.5 {{ colors.get(status, 'bg-slate-100 text-slate-700') }}">{{ class_status_label(status) }}</span>
+<span class="badge {{ tones.get(status, 'badge-neutral') }}">{{ class_status_label(status) }}</span>
 {% endmacro %}

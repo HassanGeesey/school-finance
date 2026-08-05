@@ -1,13 +1,31 @@
 {% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, card, btn, empty_state, alert %}
 
-{% block title %}Configuration — {{ app_name }}{% endblock %}
+{% block title %}Settings — {{ app_name }}{% endblock %}
+{% block topbar_title %}Settings{% endblock %}
 
 {% block content %}
-<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-  <h1 class="text-2xl font-bold text-slate-900">Configuration</h1>
-  <p class="mt-2 text-slate-600">
-    Admin-only area. Classes, fee structures, expense categories, and user management
-    arrive in upcoming releases.
-  </p>
-</section>
+<div class="space-y-6">
+  {{ page_header("Settings", "Admin-only area. Users, backups, and expense categories arrive in later updates.") }}
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% call card(title="Users & roles") %}
+      {{ empty_state("No user management yet", "Add and manage staff accounts in an upcoming update.", "user-group") }}
+    {% endcall %}
+
+    {% call card(title="Backups") %}
+      {{ empty_state("Backups coming soon", "Automatic backups on startup and manual backups land in an upcoming update.", "arrow-path") }}
+    {% endcall %}
+
+    {% call card(title="Expense categories") %}
+      {{ empty_state("Categories coming soon", "Manage the expense category list in an upcoming update.", "banknotes") }}
+    {% endcall %}
+
+    {% call card(title="Audit trail") %}
+      <p class="text-sm text-base-content/70">Every payment, expense, fee generation, adjustment, and configuration change is recorded. Entries are append-only and cannot be edited or deleted.</p>
+      <div class="mt-4">{{ btn(href="/audit", label="Open audit log", icon="shield-check", variant="outline", size="sm") }}</div>
+    {% endcall %}
+  </div>
+</div>
 {% endblock %}

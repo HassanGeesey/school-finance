@@ -1,55 +1,52 @@
 {% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, card, btn, badge, alert, empty_state, table_scroll %}
 {% from "classes/_badges.html" import class_status_badge %}
 
 {% block title %}Classes — {{ app_name }}{% endblock %}
+{% block topbar_title %}Classes{% endblock %}
 
 {% block content %}
 {% set user = current_user() %}
 {% set is_admin = user is not none and user.role == "admin" %}
-<section class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-  <div class="flex items-center justify-between flex-wrap gap-4">
-    <div>
-      <h1 class="text-2xl font-bold text-slate-900">Classes</h1>
-      <p class="mt-2 text-slate-600">
-        Each class groups students and carries its own itemized fee structure.
-      </p>
-    </div>
-    {% if is_admin %}
-    <a href="/classes/new" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">New class</a>
-    {% endif %}
-  </div>
+<div class="space-y-6">
+  {{ page_header("Classes", "Each class groups students and carries its own itemized fee structure.", actions=(btn(href="/classes/new", label="New class", icon="plus", variant="primary") if is_admin else "")) }}
 
   {% if msg %}
-  <div class="mt-6 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2 text-sm">{{ msg }}</div>
+  <div>{{ alert("success", msg) }}</div>
   {% endif %}
 
-  <table class="mt-6 w-full text-sm text-left text-slate-700">
-    <thead>
-      <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-        <th class="py-2 pr-4">Class</th>
-        <th class="py-2 pr-4">Status</th>
-        <th class="py-2 pr-4">Fee items</th>
-        <th class="py-2">Monthly fee / student</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr class="border-b border-slate-100">
-        <td class="py-2 pr-4">
-          <a href="/classes/{{ row.cls.id }}" class="font-medium text-emerald-700 hover:underline">{{ row.cls.name }}</a>
-        </td>
-        <td class="py-2 pr-4">{{ class_status_badge(row.cls.status) }}</td>
-        <td class="py-2 pr-4">{{ row.item_count }}</td>
-        <td class="py-2">{{ money(row.monthly_total_cents) }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="4" class="py-6 text-center text-slate-500">
-          No classes yet.{% if is_admin %} Create the first one.{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
+  {% call card() %}
+  {% call table_scroll() %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Class</th>
+          <th>Status</th>
+          <th>Fee items</th>
+          <th>Monthly fee / student</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <a href="/classes/{{ row.cls.id }}" class="link link-primary font-medium">{{ row.cls.name }}</a>
+          </td>
+          <td>{{ class_status_badge(row.cls.status) }}</td>
+          <td>{{ row.item_count }}</td>
+          <td>{{ money(row.monthly_total_cents) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4">
+            {{ empty_state("No classes yet" + (" — create the first one" if is_admin else ""), "A class groups students and carries its own itemized fee structure.", "rectangle-stack", "/classes/new", "New class" if is_admin else "") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endcall %}
+  {% endcall %}
+</div>
 {% endblock %}

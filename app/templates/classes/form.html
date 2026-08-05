@@ -1,37 +1,32 @@
 {% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, btn, alert, form_field %}
 
 {% block title %}New class — {{ app_name }}{% endblock %}
+{% block topbar_title %}New class{% endblock %}
 
 {% block content %}
-<section class="max-w-lg mx-auto bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-  <h1 class="text-2xl font-bold text-slate-900">New class</h1>
-  <p class="mt-2 text-sm text-slate-600">
-    A class groups students and carries its own itemized fee structure.
-  </p>
+<div class="mx-auto max-w-lg space-y-6">
+  {{ page_header("New class", "A class groups students and carries its own itemized fee structure.") }}
 
   {% if error %}
-  <div class="mt-4 rounded-md bg-red-50 border border-red-200 text-red-800 px-4 py-2 text-sm">{{ error }}</div>
+  <div>{{ alert("error", error) }}</div>
   {% endif %}
 
-  <form method="post" action="/classes" class="mt-6">
-    <div>
-      <label for="class-name" class="block text-sm font-medium text-slate-700">Name</label>
-      <input id="class-name" name="name" type="text" required placeholder="e.g. Grade 1" value="{{ name }}"
-             class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
-    </div>
+  <form method="post" action="/classes" class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+    {{ form_field("name", "Name", placeholder="e.g. Grade 1", value=name, required=true, id="class-name") }}
     <div class="mt-4">
-      <label for="class-status" class="block text-sm font-medium text-slate-700">Status</label>
-      <select id="class-status" name="status"
-              class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm">
+      <label for="class-status" class="label"><span class="label-text">Status</span></label>
+      <select id="class-status" name="status" class="select w-full">
         {% for value, label in status_options %}
         <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="mt-6 flex items-center gap-3">
-      <button type="submit" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Create class</button>
-      <a href="/classes" class="text-sm text-slate-500 hover:text-slate-800">Cancel</a>
+      {{ btn(label="Create class", icon="plus", variant="primary", type="submit") }}
+      {{ btn(href="/classes", label="Cancel", variant="ghost") }}
     </div>
   </form>
-</section>
+</div>
 {% endblock %}
