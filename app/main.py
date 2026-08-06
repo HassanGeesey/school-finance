@@ -27,6 +27,8 @@ from .classes.routes import router as classes_router
 from .classes.service import CLASS_STATUS_LABELS, ClassService
 from .config import settings
 from .db import Database, make_engine
+from .expenses.routes import router as expenses_router
+from .expenses.service import ExpenseService
 from .fees.account_routes import router as account_router
 from .fees.routes import router as fees_router
 from .fees.service import AdjustmentsService, FeeService
@@ -84,6 +86,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     fees = FeeService(db, audit=audit)
     adjustments = AdjustmentsService(db, audit=audit)
     payments = PaymentService(db, audit=audit)
+    expenses = ExpenseService(db, audit=audit)
     templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
     _register_template_globals(templates)
 
@@ -101,6 +104,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.state.fees = fees
     app.state.adjustments = adjustments
     app.state.payments = payments
+    app.state.expenses = expenses
     app.state.templates = templates
 
     @app.middleware("http")
@@ -121,6 +125,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(fees_router)
     app.include_router(account_router)
     app.include_router(payments_router)
+    app.include_router(expenses_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:

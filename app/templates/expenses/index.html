@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, alert, btn %}
+
+{% block title %}Expenses — {{ app_name }}{% endblock %}
+{% block topbar_title %}Expenses{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {{ page_header("Expenses", "Record money out against an Admin-managed category list. Every expense is written to the audit log.", actions=(btn(label="Manage categories", icon="cog-6-tooth", variant="outline", size="sm", type="button", attrs='onclick="document.getElementById(\'categories-modal\').showModal()"') if is_admin else "")) }}
+
+  {% if msg %}
+  <div>{{ alert("success", msg) }}</div>
+  {% endif %}
+
+  <div id="expense-dashboard"
+       hx-get="/expenses/dashboard"
+       hx-trigger="expense-categories-changed from:body"
+       hx-target="this"
+       hx-swap="innerHTML"
+       hx-include="#expense-filters">
+    {% include "expenses/_dashboard.html" %}
+  </div>
+
+  {% if is_admin %}
+  <dialog id="categories-modal" class="modal">
+    <div class="modal-box" id="categories-modal-content">
+      {% include "expenses/_categories.html" %}
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+  {% endif %}
+</div>
+{% endblock %}

@@ -211,6 +211,9 @@ class ExpenseCategory(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    # Archiving is the "remove": the row and its expenses stay, but the category
+    # stops appearing in the record dropdown (no hard deletes — see module docstring).
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
 

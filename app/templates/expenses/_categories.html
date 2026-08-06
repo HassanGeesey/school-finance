@@ -1,0 +1,48 @@
+{% from "components/ui.html" import alert, btn, badge %}
+{% from "components/icons.html" import icon %}
+
+<div class="flex items-start justify-between gap-4">
+  <div>
+    <h3 class="text-lg font-semibold">Expense categories</h3>
+    <p class="mt-1 text-sm text-base-content/60">Categories classify spending. Removed categories are archived — past expenses keep their label.</p>
+  </div>
+  <button type="button" class="btn btn-sm btn-circle btn-ghost" aria-label="Close" onclick="this.closest('dialog').close()">{{ icon("x-mark", "h-4 w-4") }}</button>
+</div>
+
+{% if error %}
+<div class="mt-4">{{ alert("error", error) }}</div>
+{% endif %}
+
+<form method="post" action="/expenses/categories" class="mt-4 flex items-end gap-2"
+      hx-post="/expenses/categories" hx-target="#categories-modal-content" hx-swap="innerHTML">
+  <div class="flex-1">
+    <label for="new-category-name" class="label"><span class="label-text">New category</span></label>
+    <input id="new-category-name" name="name" type="text" required value="{{ category_name }}"
+           placeholder="e.g. Salaries" class="input input-sm w-full">
+  </div>
+  {{ btn(label="Add", icon="plus", variant="primary", size="sm", type="submit") }}
+</form>
+
+<ul class="mt-5 space-y-2">
+  {% for category in categories_all %}
+  <li class="flex items-center gap-2">
+    {% if category.is_active %}
+    <form method="post" action="/expenses/categories/{{ category.id }}/rename" class="flex flex-1 items-center gap-2"
+          hx-post="/expenses/categories/{{ category.id }}/rename" hx-target="#categories-modal-content" hx-swap="innerHTML">
+      <input name="name" type="text" required value="{{ category.name }}" class="input input-sm w-full">
+      <button type="submit" class="btn btn-ghost btn-xs">{{ icon("check", "h-4 w-4") }} Save</button>
+    </form>
+    <form method="post" action="/expenses/categories/{{ category.id }}/remove"
+          hx-post="/expenses/categories/{{ category.id }}/remove" hx-target="#categories-modal-content" hx-swap="innerHTML">
+      <button type="submit" data-confirm="Remove category {{ category.name }}? Past expenses keep this label."
+              class="btn btn-ghost btn-xs text-error">{{ icon("trash", "h-4 w-4") }} Remove</button>
+    </form>
+    {% else %}
+    <span class="flex-1 text-base-content/50">{{ category.name }}</span>
+    {{ badge("Archived", "neutral") }}
+    {% endif %}
+  </li>
+  {% else %}
+  <li class="text-sm text-base-content/60">No categories yet — add the first one above.</li>
+  {% endfor %}
+</ul>

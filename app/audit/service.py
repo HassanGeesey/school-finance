@@ -46,6 +46,12 @@ class AuditActions:
     # Payments & receipts.
     PAYMENT_RECORD = "payment_record"
 
+    # Expenses & categories.
+    EXPENSE_CATEGORY_ADD = "expense_category_add"
+    EXPENSE_CATEGORY_RENAME = "expense_category_rename"
+    EXPENSE_CATEGORY_REMOVE = "expense_category_remove"
+    EXPENSE_RECORD = "expense_record"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
@@ -64,6 +70,10 @@ class AuditActions:
         FEE_GENERATE: "Monthly fees generated",
         ADJUSTMENT_ADD: "Adjustment made",
         PAYMENT_RECORD: "Payment recorded",
+        EXPENSE_CATEGORY_ADD: "Expense category added",
+        EXPENSE_CATEGORY_RENAME: "Expense category renamed",
+        EXPENSE_CATEGORY_REMOVE: "Expense category removed",
+        EXPENSE_RECORD: "Expense recorded",
     }
 
 

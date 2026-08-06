@@ -1,0 +1,105 @@
+{% from "components/ui.html" import card, btn, alert, empty_state, form_field, table_scroll %}
+{% from "components/icons.html" import icon %}
+{% from "payments/_badges.html" import payment_method_badge %}
+
+<form id="expense-filters" method="get" action="/expenses" class="grid items-end gap-4 sm:grid-cols-3">
+  <div>
+    <label for="expense-filter-category" class="label"><span class="label-text">Category</span></label>
+    <select id="expense-filter-category" name="category" class="select w-full">
+      <option value="" {% if not filter_category %}selected{% endif %}>All categories</option>
+      {% for category in categories %}
+      <option value="{{ category.id }}" {% if filter_category == category.id|string %}selected{% endif %}>{{ category.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="expense-filter-period" class="label"><span class="label-text">Month</span></label>
+    <select id="expense-filter-period" name="period" class="select w-full">
+      <option value="" {% if not filter_period %}selected{% endif %}>All months</option>
+      {% for value, label in period_options %}
+      <option value="{{ value }}" {% if filter_period == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="flex items-center gap-2">
+    {{ btn(label="Filter", icon="magnifying-glass", variant="primary", size="sm", type="submit") }}
+    {% if filter_category or filter_period %}
+    {{ btn(href="/expenses", label="Clear", icon="x-mark", variant="ghost", size="sm") }}
+    {% endif %}
+  </div>
+</form>
+
+{% call card(title="Record an expense", subtitle="Money out: date, category, description, amount, and method. Every expense is recorded in the audit log.") %}
+  {% if not categories %}
+  <div>{{ alert("info", "No expense categories yet — an admin can add them via Manage categories.") }}</div>
+  {% else %}
+  <form method="post" action="/expenses" class="max-w-lg space-y-4"
+        hx-post="/expenses" hx-target="#expense-dashboard" hx-swap="innerHTML"
+        hx-include="#expense-filters">
+    {% if error %}
+    <div>{{ alert("error", error) }}</div>
+    {% endif %}
+    <div>
+      <label for="expense-category" class="label"><span class="label-text">Category</span></label>
+      {% include "expenses/_category_options.html" %}
+    </div>
+    <div>
+      <label for="expense-description" class="label"><span class="label-text">Description</span></label>
+      <input id="expense-description" name="description" type="text" required
+             value="{{ record.get('description', '') }}" placeholder="e.g. Bus fuel for the week" class="input w-full">
+    </div>
+    <div class="grid gap-4 sm:grid-cols-3">
+      {{ form_field("amount", "Amount (USD)", placeholder="0.00", value=record.get('amount', ''), required=true, id="expense-amount") }}
+      {{ form_field("occurred_on", "Date", type="date", value=(record.get('occurred_on', today)), required=true, id="expense-date") }}
+      <div>
+        <span class="label"><span class="label-text">Method</span></span>
+        <div class="flex flex-wrap gap-4">
+          {% for value, text in methods.items() %}
+          <label class="flex cursor-pointer items-center gap-2">
+            <input type="radio" name="method" value="{{ value }}" {% if (record.get('method') or 'cash') == value %}checked{% endif %} class="radio radio-sm">
+            <span class="text-sm">{{ text }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 pt-2">
+      <button type="submit" class="btn btn-primary">{{ icon("banknotes", "h-4 w-4") }} Record expense</button>
+      <p class="text-xs text-base-content/60">Partial expenses are fine — amounts are never limited.</p>
+    </div>
+  </form>
+  {% endif %}
+{% endcall %}
+
+{% call card(title="Expenses", subtitle="Total for the current filter: " ~ money(total_cents) ~ " · " ~ (expenses | length) ~ " expense" ~ ("s" if expenses | length != 1 else "")) %}
+  {% call table_scroll() %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Category</th>
+          <th>Description</th>
+          <th>Method</th>
+          <th class="text-right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for expense in expenses %}
+        <tr>
+          <td>{{ expense.occurred_on.isoformat() }}</td>
+          <td>{{ expense.category.name }}</td>
+          <td class="font-medium text-base-content">{{ expense.description }}</td>
+          <td>{{ payment_method_badge(expense.method) }}</td>
+          <td class="text-right font-semibold text-error">{{ money(expense.amount_cents) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">
+            {{ empty_state("No expenses yet", "Record the first expense to see it here.", "banknotes") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endcall %}
+{% endcall %}

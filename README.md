@@ -25,6 +25,10 @@ with **FastAPI**, **SQLAlchemy**, and a **Jinja2 + htmx + daisyUI** interface.
 - **Adjustments** — Admin-only extras and waivers on a single student's month.
   Waivers can clear a charge but never drive it below zero. Adjustments update
   the student's balance immediately and are audited.
+- **Expenses** — an Admin-managed category list (add/rename/remove, archived
+  rather than deleted) and a record card open to the Finance role: date,
+  category, description, amount, and cash/bank/other method, with category and
+  month filtering. Every expense and category change is audited.
 - **Audit log** — every meaningful action (setup, login, class/student edits,
   fee generation, adjustments) is recorded with who did it, when, and a
   human-readable summary.
@@ -36,8 +40,8 @@ with **FastAPI**, **SQLAlchemy**, and a **Jinja2 + htmx + daisyUI** interface.
 
 **Planned (roadmap)**
 
-- Payments & receipts, expenses, arrears tracking, reports/dashboard, system
-  admin, and packaged EXE delivery.
+- Payments & receipts, arrears tracking, reports/dashboard, system admin, and
+  packaged EXE delivery.
 
 ## Tech stack
 
@@ -106,7 +110,7 @@ pytest
 mypy app
 ```
 
-The test suite covers ~280 cases across the service layer (the single testing
+The test suite covers ~370 cases across the service layer (the single testing
 seam — business rules live in the service modules, routes stay thin) and the
 routes end-to-end, including role gating, duplicate-safety, audit content, and
 the HTMX partials.
