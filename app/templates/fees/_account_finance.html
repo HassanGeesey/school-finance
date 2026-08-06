@@ -4,12 +4,36 @@
 {% set user = current_user() %}
 {% set is_admin = user is not none and user.role == "admin" %}
 
+{% set bal_tone = "error" if account.balance_cents > 0 else "success" if account.balance_cents < 0 else "neutral" %}
+{% set hero_style = {
+  "error": "border-error bg-error/10 text-error",
+  "success": "border-success bg-success/10 text-success",
+  "neutral": "border-base-300 bg-base-100 text-base-content",
+}[bal_tone] %}
+{% set hero_label = "Balance owed" if account.balance_cents > 0 else "Credit balance" if account.balance_cents < 0 else "Account up to date" %}
+
 <div class="space-y-6">
-  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    {{ stat_card("Balance owed", money(account.balance_cents), "banknotes", "error" if account.balance_cents > 0 else "success" if account.balance_cents < 0 else "neutral", hint="Outstanding charges minus credits; a negative balance means credit is held.") }}
-    {{ stat_card("Received", money(account.received_cents), "check-circle", "neutral", hint="Total payments recorded to date.") }}
-    {{ stat_card("Credit held", money(account.credits_cents), "receipt-percent", "success" if account.credits_cents > 0 else "neutral", hint="Overpayments carried forward (no refunds in v1).") }}
+  <div class="rounded-box border p-6 {{ hero_style }}">
+    <div class="flex flex-wrap items-center justify-between gap-6">
+      <div>
+        <p class="text-sm font-medium opacity-70">{{ hero_label }}</p>
+        <p class="mt-2 text-4xl font-bold tracking-tight">{{ money(account.balance_cents) }}</p>
+        <p class="mt-1 text-xs opacity-60">Outstanding charges minus credits — extras, waivers, payments, and credit are all included.</p>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {{ stat_card("Outstanding charges", money(account.outstanding_cents), "receipt-percent", "warning" if account.outstanding_cents > 0 else "neutral", hint="Unpaid charge net amounts.") }}
+        {{ stat_card("Credit held", money(account.credits_cents), "check-circle", "success" if account.credits_cents > 0 else "neutral", hint="Overpayments carried forward.") }}
+        {{ stat_card("Received", money(account.received_cents), "banknotes", "neutral", hint="Total payments recorded to date.") }}
+      </div>
+    </div>
   </div>
+
+  {% if account.credits_cents > 0 %}
+  <div class="flex items-start gap-2 rounded-box border border-base-300 bg-base-100 px-4 py-3 text-sm text-base-content/70">
+    {{ icon("information-circle", "h-4 w-4 mt-0.5 shrink-0") }}
+    <p>A {{ money(account.credits_cents) }} credit is held on this account. It is already included in the balance above; charge statuses below reflect payments only, not credit.</p>
+  </div>
+  {% endif %}
 
   {% call card(title="Monthly charges", subtitle="One charge per billed month, itemized from the class fee structure and snapshotted at generation time. Adjustments (extras/waivers) and payments update the balance immediately.") %}
     {% call table_scroll() %}
@@ -33,15 +57,23 @@
             <td>{{ money(line.base_cents) }}</td>
             <td>
               {% if line.adjustments %}
-              <ul class="space-y-0.5 text-sm">
-                {% for adj in line.adjustments %}
-                <li class="flex items-center gap-2">
-                  {% if adj.kind == "extra" %}{{ badge("Extra", "info") }}{% else %}{{ badge("Waiver", "success") }}{% endif %}
-                  <span>{{ adj.label }}</span>
-                  <span class="text-base-content/60">{{ money(adj.amount_cents) }}</span>
-                </li>
-                {% endfor %}
-              </ul>
+              <details class="text-sm">
+                <summary class="cursor-pointer list-none text-base-content/70 hover:text-base-content">
+                  <span class="inline-flex items-center gap-1">
+                    {{ icon("chevron-right", "h-3.5 w-3.5") }}
+                    {{ line.adjustments|length }} {{ "adjustment" if line.adjustments|length == 1 else "adjustments" }}
+                  </span>
+                </summary>
+                <ul class="mt-2 space-y-0.5">
+                  {% for adj in line.adjustments %}
+                  <li class="flex items-center gap-2">
+                    {% if adj.kind == "extra" %}{{ badge("Extra", "info") }}{% else %}{{ badge("Waiver", "success") }}{% endif %}
+                    <span>{{ adj.label }}</span>
+                    <span class="text-base-content/60">{{ money(adj.amount_cents) }}</span>
+                  </li>
+                  {% endfor %}
+                </ul>
+              </details>
               {% else %}
               <span class="text-base-content/40">—</span>
               {% endif %}
