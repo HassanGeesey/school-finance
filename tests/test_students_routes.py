@@ -71,6 +71,54 @@ def test_search_page_shows_an_empty_state(client):
     assert "No students found" in response.text
 
 
+def test_class_filter_dropdown_lists_all_classes(client):
+    authenticated_admin(client)
+    create_class(client, name="Grade 1")
+    create_class(client, name="Grade 2")
+
+    response = client.get("/students")
+
+    assert response.status_code == 200
+    assert "All classes" in response.text
+    assert 'value="1"' in response.text
+    assert 'value="2"' in response.text
+
+
+def test_class_filter_narrows_the_results(client):
+    authenticated_admin(client)
+    create_class(client, name="Grade 1")
+    create_class(client, name="Grade 2")
+    add_student(client, class_id=1, first_name="Ada", last_name="Lovelace")
+    add_student(client, class_id=2, first_name="Grace", last_name="Hopper")
+
+    response = client.get("/students?class_id=1")
+
+    assert response.status_code == 200
+    assert "Ada Lovelace" in response.text
+    assert "Grace Hopper" not in response.text
+
+
+def test_class_filter_combines_with_name_search(client):
+    authenticated_admin(client)
+    create_class(client, name="Grade 1")
+    create_class(client, name="Grade 2")
+    add_student(client, class_id=1, first_name="Ada", last_name="Lovelace")
+    add_student(client, class_id=2, first_name="Ada", last_name="Byron")
+
+    response = client.get("/students?class_id=2&q=ada")
+
+    assert response.status_code == 200
+    assert "Ada Byron" in response.text
+    assert "Ada Lovelace" not in response.text
+
+
+def test_unknown_class_filter_returns_404(client):
+    authenticated_admin(client)
+    create_class(client)
+
+    assert client.get("/students?class_id=999").status_code == 404
+
+
 def test_finance_officer_cannot_add_a_student(client):
     authenticated_admin(client)
     create_class(client)

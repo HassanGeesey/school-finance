@@ -16,8 +16,17 @@
       <label for="student-search" class="label"><span class="label-text">Search</span></label>
       <input id="student-search" name="q" type="search" value="{{ q }}" placeholder="Search by name…" class="input input-sm w-full max-w-sm">
     </div>
+    <div>
+      <label for="class_id" class="label"><span class="label-text">Class</span></label>
+      <select id="class_id" name="class_id" class="select select-sm w-full">
+        <option value="">All classes</option>
+        {% for value, label in class_options %}
+        <option value="{{ value }}" {% if value == class_id %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
     {{ btn(label="Search", icon="magnifying-glass", variant="primary", size="sm", type="submit") }}
-    {% if q %}
+    {% if q or class_id %}
     {{ btn(href="/students", label="Clear", variant="ghost", size="sm", icon="x-mark") }}
     {% endif %}
   </form>

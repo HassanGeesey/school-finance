@@ -283,16 +283,20 @@ class StudentService:
                 query.order_by(Student.last_name, Student.first_name, Student.id).all()
             )
 
-    def search_students(self, query: str) -> list[Student]:
-        """Find students across all classes by first name, last name, or full name.
+    def search_students(self, query: str, class_id: int | None = None) -> list[Student]:
+        """Find students by name, optionally narrowed to one class.
 
         Matching is case-insensitive substring matching; results include archived
         students (history and arrears stay). The class is eagerly loaded so
-        results can be rendered outside the session.
+        results can be rendered outside the session. An unknown ``class_id``
+        raises :class:`ClassNotFound`, matching :meth:`list_students`.
         """
         term = (query or "").strip()
         with self._session() as session:
             q = session.query(Student).options(joinedload(Student.school_class))
+            if class_id is not None:
+                self._get_class(session, class_id)
+                q = q.filter(Student.class_id == class_id)
             if term:
                 like = f"%{term}%"
                 q = q.filter(

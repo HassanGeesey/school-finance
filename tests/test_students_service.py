@@ -364,6 +364,38 @@ def test_search_students_includes_archived_students(students, grade1, admin):
     assert [s.full_name for s in students.search_students("ada")] == ["Ada Lovelace"]
 
 
+def test_search_students_filters_by_class(students, classes, grade1, admin):
+    grade2 = classes.create_class(user=admin, name="Grade 2")
+    students.add_student(user=admin, class_id=grade1.id, first_name="Ada", last_name="Lovelace")
+    students.add_student(user=admin, class_id=grade2.id, first_name="Grace", last_name="Hopper")
+
+    assert [s.full_name for s in students.search_students("", class_id=grade1.id)] == [
+        "Ada Lovelace"
+    ]
+    assert [s.full_name for s in students.search_students("", class_id=grade2.id)] == [
+        "Grace Hopper"
+    ]
+
+
+def test_search_students_combines_the_class_and_name_filters(
+    students, classes, grade1, admin
+):
+    grade2 = classes.create_class(user=admin, name="Grade 2")
+    students.add_student(user=admin, class_id=grade1.id, first_name="Ada", last_name="Lovelace")
+    students.add_student(user=admin, class_id=grade2.id, first_name="Ada", last_name="Byron")
+
+    assert [s.full_name for s in students.search_students("ada", class_id=grade2.id)] == [
+        "Ada Byron"
+    ]
+
+
+def test_search_students_unknown_class_raises(students, grade1, admin):
+    students.add_student(user=admin, class_id=grade1.id, first_name="Ada", last_name="Lovelace")
+
+    with pytest.raises(ClassNotFound):
+        students.search_students("", class_id=999)
+
+
 # ---------------------------------------------------------------------------
 # import_students_csv
 # ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..auth.deps import require_admin, require_login
-from ..classes.service import ClassNotFound
+from ..classes.service import ClassNotFound, ClassService
 from ..models import User
 from .service import StudentError, StudentImportError, StudentNotFound, StudentService
 
@@ -41,18 +41,36 @@ def _redirect_class(class_id: int, msg: str) -> RedirectResponse:
     )
 
 
+def _class_options(request: Request) -> list[tuple[int, str]]:
+    service = request.app.state.classes
+    assert isinstance(service, ClassService)
+    return [
+        (summary.cls.id, summary.cls.name)
+        for summary in service.list_class_summaries()
+    ]
+
+
 @router.get("/students", response_class=HTMLResponse)
 def search_page(
     request: Request,
     q: str = "",
+    class_id: int | None = None,
     _user: User = Depends(require_login),
 ) -> HTMLResponse:
     """Search students by name across all classes. Empty query lists everyone."""
-    rows = _service(request).search_students(q)
+    try:
+        rows = _service(request).search_students(q, class_id=class_id)
+    except ClassNotFound:
+        raise HTTPException(status_code=404, detail="Class not found.")
     return _templates(request).TemplateResponse(
         request=request,
         name="students/search.html",
-        context={"rows": rows, "q": q},
+        context={
+            "rows": rows,
+            "q": q,
+            "class_id": class_id,
+            "class_options": _class_options(request),
+        },
     )
 
 
