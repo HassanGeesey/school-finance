@@ -29,3 +29,15 @@ Built via TDD on the service seam (`app/payments/service.py`), mirroring tickets
 
 Commit: `eac3914`
 
+### Code-review fixes
+
+Post-review polish addressing the two-axis code review of the ticket:
+
+- **Audit atomic with the payment.** `AuditService.add(session, ...)` added; `record_payment()` now writes its `PAYMENT_RECORD` entry inside the same transaction as the payment/allocations/credit, so a failed audit rolls the whole payment back (`log()` still works standalone). New test `test_an_audit_failure_rolls_back_the_whole_payment`.
+- **Confirmation line (spec UI).** New `PaymentService.preview_application()` (write-free, oldest-first) + `ApplicationPreview`; `GET /payments/preview` htmx fragment; the record form's amount input triggers a live "what this payment clears" preview (per-charge applied amounts + credit line).
+- **Toast on save.** Receipt page now fires the app's toast via a new `body_end` block in `base.html` instead of an inline alert; verified in-browser.
+- **Single-source helpers.** `period_label()`, `net_cents()`, `to_charge_line()` moved to module level in `app/fees/service.py`; `AdjustmentsService` and `PaymentService` both delegate (previously three copies of the period label and two of the net computation). N+1 payment-application loop collapsed to one `_paid_cents_by_charge()` lookup; redundant `except (PaymentError, InvalidMethod, InvalidDate)` narrowed to `except PaymentError`.
+- Tests: 7 new service tests + 3 route tests; full suite now 321 tests green; mypy clean (28 files).
+
+Commit: `1e55c3c` (follow-up, review fixes)
+
