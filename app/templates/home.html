@@ -11,37 +11,132 @@
   {{ page_header("Welcome back" + (", " ~ user.name if user else ""), "School fee collection, expenses, and arrears at a glance.") }}
 
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    {{ stat_card("Collected this month", "$0.00", "banknotes", "success", "Payments land here after the fees feature ships.") }}
-    {{ stat_card("Outstanding arrears", "$0.00", "exclamation-triangle", "error", "Tracked per student once billing is live.") }}
-    {{ stat_card("Active students", "—", "user-group", "neutral", "Enrolled students across all classes.") }}
-    {{ stat_card("Expenses this month", "$0.00", "arrow-path", "error", "Recorded expenses, ready when expenses ship.") }}
+    {{ stat_card("Collected this month", money(dashboard.collected_cents), "banknotes", "success", hint="Payments recorded this month") }}
+    {{ stat_card("Outstanding arrears", money(dashboard.arrears_cents), "exclamation-triangle", "error" if dashboard.arrears_cents > 0 else "neutral", hint="Across all students") }}
+    {{ stat_card("Active students", dashboard.active_student_count, "user-group", "neutral", hint="Enrolled in a class") }}
+    {{ stat_card("Expenses this month", money(dashboard.expenses_cents), "arrow-up-tray", "error", hint="Recorded this month") }}
   </div>
 
   <div class="grid gap-6 lg:grid-cols-2">
-    {% call card(title="Quick actions") %}
-      <div class="grid gap-2 sm:grid-cols-2">
-        {{ btn(href="/classes", label="Manage classes", icon="rectangle-stack", variant="outline") }}
-        {{ btn(href="/students", label="Find a student", icon="magnifying-glass", variant="outline") }}
-        {% if user and user.role == "admin" %}
-        {{ btn(href="/audit", label="View audit log", icon="shield-check", variant="outline") }}
-        {% endif %}
-      </div>
+    {% call card(title="Income vs expenses — last 6 months") %}
+      <div class="relative h-64"><canvas id="chart-monthly"></canvas></div>
+    {% endcall %}
+    {% call card(title="Outstanding arrears by age") %}
+      <div class="relative h-64"><canvas id="chart-bands"></canvas></div>
+    {% endcall %}
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% call card(title="Expenses by category", actions=btn(href="/reports/expense-category", label="View report", icon="arrow-right", variant="outline", size="sm")) %}
+      <div class="relative h-64"><canvas id="chart-categories"></canvas></div>
     {% endcall %}
 
-    {% call card(title="Getting started") %}
-      <ol class="list-decimal space-y-2 pl-5 text-sm text-base-content/70">
-        <li>Create your school's classes and set each class's fee structure.</li>
-        <li>Add students — one at a time or by importing a CSV.</li>
-        <li>Generate monthly fees, record payments, and print receipts (coming soon).</li>
-      </ol>
-      <div class="mt-4">
-        {{ btn(href="/classes", label="Start with classes", icon="arrow-right", variant="primary", size="sm") }}
+    {% call card(title="Recent payments", actions=btn(href="/reports/paid-students", label="Paid students", icon="arrow-right", variant="outline", size="sm")) %}
+      <div class="overflow-x-auto">
+        <table class="table">
+          <thead><tr><th>Student</th><th>Date</th><th>Method</th><th class="text-right">Amount</th></tr></thead>
+          <tbody>
+          {% for payment in dashboard.recent_payments %}
+            <tr>
+              <td class="font-medium">{{ payment.student.full_name }}</td>
+              <td>{{ payment.paid_on }}</td>
+              <td>{{ payment_method_labels.get(payment.method, payment.method) }}</td>
+              <td class="text-right font-semibold text-success">{{ money(payment.amount_cents) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="py-0">{{ empty_state("No payments yet", "Recorded payments will appear here.", "banknotes") }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
       </div>
     {% endcall %}
   </div>
 
-  {% call card(title="Recent activity") %}
-    {{ empty_state("No activity yet", "Audit log entries will appear here as the school gets going.", "shield-check") }}
-  {% endcall %}
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% call card(title="Recent expenses", actions=btn(href="/expenses", label="Expenses", icon="arrow-right", variant="outline", size="sm")) %}
+      <div class="overflow-x-auto">
+        <table class="table">
+          <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="text-right">Amount</th></tr></thead>
+          <tbody>
+          {% for expense in dashboard.recent_expenses %}
+            <tr>
+              <td>{{ expense.occurred_on }}</td>
+              <td>{{ expense.category.name }}</td>
+              <td>{{ expense.description }}</td>
+              <td class="text-right font-semibold text-error">{{ money(expense.amount_cents) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="py-0">{{ empty_state("No expenses yet", "Recorded expenses will appear here.", "arrow-up-tray") }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endcall %}
+
+    {% call card(title="Quick actions") %}
+      <div class="grid gap-2 sm:grid-cols-2">
+        {{ btn(href="/payments", label="Record a payment", icon="banknotes", variant="primary") }}
+        {{ btn(href="/expenses", label="Record an expense", icon="arrow-up-tray", variant="outline") }}
+        {{ btn(href="/reports", label="All reports", icon="chart-bar", variant="outline") }}
+        {{ btn(href="/classes", label="Manage classes", icon="rectangle-stack", variant="outline") }}
+      </div>
+    {% endcall %}
+  </div>
 </div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    if (typeof Chart === "undefined") return;
+    var moneyTick = function (value) {
+      return "$" + Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    };
+
+    new Chart(document.getElementById("chart-monthly"), {
+      type: "bar",
+      data: {
+        labels: {{ chart_labels | tojson }},
+        datasets: [
+          { label: "Income", data: {{ chart_income | tojson }}, backgroundColor: "rgba(16,185,129,0.75)", borderRadius: 4 },
+          { label: "Expenses", data: {{ chart_expenses | tojson }}, backgroundColor: "rgba(239,68,68,0.75)", borderRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { ticks: { callback: moneyTick } } },
+        plugins: { legend: { position: "bottom" } }
+      }
+    });
+
+    new Chart(document.getElementById("chart-bands"), {
+      type: "doughnut",
+      data: {
+        labels: {{ chart_bands | map(attribute="label") | list | tojson }},
+        datasets: [{ data: {{ chart_bands | map(attribute="count") | list | tojson }}, backgroundColor: ["rgba(16,185,129,0.8)", "rgba(245,158,11,0.8)", "rgba(239,68,68,0.8)"] }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } }
+      }
+    });
+
+    new Chart(document.getElementById("chart-categories"), {
+      type: "bar",
+      data: {
+        labels: {{ chart_category_labels | tojson }},
+        datasets: [{ label: "Total spent", data: {{ chart_category_values | tojson }}, backgroundColor: "rgba(59,130,246,0.75)", borderRadius: 4 }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { x: { ticks: { callback: moneyTick } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  });
+</script>
 {% endblock %}

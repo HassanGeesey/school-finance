@@ -1,0 +1,49 @@
+{% extends "reports/_frame.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import card, stat_card, badge %}
+{% from "reports/_filters.html" import month_filter, class_filter %}
+
+{% block report_filter %}
+<div class="flex flex-wrap items-end gap-3">
+  {{ month_filter(page_url, period_options, period) }}
+  {{ class_filter(page_url, class_options, selected_class_id) }}
+</div>
+{% endblock %}
+
+{% block report_summary %}
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  {{ stat_card("Billed students", report.billed_count, "user-group", "neutral") }}
+  {{ stat_card("Paid", report.paid_count, "check-circle", "success") }}
+  {{ stat_card("Partial", report.partial_count, "exclamation-triangle", "warning") }}
+  {{ stat_card("Unpaid", report.unpaid_count, "x-mark", "error") }}
+</div>
+<div class="grid gap-4 sm:grid-cols-3">
+  {{ stat_card("Charged", money(report.charged_cents), "banknotes", "neutral") }}
+  {{ stat_card("Collected", money(report.collected_cents), "arrow-down-tray", "success") }}
+  {{ stat_card("Outstanding", money(report.outstanding_cents), "exclamation-triangle", "warning") }}
+</div>
+{% endblock %}
+
+{% block report_table %}
+{% call card(title="Paid students for " ~ report.period_label) %}
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead><tr><th>Student</th><th>Class</th><th>Status</th><th class="text-right">Charged</th><th class="text-right">Paid</th><th class="text-right">Remaining</th></tr></thead>
+      <tbody>
+      {% for line in report.lines %}
+        <tr>
+          <td class="font-medium">{{ line.student.full_name }}</td>
+          <td>{{ line.class_name }}</td>
+          <td>{{ badge(paid_status_labels[line.status], paid_status_tones[line.status]) }}</td>
+          <td class="text-right">{{ money(line.charge_cents) }}</td>
+          <td class="text-right">{{ money(line.paid_cents) }}</td>
+          <td class="text-right font-semibold">{{ money(line.remaining_cents) }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="text-center py-6 text-base-content/50">No students were billed for this month.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endblock %}

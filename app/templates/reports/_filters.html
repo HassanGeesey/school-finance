@@ -1,0 +1,37 @@
+{% from "components/icons.html" import icon %}
+
+{% macro month_filter(page_url, period_options, period, all_time=False) %}
+<form method="get" action="{{ page_url }}" class="no-print">
+  <div class="flex flex-wrap items-end gap-3">
+    <div>
+      <label for="period" class="label"><span class="label-text">Month</span></label>
+      <select id="period" name="period" class="select select-sm w-full">
+        {% if all_time %}
+        <option value="" {% if not period %}selected{% endif %}>All time</option>
+        {% endif %}
+        {% for value, label in period_options %}
+        <option value="{{ value }}" {% if value == period %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm">{{ icon("arrow-path", "w-4 h-4") }} Show</button>
+  </div>
+</form>
+{% endmacro %}
+
+{% macro class_filter(page_url, class_options, selected_class_id) %}
+<form method="get" action="{{ page_url }}" class="no-print">
+  <div class="flex flex-wrap items-end gap-3">
+    <div>
+      <label for="class_id" class="label"><span class="label-text">Class</span></label>
+      <select id="class_id" name="class_id" class="select select-sm w-full">
+        <option value="">All classes</option>
+        {% for value, label in class_options %}
+        <option value="{{ value }}" {% if value == selected_class_id %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm">{{ icon("arrow-path", "w-4 h-4") }} Show</button>
+  </div>
+</form>
+{% endmacro %}

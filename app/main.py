@@ -38,6 +38,8 @@ from .models import User, UserRoles
 from .money import format_cents, format_input_cents
 from .payments.routes import router as payments_router
 from .payments.service import PaymentService
+from .reports.routes import dashboard_context, router as reports_router
+from .reports.service import ReportService
 from .students.routes import router as students_router
 from .students.service import StudentService
 
@@ -90,6 +92,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     payments = PaymentService(db, audit=audit)
     expenses = ExpenseService(db, audit=audit)
     arrears = ArrearsService(db)
+    reports = ReportService(db, arrears=arrears)
     templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
     _register_template_globals(templates)
 
@@ -109,6 +112,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.state.payments = payments
     app.state.expenses = expenses
     app.state.arrears = arrears
+    app.state.reports = reports
     app.state.templates = templates
 
     @app.middleware("http")
@@ -131,13 +135,16 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(payments_router)
     app.include_router(expenses_router)
     app.include_router(arrears_router)
+    app.include_router(reports_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
+        context = dashboard_context(request)
+        context["database_url"] = url
         return templates.TemplateResponse(
             request=request,
             name="home.html",
-            context={"database_url": url},
+            context=context,
         )
 
     @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)

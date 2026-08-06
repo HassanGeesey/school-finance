@@ -1,0 +1,39 @@
+{% extends "reports/_frame.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import card, stat_card %}
+{% from "reports/_filters.html" import class_filter %}
+
+{% block report_filter %}
+{{ class_filter(page_url, class_options, selected_class_id) }}
+{% endblock %}
+
+{% block report_summary %}
+<div class="grid gap-4 sm:grid-cols-3">
+  {{ stat_card("Students", report.active_count + report.inactive_count, "user-group", "neutral") }}
+  {{ stat_card("Active", report.active_count, "check-circle", "success") }}
+  {{ stat_card("Inactive", report.inactive_count, "x-mark", "neutral") }}
+</div>
+{% endblock %}
+
+{% block report_table %}
+{% call card(title=report.class_name or "All classes") %}
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead><tr><th>Student</th><th>Class</th><th>Status</th><th>Class status</th><th class="text-right">Monthly fee</th></tr></thead>
+      <tbody>
+      {% for line in report.lines %}
+        <tr>
+          <td class="font-medium">{{ line.student.full_name }}</td>
+          <td>{{ line.class_name }}</td>
+          <td>{{ line.student_status }}</td>
+          <td>{{ class_status_label(line.class_status) }}</td>
+          <td class="text-right font-semibold">{{ money(line.monthly_fee_cents) }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="text-center py-6 text-base-content/50">No students found.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endblock %}

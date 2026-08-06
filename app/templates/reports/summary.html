@@ -1,0 +1,61 @@
+{% extends "reports/_frame.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import card, stat_card %}
+{% from "reports/_filters.html" import month_filter %}
+
+{% block report_filter %}
+{{ month_filter(page_url, period_options, period) }}
+{% endblock %}
+
+{% block report_summary %}
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  {{ stat_card("Income", money(report.income_cents), "arrow-down-tray", "success") }}
+  {{ stat_card("Expenses", money(report.expenses_cents), "arrow-up-tray", "error") }}
+  {{ stat_card("Net cash flow", money(report.net_cents), "banknotes", "neutral") }}
+  {{ stat_card("Outstanding arrears", money(report.arrears_cents), "exclamation-triangle", "warning") }}
+</div>
+{% endblock %}
+
+{% block report_table %}
+<div class="grid gap-6 lg:grid-cols-2">
+  {% call card(title="Month totals") %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <tbody>
+          <tr>
+            <td class="text-base-content/70">Income (payments)</td>
+            <td class="text-right font-semibold">{{ money(report.income_cents) }}</td>
+          </tr>
+          <tr>
+            <td class="text-base-content/70">Expenses</td>
+            <td class="text-right font-semibold">{{ money(report.expenses_cents) }}</td>
+          </tr>
+          <tr>
+            <td class="text-base-content/70">Net cash flow</td>
+            <td class="text-right font-semibold">{{ money(report.net_cents) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endcall %}
+
+  {% call card(title="Live balances") %}
+    <div class="space-y-4">
+      <div class="flex items-center justify-between rounded-box border border-base-300 p-4">
+        <div>
+          <p class="text-sm font-medium text-base-content/70">Outstanding arrears</p>
+          <p class="text-xs text-base-content/50">Across all students, right now</p>
+        </div>
+        <p class="text-lg font-bold {{ 'text-warning' if report.arrears_cents > 0 else 'text-base-content' }}">{{ money(report.arrears_cents) }}</p>
+      </div>
+      <div class="flex items-center justify-between rounded-box border border-base-300 p-4">
+        <div>
+          <p class="text-sm font-medium text-base-content/70">Credit balances</p>
+          <p class="text-xs text-base-content/50">Overpaid balances waiting to be used</p>
+        </div>
+        <p class="text-lg font-bold text-base-content">{{ money(report.credits_cents) }}</p>
+      </div>
+    </div>
+  {% endcall %}
+</div>
+{% endblock %}

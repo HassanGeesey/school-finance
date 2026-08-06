@@ -1,0 +1,46 @@
+{% extends "reports/_frame.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import card, stat_card %}
+{% from "reports/_filters.html" import month_filter %}
+
+{% block report_filter %}
+{{ month_filter(page_url, period_options, period) }}
+{% endblock %}
+
+{% block report_summary %}
+<div class="grid gap-4 sm:grid-cols-3">
+  {{ stat_card("Income (payments)", money(report.income_cents), "arrow-down-tray", "success") }}
+  {{ stat_card("Expenses", money(report.expenses_cents), "arrow-up-tray", "error") }}
+  {{ stat_card("Net cash flow", money(report.net_cents), "banknotes", "neutral") }}
+</div>
+{% endblock %}
+
+{% block report_table %}
+<div class="grid gap-6 lg:grid-cols-2">
+  {% call card(title="Income by method") %}
+    <table class="table">
+      <thead><tr><th>Method</th><th class="text-right">Payments</th><th class="text-right">Amount</th></tr></thead>
+      <tbody>
+      {% for line in report.income_by_method %}
+        <tr><td>{{ line.label }}</td><td class="text-right">{{ line.count }}</td><td class="text-right font-semibold">{{ money(line.amount_cents) }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="text-center py-6 text-base-content/50">No payments in this month.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endcall %}
+
+  {% call card(title="Expenses by method") %}
+    <table class="table">
+      <thead><tr><th>Method</th><th class="text-right">Expenses</th><th class="text-right">Amount</th></tr></thead>
+      <tbody>
+      {% for line in report.expense_by_method %}
+        <tr><td>{{ line.label }}</td><td class="text-right">{{ line.count }}</td><td class="text-right font-semibold">{{ money(line.amount_cents) }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="text-center py-6 text-base-content/50">No expenses in this month.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endcall %}
+</div>
+{% endblock %}

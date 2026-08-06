@@ -1,0 +1,32 @@
+{% extends "reports/_frame.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import card, stat_card %}
+{% from "reports/_filters.html" import month_filter %}
+
+{% block report_filter %}
+{{ month_filter(page_url, period_options, period, all_time=True) }}
+{% endblock %}
+
+{% block report_summary %}
+<div class="grid gap-4 sm:grid-cols-2">
+  {{ stat_card("Categories", report.lines | length, "chart-bar", "neutral") }}
+  {{ stat_card("Total expenses", money(report.total_cents), "banknotes", "error") }}
+</div>
+{% endblock %}
+
+{% block report_table %}
+{% call card(title="Expenses by category" ~ (", " ~ report.period_label if report.period_label else "")) %}
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead><tr><th>Category</th><th class="text-right">Expenses</th><th class="text-right">Total</th></tr></thead>
+      <tbody>
+      {% for line in report.lines %}
+        <tr><td>{{ line.category_name }}</td><td class="text-right">{{ line.count }}</td><td class="text-right font-semibold">{{ money(line.total_cents) }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="text-center py-6 text-base-content/50">No expenses{% if report.month %} this month{% else %} recorded yet{% endif %}.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endblock %}
