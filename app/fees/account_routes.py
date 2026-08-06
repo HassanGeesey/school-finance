@@ -22,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 from ..auth.deps import require_admin, require_login
 from ..models import AdjustmentKinds, User
 from ..money import format_cents
+from ..payments.service import PaymentService
 from ..students.service import StudentNotFound
 from .service import AdjustmentError, AdjustmentsService, ChargeNotFound
 
@@ -56,12 +57,19 @@ def _student(request: Request, student_id: int):
         raise HTTPException(status_code=404, detail="Student not found.") from None
 
 
+def _payments(request: Request) -> PaymentService:
+    service = request.app.state.payments
+    assert isinstance(service, PaymentService)
+    return service
+
+
 def _finance_context(request: Request, student) -> dict[str, object]:
-    adjustments = _adjustments(request)
+    account = _payments(request).student_account(student.id)
     return {
         "student": student,
-        "balance": adjustments.student_balance(student.id),
-        "lines": adjustments.list_student_charges(student.id),
+        "account": account,
+        "lines": account.charges,
+        "balance": account.balance_cents,
     }
 
 

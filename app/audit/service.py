@@ -43,6 +43,9 @@ class AuditActions:
     # Per-student month adjustments (extras/waivers).
     ADJUSTMENT_ADD = "adjustment_add"
 
+    # Payments & receipts.
+    PAYMENT_RECORD = "payment_record"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
@@ -60,6 +63,7 @@ class AuditActions:
         STUDENT_IMPORT: "Students imported",
         FEE_GENERATE: "Monthly fees generated",
         ADJUSTMENT_ADD: "Adjustment made",
+        PAYMENT_RECORD: "Payment recorded",
     }
 
 

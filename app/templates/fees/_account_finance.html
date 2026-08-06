@@ -1,14 +1,17 @@
 {% from "components/ui.html" import card, badge, btn, empty_state, stat_card, table_scroll %}
 {% from "components/icons.html" import icon %}
+{% from "payments/_badges.html" import payment_method_badge, charge_status_badge %}
 {% set user = current_user() %}
 {% set is_admin = user is not none and user.role == "admin" %}
 
 <div class="space-y-6">
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    {{ stat_card("Balance owed", money(balance), "banknotes", "error" if balance > 0 else "success", hint="Net of extras and waivers.") }}
+    {{ stat_card("Balance owed", money(account.balance_cents), "banknotes", "error" if account.balance_cents > 0 else "success" if account.balance_cents < 0 else "neutral", hint="Outstanding charges minus credits; a negative balance means credit is held.") }}
+    {{ stat_card("Received", money(account.received_cents), "check-circle", "neutral", hint="Total payments recorded to date.") }}
+    {{ stat_card("Credit held", money(account.credits_cents), "receipt-percent", "success" if account.credits_cents > 0 else "neutral", hint="Overpayments carried forward (no refunds in v1).") }}
   </div>
 
-  {% call card(title="Monthly charges", subtitle="One charge per billed month, itemized from the class fee structure and snapshotted at generation time. Adjustments (extras/waivers) appear here and update the balance immediately.") %}
+  {% call card(title="Monthly charges", subtitle="One charge per billed month, itemized from the class fee structure and snapshotted at generation time. Adjustments (extras/waivers) and payments update the balance immediately.") %}
     {% call table_scroll() %}
       <table class="table">
         <thead>
@@ -17,6 +20,9 @@
             <th>Base</th>
             <th>Adjustments</th>
             <th>Net</th>
+            <th>Paid</th>
+            <th>Remaining</th>
+            <th>Status</th>
             {% if is_admin %}<th class="text-right">Actions</th>{% endif %}
           </tr>
         </thead>
@@ -41,6 +47,9 @@
               {% endif %}
             </td>
             <td class="font-semibold {{ 'text-error' if line.net_cents > 0 else 'text-success' }}">{{ money(line.net_cents) }}</td>
+            <td class="{{ 'text-success' if line.paid_cents > 0 else 'text-base-content/40' }}">{{ money(line.paid_cents) }}</td>
+            <td class="font-semibold {{ 'text-error' if line.remaining_cents > 0 else 'text-base-content/40' }}">{{ money(line.remaining_cents) }}</td>
+            <td>{{ charge_status_badge(line.status) }}</td>
             {% if is_admin %}
             <td class="text-right">
               <button type="button" class="btn btn-ghost btn-xs"
@@ -53,17 +62,70 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="{{ 5 if is_admin else 4 }}">
+            <td colspan="{{ 8 if is_admin else 7 }}">
               {{ empty_state("No charges yet", "Generate monthly fees for this student's class to create the first charge.", "receipt-percent") }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-base-300 font-semibold">
+            <td colspan="3" class="text-base-content">Outstanding charges</td>
+            <td class="text-base-content">{{ money(account.outstanding_cents) }}</td>
+            <td colspan="3" class="text-base-content"></td>
+            {% if is_admin %}<td></td>{% endif %}
+          </tr>
+          <tr class="font-semibold">
+            <td colspan="3" class="text-base-content">Credit held</td>
+            <td class="text-base-content">{{ money(account.credits_cents) }}</td>
+            <td colspan="3" class="text-base-content"></td>
+            {% if is_admin %}<td></td>{% endif %}
+          </tr>
+          <tr class="border-t-2 border-base-300 text-lg">
+            <td colspan="3" class="text-base-content">Balance owed</td>
+            <td class="{{ 'text-error' if account.balance_cents > 0 else 'text-success' if account.balance_cents < 0 else 'text-base-content' }}">{{ money(account.balance_cents) }}</td>
+            <td colspan="3" class="text-base-content"></td>
+            {% if is_admin %}<td></td>{% endif %}
+          </tr>
+        </tfoot>
+      </table>
+    {% endcall %}
+    {% if is_admin %}
+    <p class="mt-3 text-xs text-base-content/60">Adjustments are Admin-only and are recorded in the audit log.</p>
+    {% endif %}
+  {% endcall %}
+
+  {% call card(title="Payments", subtitle="Money in, newest first. Each payment carries a printable receipt.") %}
+    {% call table_scroll() %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Method</th>
+            <th>Amount</th>
+            <th class="text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for payment in account.payments %}
+          <tr>
+            <td>{{ payment.paid_on.isoformat() }}</td>
+            <td>{{ payment_method_badge(payment.method) }}</td>
+            <td class="font-semibold">{{ money(payment.amount_cents) }}</td>
+            <td class="text-right">
+              {{ btn(href="/payments/" ~ payment.id ~ "/receipt", label="Receipt", icon="receipt-percent", variant="ghost", size="xs") }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="4">
+              {{ empty_state("No payments yet", "Record a payment to reduce the balance.", "banknotes") }}
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     {% endcall %}
-    {% if is_admin %}
-    <p class="mt-3 text-xs text-base-content/60">Adjustments are Admin-only and are recorded in the audit log.</p>
-    {% endif %}
   {% endcall %}
 
   <div id="adjust-modal-container"></div>

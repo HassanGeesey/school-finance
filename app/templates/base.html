@@ -53,7 +53,7 @@
       <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">Finance</p>
       <div class="mt-1 space-y-1">
         {{ nav_item("/fees", "Fee generation", "academic-cap", path.startswith("/fees")) }}
-        {{ nav_placeholder("Payments", "receipt-percent", "Payment recording arrives in a later update.") }}
+        {{ nav_item("/payments", "Payments", "receipt-percent", path.startswith("/payments")) }}
         {{ nav_placeholder("Expenses", "banknotes", "Expense recording arrives in a later update.") }}
       </div>
 

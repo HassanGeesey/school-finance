@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import page_header, card, alert, form_field, stat_card, btn %}
+{% from "components/icons.html" import icon %}
+{% from "students/_badges.html" import student_status_badge %}
+{% from "payments/_badges.html" import payment_method_badge %}
+
+{% block title %}Record payment — {{ app_name }}{% endblock %}
+{% block topbar_title %}Record payment{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <a href="/payments" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All payments</a>
+    <div class="mt-2">
+      {{ page_header("Record payment", student.full_name ~ " · " ~ student.school_class.name ~ " · " ~ student_status_badge(student.status)) }}
+    </div>
+  </div>
+
+  {% if error %}
+  <div>{{ alert("error", error) }}</div>
+  {% endif %}
+
+  <div class="grid gap-4 sm:grid-cols-3">
+    {{ stat_card("Balance owed", money(account.balance_cents), "banknotes", "error" if account.balance_cents > 0 else "success" if account.balance_cents < 0 else "neutral", hint="Net of extras, waivers, and credits.") }}
+    {{ stat_card("Outstanding charges", money(account.outstanding_cents), "receipt-percent", "warning" if account.outstanding_cents > 0 else "neutral") }}
+    {{ stat_card("Credit held", money(account.credits_cents), "check-circle", "success" if account.credits_cents > 0 else "neutral") }}
+  </div>
+
+  {% call card(title="Payment details", subtitle="The payment applies to the oldest unpaid charges first; any excess becomes a credit on the account. Every payment is recorded in the audit log.") %}
+    <form method="post" action="/payments/record" class="max-w-lg space-y-4">
+      <input type="hidden" name="student_id" value="{{ student.id }}">
+      {{ form_field("amount", "Amount (USD)", type="number", placeholder="0.00", value=amount, required=true, id="payment-amount", attrs='step="0.01" min="0.01"', hint="Partial payments are fine — the oldest charges are reduced first.") }}
+      <div>
+        <span class="label"><span class="label-text">Method</span></span>
+        <div class="flex gap-5">
+          {% for value, text in methods.items() %}
+          <label class="flex cursor-pointer items-center gap-2">
+            <input type="radio" name="method" value="{{ value }}" {% if (method or "cash") == value %}checked{% endif %} class="radio radio-sm">
+            <span class="text-sm">{{ text }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {{ form_field("paid_on", "Payment date", type="date", value=paid_on, required=true, id="payment-paid-on") }}
+      <div class="flex flex-wrap items-center gap-2 pt-2">
+        {{ btn(href="/students/" ~ student.id ~ "/account", label="Cancel", variant="ghost") }}
+        <button type="submit" class="btn btn-primary">{{ icon("banknotes", "h-4 w-4") }} Record payment</button>
+      </div>
+    </form>
+  {% endcall %}
+</div>
+{% endblock %}
