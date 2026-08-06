@@ -41,3 +41,15 @@ Post-review polish addressing the two-axis code review of the ticket:
 
 Commit: `1e55c3c` (follow-up, review fixes)
 
+### Account page polish (review follow-up)
+
+Final spec-UI gaps from the review, on `app/templates/fees/_account_finance.html`:
+
+- **Big color-coded balance in the header.** The stat-card grid became a hero balance banner: `text-4xl` balance tone-colored by sign (red when a balance is owed, green when a credit is held, neutral when up to date) with a matching label ("Balance owed" / "Credit balance" / "Account up to date"). Three stat cards (Outstanding charges / Credit held / Received) move beside it.
+- **Expandable charges.** The adjustments cell is now a `<details>` disclosure ("N adjustments" + chevron) that expands to list each adjustment's badge, label, and amount.
+- **Credit-status clarity.** When a credit is held, an info banner explains it is already included in the balance and that charge statuses reflect payments only, not credit — the chosen resolution to the overpaid-credit case (overpayment is not auto-applied to charges; that would be a new domain policy).
+
+Verified in-browser as Geesey on seeded data: owing student shows red "Balance owed −$65.00"→"$80.00"; credit student shows green "Credit balance"; adjustment disclosure expands; banner only renders when a credit exists. Full suite still 321 green; mypy clean.
+
+Commit: `60ab21a` (account page polish)
+
