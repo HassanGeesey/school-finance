@@ -17,5 +17,5 @@ Built. `StudentService.search_students(query, class_id=None)` now narrows by cla
 
 Verification: 7 new tests (3 service, 4 route) — 73 pass in `tests/test_students_service.py` + `test_students_routes.py`; full suite 554 passed; `mypy app` clean (46 source files). Manually smoke-tested the dropdown and class filtering in a browser.
 
-Commit: TBD
+Commit: 36d5edd
 
