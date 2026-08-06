@@ -20,6 +20,8 @@ from jinja2.runtime import Context
 
 from .audit.routes import router as audit_router
 from .audit.service import AuditService
+from .arrears.routes import router as arrears_router
+from .arrears.service import ArrearsService
 from .auth.deps import require_admin, require_login
 from .auth.routes import router as auth_router
 from .auth.service import AuthService
@@ -87,6 +89,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     adjustments = AdjustmentsService(db, audit=audit)
     payments = PaymentService(db, audit=audit)
     expenses = ExpenseService(db, audit=audit)
+    arrears = ArrearsService(db)
     templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
     _register_template_globals(templates)
 
@@ -105,6 +108,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.state.adjustments = adjustments
     app.state.payments = payments
     app.state.expenses = expenses
+    app.state.arrears = arrears
     app.state.templates = templates
 
     @app.middleware("http")
@@ -126,6 +130,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(account_router)
     app.include_router(payments_router)
     app.include_router(expenses_router)
+    app.include_router(arrears_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:

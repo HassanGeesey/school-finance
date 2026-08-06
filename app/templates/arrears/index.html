@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import page_header, card, stat_card, empty_state, table_scroll %}
+{% from "components/icons.html" import icon %}
+{% from "students/_badges.html" import student_status_badge %}
+{% from "classes/_badges.html" import class_status_badge %}
+{% from "arrears/_badges.html" import debt_age_badge %}
+
+{% block title %}Arrears — {{ app_name }}{% endblock %}
+{% block topbar_title %}Arrears{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {{ page_header("Arrears", "Every student who owes money — how much, and how old the debt is. Archived students and completed classes keep their arrears and still appear here.") }}
+
+  <div class="grid gap-4 sm:grid-cols-3">
+    {{ stat_card("Owing students", student_count, "user-group", "error", "Students with an outstanding balance") }}
+    {{ stat_card("Total owed", money(total_cents), "banknotes", "error", "Unpaid charges minus credits") }}
+    {{ stat_card("Over 60 days", overdue_count, "exclamation-triangle", "warning", overdue_count ~ " student" ~ ("s" if overdue_count != 1 else "") ~ " with debt older than 60 days") }}
+  </div>
+
+  {% call card(title="Outstanding balances", subtitle="Sorted by oldest debt first — the accounts that need chasing first are on top.") %}
+    {% call table_scroll() %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Class</th>
+            <th class="text-right">Owed</th>
+            <th>Oldest debt</th>
+            <th>Debt age</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+          <tr>
+            <td class="font-medium text-base-content">
+              <a href="/students/{{ line.student.id }}/account" class="link link-primary">{{ line.student.full_name }}</a>
+              <span class="ml-2">{{ student_status_badge(line.student_status) }}</span>
+            </td>
+            <td>
+              <a href="/classes/{{ line.student.class_id }}" class="link link-primary">{{ line.class_name }}</a>
+              <span class="ml-2">{{ class_status_badge(line.class_status) }}</span>
+            </td>
+            <td class="text-right font-semibold text-error">{{ money(line.owed_cents) }}</td>
+            <td>{{ line.oldest_period_label }}</td>
+            <td>{{ debt_age_badge(line.age_band) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5">
+              {{ empty_state("No arrears", "Every student is up to date — there is nothing outstanding to chase.", "check-circle") }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endcall %}
+  {% endcall %}
+</div>
+{% endblock %}

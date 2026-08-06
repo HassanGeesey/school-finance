@@ -59,7 +59,8 @@
 
       <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">Reports</p>
       <div class="mt-1 space-y-1">
-        {{ nav_placeholder("Reports", "chart-bar", "Reports and dashboards arrive in a later update.") }}
+        {{ nav_item("/arrears", "Arrears", "exclamation-triangle", path.startswith("/arrears")) }}
+        {{ nav_placeholder("More reports", "chart-bar", "Income vs expense, expense by category, and paid-students reports arrive in a later update.") }}
       </div>
 
       {% if user and user.role == "admin" %}

@@ -1,0 +1,13 @@
+{% macro debt_age_badge(band) %}
+{% set tones = {
+  "current": "badge-neutral",
+  "late": "badge-warning",
+  "overdue": "badge-error",
+} %}
+{% set labels = {
+  "current": "0-30 days",
+  "late": "31-60 days",
+  "overdue": "Over 60 days",
+} %}
+<span class="badge {{ tones.get(band, 'badge-neutral') }}">{{ labels.get(band, band) }}</span>
+{% endmacro %}
