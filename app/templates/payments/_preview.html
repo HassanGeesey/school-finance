@@ -1,0 +1,22 @@
+{% if error %}
+<p class="text-sm text-base-content/60">{{ error }}</p>
+{% elif not preview %}
+<p class="text-sm text-base-content/50">Enter an amount to see what this payment clears.</p>
+{% elif not preview.lines %}
+<p class="text-sm text-base-content/60">Nothing to clear — {{ money(preview.credit_cents) }} would be placed on the account as credit.</p>
+{% else %}
+<ul class="space-y-1 text-sm">
+  {% for line in preview.lines %}
+  <li class="flex items-center justify-between gap-6">
+    <span class="text-base-content/70">{{ line.period_label }}</span>
+    <span class="font-medium text-base-content">{{ money(line.applied_cents) }}</span>
+  </li>
+  {% endfor %}
+  {% if preview.credit_cents %}
+  <li class="flex items-center justify-between gap-6">
+    <span class="text-success">Credit on account (excess paid)</span>
+    <span class="font-medium text-success">{{ money(preview.credit_cents) }}</span>
+  </li>
+  {% endif %}
+</ul>
+{% endif %}

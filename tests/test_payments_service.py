@@ -12,7 +12,7 @@ from datetime import date
 
 import pytest
 
-from app.audit.service import AuditActions, AuditService
+from app.audit.service import AuditActions, AuditError, AuditService
 from app.classes.service import ClassService
 from app.fees.service import AdjustmentsService, FeeService
 from app.models import (
@@ -484,3 +484,90 @@ def test_a_rejected_payment_writes_no_audit_entry(
         )
 
     assert payment_entries(session) == []
+
+
+def test_an_audit_failure_rolls_back_the_whole_payment(
+    payments, fees, classes, students, admin, session
+):
+    """The audit entry lands in the same transaction as the payment, so a
+    failure to audit must undo the payment too — nothing is recorded that
+    isn't also audited."""
+    student_id, _ = make_billed_student(fees, classes, students, admin)
+
+    class BrokenAudit:
+        def add(self, session, *, user, action, summary):
+            raise AuditError("boom")
+
+    payments._audit = BrokenAudit()  # type: ignore[assignment]
+
+    with pytest.raises(AuditError):
+        payments.record_payment(
+            user=admin, student_id=student_id, amount="10.00", method="cash", paid_on=date(2026, 8, 6)
+        )
+
+    assert session.query(Payment).count() == 0
+    assert session.query(PaymentAllocation).count() == 0
+    assert session.query(Credit).count() == 0
+    assert payment_entries(session) == []
+
+
+# ---------------------------------------------------------------------------
+# Preview
+# ---------------------------------------------------------------------------
+
+
+def test_preview_shows_oldest_first_allocation_without_writing(
+    payments, fees, classes, students, admin, session
+):
+    student_id, _ = make_billed_student(
+        fees, classes, students, admin, months=(3, 4)
+    )
+
+    preview = payments.preview_application(student_id, "60.00")
+
+    assert [(line.period_label, line.applied_cents) for line in preview.lines] == [
+        ("March 2026", 5000),
+        ("April 2026", 1000),
+    ]
+    assert preview.applied_cents == 6000
+    assert preview.credit_cents == 0
+    assert session.query(Payment).count() == 0
+
+
+def test_preview_of_an_overpayment_shows_the_credit(
+    payments, fees, classes, students, admin, session
+):
+    student_id, _ = make_billed_student(fees, classes, students, admin)
+
+    preview = payments.preview_application(student_id, "70.00")
+
+    assert [(line.period_label, line.applied_cents) for line in preview.lines] == [
+        ("March 2026", 5000)
+    ]
+    assert preview.applied_cents == 5000
+    assert preview.credit_cents == 2000
+
+
+def test_preview_reflects_charges_already_partly_paid(
+    payments, fees, classes, students, admin, session
+):
+    student_id, _ = make_billed_student(
+        fees, classes, students, admin, months=(3, 4)
+    )
+    payments.record_payment(
+        user=admin, student_id=student_id, amount="50.00", method="cash", paid_on=date(2026, 8, 6)
+    )
+
+    preview = payments.preview_application(student_id, "20.00")
+
+    assert [(line.period_label, line.applied_cents) for line in preview.lines] == [
+        ("April 2026", 2000)
+    ]
+    assert preview.credit_cents == 0
+
+
+def test_preview_rejects_an_invalid_amount(payments, fees, classes, students, admin):
+    student_id, _ = make_billed_student(fees, classes, students, admin)
+
+    with pytest.raises(PaymentError):
+        payments.preview_application(student_id, "0")

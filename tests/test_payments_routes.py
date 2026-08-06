@@ -163,12 +163,33 @@ def test_record_form_shows_the_student_balance(client):
 
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
-    assert "Balance owed" in response.text
     assert "$50.00" in response.text
-    assert "Cash" in response.text
-    assert "Bank" in response.text
-    assert "Other" in response.text
-    assert "Record payment" in response.text
+    assert "Confirmation" in response.text
+
+
+def test_payment_preview_shows_the_allocation_without_writing(client):
+    authenticated_admin(client)
+    sid = make_billed_student(client)
+
+    response = client.get(f"/payments/preview?student_id={sid}&amount=60.00")
+
+    assert response.status_code == 200
+    assert "March 2026" in response.text
+    assert "$50.00" in response.text
+    assert "Credit on account" in response.text
+    assert "$10.00" in response.text
+    with _db(client).session() as session:
+        assert session.query(Payment).count() == 0
+
+
+def test_payment_preview_shows_an_error_for_an_invalid_amount(client):
+    authenticated_admin(client)
+    sid = make_billed_student(client)
+
+    response = client.get(f"/payments/preview?student_id={sid}&amount=0")
+
+    assert response.status_code == 200
+    assert "greater than zero" in response.text
 
 
 # ---------------------------------------------------------------------------

@@ -15,18 +15,16 @@ from __future__ import annotations
 from datetime import date
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..auth.deps import require_login
-from ..fees.service import MONTH_NAMES
+from ..fees.service import period_label
 from ..models import User
 from ..money import format_cents
 from ..students.service import StudentNotFound, StudentService
 from .service import (
-    InvalidDate,
-    InvalidMethod,
     PAYMENT_METHOD_LABELS,
     PaymentError,
     PaymentNotFound,
@@ -59,10 +57,6 @@ def _student(request: Request, student_id: int):
         return _students(request).get_student(student_id)
     except StudentNotFound:
         raise HTTPException(status_code=404, detail="Student not found.") from None
-
-
-def _period_label(month: int, year: int) -> str:
-    return f"{MONTH_NAMES[month - 1]} {year}"
 
 
 def _record_context(
@@ -120,6 +114,39 @@ def record_payment_form(
     )
 
 
+@router.get("/payments/preview", response_class=HTMLResponse)
+def payment_preview(
+    request: Request,
+    student_id: int = Query(...),
+    amount: str = Query(""),
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    """Live confirmation line for the record screen (htmx fragment).
+
+    Shows which charges a payment of ``amount`` would clear (oldest unpaid
+    first) and how much would become a credit — nothing is written.
+    """
+    service = _service(request)
+    try:
+        preview = service.preview_application(student_id, amount) if amount else None
+    except StudentNotFound:
+        raise HTTPException(status_code=404, detail="Student not found.") from None
+    except PaymentError as exc:
+        preview = None
+        error = str(exc)
+    else:
+        error = ""
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="payments/_preview.html",
+        context={
+            "preview": preview,
+            "amount": amount,
+            "error": error,
+        },
+    )
+
+
 @router.post("/payments/record", response_class=HTMLResponse)
 def record_payment(
     request: Request,
@@ -139,7 +166,7 @@ def record_payment(
         )
     except StudentNotFound:
         raise HTTPException(status_code=404, detail="Student not found.") from None
-    except (PaymentError, InvalidMethod, InvalidDate) as exc:
+    except PaymentError as exc:
         return _templates(request).TemplateResponse(
             request=request,
             name="payments/record.html",
@@ -177,7 +204,7 @@ def payment_receipt(
             "payment": payment,
             "allocation_rows": [
                 {
-                    "period_label": _period_label(a.charge.month, a.charge.year),
+                    "period_label": period_label(a.charge.month, a.charge.year),
                     "amount_cents": a.amount_cents,
                 }
                 for a in payment.allocations

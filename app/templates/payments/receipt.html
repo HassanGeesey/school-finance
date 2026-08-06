@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "components/icons.html" import icon %}
-{% from "components/ui.html" import card, alert, btn, table_scroll %}
+{% from "components/ui.html" import card, btn, table_scroll %}
 {% from "payments/_badges.html" import payment_method_badge %}
 
 {% block title %}Receipt {{ payment.id }} — {{ app_name }}{% endblock %}
@@ -15,10 +15,6 @@
     </div>
     {{ btn(label="Print", icon="printer", variant="primary", size="sm", type="button", attrs='onclick="window.print()"') }}
   </div>
-
-  {% if msg %}
-  <div class="no-print">{{ alert("success", msg) }}</div>
-  {% endif %}
 
   {% call card() %}
     <div class="border-b border-base-300 pb-4">
@@ -87,4 +83,14 @@
     <p class="mt-4 text-center text-xs text-base-content/50">Thank you — this receipt covers the charges listed above. Any excess paid was placed on the student's account as credit.</p>
   {% endcall %}
 </div>
+{% endblock %}
+
+{% block body_end %}
+{% if msg %}
+<script>
+  window.addEventListener('DOMContentLoaded', function () {
+    if (window.showToast) window.showToast({{ msg|tojson }}, 'success');
+  });
+</script>
+{% endif %}
 {% endblock %}

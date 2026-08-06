@@ -36,9 +36,13 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..audit.service import AuditActions, AuditService
 from ..db import Database
-from ..fees.service import ChargeAccountLine, MONTH_NAMES
+from ..fees.service import (
+    ChargeAccountLine,
+    net_cents,
+    period_label,
+    to_charge_line,
+)
 from ..models import (
-    AdjustmentKinds,
     Charge,
     Credit,
     Payment,
@@ -142,6 +146,28 @@ class StudentAccount:
     received_cents: Money
 
 
+@dataclass
+class PreviewLine:
+    """One charge a payment of a given amount would clear, as a preview."""
+
+    period_label: str
+    applied_cents: Money
+
+
+@dataclass
+class ApplicationPreview:
+    """Where a prospective payment would go, without writing anything.
+
+    ``lines`` lists each charge the payment would reduce (oldest first) and how
+    much it would clear; ``applied_cents`` is the total applied to charges and
+    ``credit_cents`` is what would become a credit on the account.
+    """
+
+    lines: list[PreviewLine]
+    applied_cents: Money
+    credit_cents: Money
+
+
 class PaymentService:
     """Payment business rules. Each public method is one unit of work on its own session."""
 
@@ -151,51 +177,6 @@ class PaymentService:
 
     def _session(self) -> Session:
         return self._db.session()
-
-    def _log(self, *, user: User | None, action: str, summary: str) -> None:
-        if self._audit is not None:
-            self._audit.log(user=user, action=action, summary=summary)
-
-    @staticmethod
-    def _period_label(month: int, year: int) -> str:
-        return f"{MONTH_NAMES[month - 1]} {year}"
-
-    @staticmethod
-    def _net_cents(charge: Charge, adjustments) -> int:
-        extras = sum(
-            a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.EXTRA
-        )
-        waivers = sum(
-            a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.WAIVER
-        )
-        return charge.amount_cents + extras - waivers
-
-    @classmethod
-    def _to_line(cls, charge: Charge) -> ChargeAccountLine:
-        extras = sum(
-            a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.EXTRA
-        )
-        waivers = sum(
-            a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.WAIVER
-        )
-        return ChargeAccountLine(
-            charge=charge,
-            base_cents=charge.amount_cents,
-            extras_cents=extras,
-            waivers_cents=waivers,
-            net_cents=charge.amount_cents + extras - waivers,
-            adjustments=list(charge.adjustments),
-            period_label=cls._period_label(charge.month, charge.year),
-        )
-
-    @staticmethod
-    def _paid_cents(session: Session, charge_id: int) -> int:
-        total = (
-            session.query(func.coalesce(func.sum(PaymentAllocation.amount_cents), 0))
-            .filter(PaymentAllocation.charge_id == charge_id)
-            .scalar()
-        )
-        return int(total or 0)
 
     @staticmethod
     def _paid_cents_by_charge(session: Session, student_id: int) -> dict[int, int]:
@@ -269,14 +250,13 @@ class PaymentService:
 
         Every unpaid charge is reduced in turn (year/month/id order) until the
         payment is spent; whatever remains becomes a ``Credit`` on the account.
-        The payment, its allocations, and any credit land atomically, then one
-        audit entry records the whole payment.
+        The payment, its allocations, any credit, and the audit entry land
+        atomically — a rejected payment writes nothing.
         """
         amount_cents = self._validate_amount(amount)
         method = self._validate_method(method)
         paid_on = self._validate_date(paid_on)
 
-        credit_cents = 0
         with self._session() as session:
             student = self._get_student(session, student_id)
             payment = Payment(
@@ -290,6 +270,7 @@ class PaymentService:
             session.flush()
 
             remaining = amount_cents
+            paid_by_charge = self._paid_cents_by_charge(session, student_id)
             charges = (
                 session.query(Charge)
                 .options(joinedload(Charge.adjustments))
@@ -300,8 +281,11 @@ class PaymentService:
             for charge in charges:
                 if remaining <= 0:
                     break
-                net = self._net_cents(charge, list(charge.adjustments))
-                unpaid = max(net - self._paid_cents(session, charge.id), 0)
+                unpaid = max(
+                    net_cents(charge, list(charge.adjustments))
+                    - paid_by_charge.get(charge.id, 0),
+                    0,
+                )
                 if unpaid <= 0:
                     continue
                 applied = min(unpaid, remaining)
@@ -315,26 +299,75 @@ class PaymentService:
                 remaining -= applied
 
             if remaining > 0:
-                credit_cents = remaining
                 session.add(
                     Credit(
                         student_id=student_id,
-                        amount_cents=credit_cents,
+                        amount_cents=remaining,
                         payment_id=payment.id,
                     )
                 )
+
+            summary = (
+                f"Recorded payment of {format_cents(amount_cents)} from "
+                f"{student.full_name} via {PAYMENT_METHOD_LABELS[method]} "
+                f"on {paid_on.isoformat()}"
+            )
+            if remaining > 0:
+                summary += f" (credit of {format_cents(remaining)})"
+            if self._audit is not None:
+                self._audit.add(
+                    session,
+                    user=user,
+                    action=AuditActions.PAYMENT_RECORD,
+                    summary=summary,
+                )
             session.commit()
             session.refresh(payment)
-
-        summary = (
-            f"Recorded payment of {format_cents(amount_cents)} from "
-            f"{student.full_name} via {PAYMENT_METHOD_LABELS[method]} "
-            f"on {paid_on.isoformat()}"
-        )
-        if credit_cents:
-            summary += f" (credit of {format_cents(credit_cents)})"
-        self._log(user=user, action=AuditActions.PAYMENT_RECORD, summary=summary)
         return payment
+
+    def preview_application(self, student_id: int, amount: object) -> ApplicationPreview:
+        """Show where a payment of ``amount`` would go, without writing anything.
+
+        Mirrors :meth:`record_payment`'s oldest-unpaid-first allocation so the
+        record screen can confirm what will be cleared (and what would become a
+        credit) before the user saves.
+        """
+        amount_cents = self._validate_amount(amount)
+        with self._session() as session:
+            self._get_student(session, student_id)
+            paid_by_charge = self._paid_cents_by_charge(session, student_id)
+            charges = (
+                session.query(Charge)
+                .options(joinedload(Charge.adjustments))
+                .filter(Charge.student_id == student_id)
+                .order_by(Charge.year, Charge.month, Charge.id)
+                .all()
+            )
+            remaining = amount_cents
+            lines: list[PreviewLine] = []
+            for charge in charges:
+                if remaining <= 0:
+                    break
+                unpaid = max(
+                    net_cents(charge, list(charge.adjustments))
+                    - paid_by_charge.get(charge.id, 0),
+                    0,
+                )
+                if unpaid <= 0:
+                    continue
+                applied = min(unpaid, remaining)
+                lines.append(
+                    PreviewLine(
+                        period_label=period_label(charge.month, charge.year),
+                        applied_cents=applied,
+                    )
+                )
+                remaining -= applied
+        return ApplicationPreview(
+            lines=lines,
+            applied_cents=sum(line.applied_cents for line in lines),
+            credit_cents=remaining,
+        )
 
     def get_payment(self, payment_id: int) -> Payment:
         """One payment with its student, class, and charge allocations (for receipts)."""
@@ -372,7 +405,7 @@ class PaymentService:
             )
             account_charges: list[AccountCharge] = []
             for charge in charges:
-                line = self._to_line(charge)
+                line = to_charge_line(charge)
                 paid = paid_by_charge.get(charge.id, 0)
                 remaining = max(line.net_cents - paid, 0)
                 if remaining <= 0:

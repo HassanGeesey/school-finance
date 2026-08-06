@@ -80,17 +80,19 @@ class AuditService:
     def _session(self) -> Session:
         return self._db.session()
 
-    def log(
+    def add(
         self,
+        session: Session,
         *,
         user: User | None,
         action: str,
         summary: str,
     ) -> AuditLogEntry:
-        """Append one immutable audit entry.
+        """Add one audit entry to an already-open session; the caller commits.
 
-        ``user=None`` marks a system-level event (e.g. the first-admin setup,
-        which runs before any account exists).
+        Lets a service record its audit entry atomically with its own change
+        (e.g. a payment) in a single transaction, so the entry cannot be lost
+        if the caller's commit succeeds.
         """
         action = (action or "").strip()
         summary = (summary or "").strip()
@@ -99,13 +101,29 @@ class AuditService:
         if not summary:
             raise AuditError("A summary is required.")
 
+        entry = AuditLogEntry(
+            user_id=user.id if user is not None else None,
+            action=action,
+            summary=summary,
+        )
+        session.add(entry)
+        return entry
+
+    def log(
+        self,
+        *,
+        user: User | None,
+        action: str,
+        summary: str,
+    ) -> AuditLogEntry:
+        """Append one immutable audit entry on its own transaction.
+
+        ``user=None`` marks a system-level event (e.g. the first-admin setup,
+        which runs before any account exists). Services that need the entry
+        atomic with their own write use :meth:`add` instead.
+        """
         with self._session() as session:
-            entry = AuditLogEntry(
-                user_id=user.id if user is not None else None,
-                action=action,
-                summary=summary,
-            )
-            session.add(entry)
+            entry = self.add(session, user=user, action=action, summary=summary)
             session.commit()
             session.refresh(entry)
         return entry

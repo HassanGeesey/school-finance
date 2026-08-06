@@ -193,7 +193,7 @@ class FeeService:
 
     @staticmethod
     def _period_label(month: int, year: int) -> str:
-        return f"{MONTH_NAMES[month - 1]} {year}"
+        return period_label(month, year)
 
     @staticmethod
     def _fee_items(session: Session, class_id: int) -> list[FeeItem]:
@@ -440,6 +440,41 @@ class ChargeAccountLine:
         return self.extras_cents != 0 or self.waivers_cents != 0
 
 
+def period_label(month: int, year: int) -> str:
+    """Human label for a charge period, e.g. ``April 2026``."""
+    return f"{MONTH_NAMES[month - 1]} {year}"
+
+
+def net_cents(charge: Charge, adjustments: list[Adjustment]) -> int:
+    """A charge's live amount: base + extras - waivers (never below zero in practice)."""
+    extras = sum(
+        a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.EXTRA
+    )
+    waivers = sum(
+        a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.WAIVER
+    )
+    return charge.amount_cents + extras - waivers
+
+
+def to_charge_line(charge: Charge) -> ChargeAccountLine:
+    """The account-view row for one charge: base, extras, waivers, net, label."""
+    extras = sum(
+        a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.EXTRA
+    )
+    waivers = sum(
+        a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.WAIVER
+    )
+    return ChargeAccountLine(
+        charge=charge,
+        base_cents=charge.amount_cents,
+        extras_cents=extras,
+        waivers_cents=waivers,
+        net_cents=charge.amount_cents + extras - waivers,
+        adjustments=list(charge.adjustments),
+        period_label=period_label(charge.month, charge.year),
+    )
+
+
 class AdjustmentsService:
     """Per-student month adjustments. Each public method is one unit of work.
 
@@ -493,13 +528,7 @@ class AdjustmentsService:
 
     @staticmethod
     def _net_cents(charge: Charge, adjustments: list[Adjustment]) -> int:
-        extras = sum(
-            a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.EXTRA
-        )
-        waivers = sum(
-            a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.WAIVER
-        )
-        return charge.amount_cents + extras - waivers
+        return net_cents(charge, adjustments)
 
     def _charge_net_cents(self, session: Session, charge: Charge) -> int:
         adjustments = (
@@ -509,21 +538,7 @@ class AdjustmentsService:
 
     @classmethod
     def _to_line(cls, charge: Charge) -> ChargeAccountLine:
-        extras = sum(
-            a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.EXTRA
-        )
-        waivers = sum(
-            a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.WAIVER
-        )
-        return ChargeAccountLine(
-            charge=charge,
-            base_cents=charge.amount_cents,
-            extras_cents=extras,
-            waivers_cents=waivers,
-            net_cents=charge.amount_cents + extras - waivers,
-            adjustments=list(charge.adjustments),
-            period_label=cls._period_label(charge.month, charge.year),
-        )
+        return to_charge_line(charge)
 
     def add_extra(
         self,
