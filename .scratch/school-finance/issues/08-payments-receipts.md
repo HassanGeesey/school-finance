@@ -27,3 +27,5 @@ Built via TDD on the service seam (`app/payments/service.py`), mirroring tickets
 - Tests: `tests/test_payments_service.py` (23 service tests) and `tests/test_payments_routes.py` (14 route smoke tests) added. Full suite (194 tests) green; mypy clean.
 - Verified manually in-browser: record → toast → printable receipt showing allocations + credit, account page balance/statuses, audit entries with credit mention.
 
+Commit: `eac3914`
+
