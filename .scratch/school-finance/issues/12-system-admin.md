@@ -31,4 +31,4 @@
 - `mypy app`: no issues across 43 source files.
 - Role gating asserted at the route layer (Finance gets 403); shutdown/backup route tests inject a temp backup source and a recording stopper so the test runner can never be stopped; in-memory test DBs skip the backup service entirely.
 
-**Commit:** TBD
+**Commit:** c4fcb33
