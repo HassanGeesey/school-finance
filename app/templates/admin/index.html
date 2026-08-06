@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import page_header, alert, card, btn, confirm_dialog %}
+{% from "components/icons.html" import icon %}
+
+{% block title %}Settings — {{ app_name }}{% endblock %}
+{% block topbar_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {{ page_header("Settings", "Admin-only area: staff accounts, database backups, and app shutdown. Every action here is written to the audit log.") }}
+
+  {% if msg %}
+  <div>{{ alert("success", msg) }}</div>
+  {% endif %}
+
+  {% call card(title="Staff accounts", subtitle="Create staff accounts, reset passwords, and disable access. Disabled accounts can no longer log in but their history is kept.") %}
+    <div id="users-section">
+      {% include "admin/_users.html" %}
+    </div>
+  {% endcall %}
+
+  {% call card(title="Database backups", subtitle="The database is backed up automatically on startup and on demand. At most {{ backup_keep }} copies are kept — the oldest are removed.") %}
+    <div id="backups-section">
+      {% include "system/_backups.html" %}
+    </div>
+  {% endcall %}
+
+  {% call card(title="Shut down the app", subtitle="Stop the server from within the UI. Restart the app to use it again — data stays safe on disk.") %}
+    <form method="post" action="/system/shutdown" class="flex flex-wrap items-center gap-3">
+      <p class="flex-1 text-sm text-base-content/70">This stops the running application. A confirmation is required.</p>
+      {{ btn(label="Shut down app", icon="arrow-right-on-rectangle", variant="error", size="sm", type="submit", attrs='data-confirm="Shut down the app? Any unsaved work is lost."') }}
+    </form>
+  {% endcall %}
+</div>
+{% endblock %}

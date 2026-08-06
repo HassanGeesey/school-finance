@@ -52,6 +52,17 @@ class AuditActions:
     EXPENSE_CATEGORY_REMOVE = "expense_category_remove"
     EXPENSE_RECORD = "expense_record"
 
+    # System admin — user accounts.
+    USER_CREATE = "user_create"
+    USER_DISABLE = "user_disable"
+    USER_ENABLE = "user_enable"
+    USER_PASSWORD_RESET = "user_password_reset"
+
+    # System admin — backups & shutdown.
+    BACKUP_AUTOMATIC = "backup_automatic"
+    BACKUP_MANUAL = "backup_manual"
+    SHUTDOWN = "shutdown"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
@@ -74,6 +85,13 @@ class AuditActions:
         EXPENSE_CATEGORY_RENAME: "Expense category renamed",
         EXPENSE_CATEGORY_REMOVE: "Expense category removed",
         EXPENSE_RECORD: "Expense recorded",
+        USER_CREATE: "User created",
+        USER_DISABLE: "User disabled",
+        USER_ENABLE: "User enabled",
+        USER_PASSWORD_RESET: "Password reset",
+        BACKUP_AUTOMATIC: "Automatic backup",
+        BACKUP_MANUAL: "Manual backup",
+        SHUTDOWN: "App shut down",
     }
 
 

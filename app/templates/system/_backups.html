@@ -1,0 +1,45 @@
+{% from "components/ui.html" import alert, btn, empty_state %}
+{% from "components/icons.html" import icon %}
+
+{% if error %}
+<div class="mb-4">{{ alert("error", error) }}</div>
+{% endif %}
+
+{% if backup_available %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <p class="text-sm text-base-content/60">Keeping the newest {{ backup_keep }} backups.</p>
+  <form method="post" action="/system/backup"
+        hx-post="/system/backup" hx-target="#backups-section" hx-swap="innerHTML">
+    {{ btn(label="Backup now", icon="arrow-path", variant="outline", size="sm", type="submit") }}
+  </form>
+</div>
+
+{% if backups %}
+<div class="mt-4 overflow-x-auto">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>Backup</th>
+        <th>Size</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for info in backups %}
+      <tr>
+        <td class="font-mono text-xs">{{ info.name }}</td>
+        <td>{{ "%.1f"|format(info.size_bytes / 1024) }} KB</td>
+        <td>{{ info.created_at.strftime("%Y-%m-%d %H:%M:%S") }} UTC</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="mt-4">
+  {{ empty_state("No backups yet", "The first backup is created automatically on the next app start, or use Backup now.", "archive-box") }}
+</div>
+{% endif %}
+{% else %}
+<p class="text-sm text-base-content/60">Backups are not available for this instance.</p>
+{% endif %}

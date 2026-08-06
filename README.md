@@ -29,19 +29,27 @@ with **FastAPI**, **SQLAlchemy**, and a **Jinja2 + htmx + daisyUI** interface.
   rather than deleted) and a record card open to the Finance role: date,
   category, description, amount, and cash/bank/other method, with category and
   month filtering. Every expense and category change is audited.
+- **System admin** — an Admin-only settings page. Admins create staff accounts
+  (Admin or Finance officer), reset passwords, and disable accounts without
+  deleting history (self-disable and last-Admin lockout are refused). The
+  SQLite database is backed up automatically on startup and on demand
+  ("Backup now") into `data/backups/`, keeping the newest ~30 copies with
+  rotation. Admins can shut the app down from the UI (with confirmation); the
+  request is audited before the server stops. Every one of these actions lands
+  in the audit log.
 - **Audit log** — every meaningful action (setup, login, class/student edits,
-  fee generation, adjustments) is recorded with who did it, when, and a
-  human-readable summary.
+  fee generation, adjustments, user management, backups, shutdown) is recorded
+  with who did it, when, and a human-readable summary.
 - **Roles** — Admin and Finance officer. Finance can view classes, students,
-  and accounts and generate fees; only Admin can mutate structure and make
-  adjustments.
+  and accounts, generate fees, and record expenses; only Admin can mutate
+  structure, manage users, run backups, or shut the app down.
 - **Design-system shell** — dashboard, grouped sidebar, toasts, confirm
   dialogs, and modal-based editing built on htmx partials.
 
 **Planned (roadmap)**
 
-- Payments & receipts, arrears tracking, reports/dashboard, system admin, and
-  packaged EXE delivery.
+- Payments & receipts, arrears tracking, reports/dashboard, and packaged EXE
+  delivery.
 
 ## Tech stack
 
@@ -95,6 +103,8 @@ app/
   classes/           # Classes & fee structures
   students/          # Students, CSV import, archiving
   fees/              # Fee generation + per-student adjustments
+  admin/             # User management (service + routes)
+  system/            # Backups + in-app shutdown (service + routes)
   templates/         # Jinja2 templates & shared UI components
   static/            # Compiled CSS, htmx, JS helpers
 tests/               # Service-level (single seam) + route-level tests
@@ -110,7 +120,7 @@ pytest
 mypy app
 ```
 
-The test suite covers ~370 cases across the service layer (the single testing
+The test suite covers ~520 cases across the service layer (the single testing
 seam — business rules live in the service modules, routes stay thin) and the
 routes end-to-end, including role gating, duplicate-safety, audit content, and
 the HTMX partials.

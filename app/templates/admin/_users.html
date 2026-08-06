@@ -1,0 +1,99 @@
+{% from "components/ui.html" import alert, btn, badge, form_field %}
+{% from "components/icons.html" import icon %}
+
+{% if error %}
+<div class="mb-4">{{ alert("error", error) }}</div>
+{% endif %}
+
+<form method="post" action="/admin/users" class="flex flex-wrap items-end gap-3"
+      hx-post="/admin/users" hx-target="#users-section" hx-swap="innerHTML">
+  <div class="min-w-40 flex-1">
+    {{ form_field("name", "Name", value=form.get("name", ""), required=true, placeholder="e.g. Jane Cashier", input_class="input input-sm w-full") }}
+  </div>
+  <div class="min-w-40 flex-1">
+    {{ form_field("username", "Username", value=form.get("username", ""), required=true, placeholder="e.g. jane", input_class="input input-sm w-full") }}
+  </div>
+  <div class="min-w-32">
+    <label for="role" class="label"><span class="label-text">Role</span></label>
+    <select id="role" name="role" class="select select-sm w-full" required>
+      {% for value, label in roles.items() %}
+      <option value="{{ value }}" {% if form.get("role") == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="min-w-40 flex-1">
+    {{ form_field("password", "Password", type="password", value="", required=true, placeholder="Temporary password", input_class="input input-sm w-full") }}
+  </div>
+  {{ btn(label="Add account", icon="plus", variant="primary", size="sm", type="submit") }}
+</form>
+
+{% set me = current_user() %}
+<div class="mt-6 overflow-x-auto">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th class="w-1"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>
+          <div class="flex items-center gap-2">
+            <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-200 text-sm font-semibold">{{ u.name[:1] | upper }}</span>
+            <div>
+              <p class="font-medium">{{ u.name }}{% if me and u.id == me.id %} <span class="text-xs font-normal text-base-content/50">(you)</span>{% endif %}</p>
+              <p class="text-xs text-base-content/50">{{ u.username }}</p>
+            </div>
+          </div>
+        </td>
+        <td>{{ roles.get(u.role, u.role) }}</td>
+        <td>
+          {% if u.is_active %}
+          {{ badge("Active", "success") }}
+          {% else %}
+          {{ badge("Disabled", "neutral") }}
+          {% endif %}
+        </td>
+        <td>
+          {% if u.is_active %}
+          {% if not (me and u.id == me.id) %}
+          <form method="post" action="/admin/users/{{ u.id }}/disable" class="inline"
+                hx-post="/admin/users/{{ u.id }}/disable" hx-target="#users-section" hx-swap="innerHTML">
+            <button type="submit" data-confirm="Disable {{ u.name }}'s account? They will no longer be able to log in."
+                    class="btn btn-ghost btn-xs text-error">{{ icon("x-mark", "h-4 w-4") }} Disable</button>
+          </form>
+          {% endif %}
+          <details class="dropdown dropdown-end">
+            <summary class="btn btn-ghost btn-xs">{{ icon("pencil-square", "h-4 w-4") }} Reset</summary>
+            <div class="dropdown-content menu z-20 mt-2 w-72 rounded-box border border-base-300 bg-base-100 p-3 shadow-lg">
+              <form method="post" action="/admin/users/{{ u.id }}/password" class="flex items-end gap-2"
+                    hx-post="/admin/users/{{ u.id }}/password" hx-target="#users-section" hx-swap="innerHTML">
+                <div class="flex-1">
+                  <label for="password-{{ u.id }}" class="label"><span class="label-text">New password</span></label>
+                  <input id="password-{{ u.id }}" name="password" type="password" required autocomplete="new-password"
+                         class="input input-sm w-full">
+                </div>
+                {{ btn(label="Set", icon="check", variant="outline", size="sm", type="submit") }}
+              </form>
+            </div>
+          </details>
+          {% else %}
+          <form method="post" action="/admin/users/{{ u.id }}/enable" class="inline"
+                hx-post="/admin/users/{{ u.id }}/enable" hx-target="#users-section" hx-swap="innerHTML">
+            <button type="submit" class="btn btn-ghost btn-xs">{{ icon("check", "h-4 w-4") }} Enable</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" class="text-center text-sm text-base-content/60 py-6">No staff accounts yet — add the first one above.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

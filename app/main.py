@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable
 
 from fastapi import Depends, FastAPI, Request, Response
@@ -18,11 +19,13 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from jinja2.runtime import Context
 
+from .admin.routes import router as admin_router
+from .admin.service import AdminUserService, USER_ROLE_LABELS
 from .audit.routes import router as audit_router
 from .audit.service import AuditService
 from .arrears.routes import router as arrears_router
 from .arrears.service import ArrearsService
-from .auth.deps import require_admin, require_login
+from .auth.deps import require_login
 from .auth.routes import router as auth_router
 from .auth.service import AuthService
 from .classes.routes import router as classes_router
@@ -34,7 +37,7 @@ from .expenses.service import ExpenseService
 from .fees.account_routes import router as account_router
 from .fees.routes import router as fees_router
 from .fees.service import AdjustmentsService, FeeService
-from .models import User, UserRoles
+from .models import User
 from .money import format_cents, format_input_cents
 from .payments.routes import router as payments_router
 from .payments.service import PaymentService
@@ -42,11 +45,8 @@ from .reports.routes import dashboard_context, router as reports_router
 from .reports.service import ReportService
 from .students.routes import router as students_router
 from .students.service import StudentService
-
-ROLE_LABELS = {
-    UserRoles.ADMIN: "Admin",
-    UserRoles.FINANCE: "Finance officer",
-}
+from .system.routes import router as system_router
+from .system.service import BackupService, SystemService, uvicorn_stop
 
 
 def _register_template_globals(templates: Jinja2Templates) -> None:
@@ -58,7 +58,7 @@ def _register_template_globals(templates: Jinja2Templates) -> None:
         return getattr(request.state, "user", None)
 
     def role_label(role: str) -> str:
-        return ROLE_LABELS.get(role, role)
+        return USER_ROLE_LABELS.get(role, role)
 
     def class_status_label(status: str) -> str:
         return CLASS_STATUS_LABELS.get(status, status)
@@ -75,7 +75,13 @@ def _register_template_globals(templates: Jinja2Templates) -> None:
     )
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
+def create_app(
+    database_url: str | None = None,
+    *,
+    shutdown_stopper: Callable[[], None] | None = None,
+    backup_source: Path | None = None,
+    backup_dir: Path | None = None,
+) -> FastAPI:
     url = database_url or settings.DATABASE_URL
 
     # The default file-backed database needs its data directory to exist.
@@ -93,12 +99,33 @@ def create_app(database_url: str | None = None) -> FastAPI:
     expenses = ExpenseService(db, audit=audit)
     arrears = ArrearsService(db)
     reports = ReportService(db, arrears=arrears)
+    admin = AdminUserService(db, audit=audit)
     templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
     _register_template_globals(templates)
+
+    # Backups only make sense against the real SQLite file. In-memory databases
+    # (tests) skip the backup service entirely; tests can inject a temp source.
+    source = backup_source
+    if source is None and url == settings.DATABASE_URL:
+        source = settings.DB_PATH
+    backups = None
+    if source is not None:
+        backups = BackupService(
+            source_path=source,
+            backup_dir=backup_dir or (settings.DATA_DIR / "backups"),
+            keep=settings.BACKUP_KEEP,
+        )
+    # The default stopper stops a real uvicorn server; test apps get a no-op so
+    # a test that hits the shutdown route can never stop the test runner.
+    stopper = shutdown_stopper
+    if stopper is None and url == settings.DATABASE_URL:
+        stopper = uvicorn_stop
+    system = SystemService(db, audit=audit, backups=backups, stopper=stopper)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db.create_all()
+        system.backup_on_startup()
         yield
 
     app = FastAPI(title=settings.APP_NAME, version=settings.VERSION, lifespan=lifespan)
@@ -113,6 +140,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.state.expenses = expenses
     app.state.arrears = arrears
     app.state.reports = reports
+    app.state.admin = admin
+    app.state.system = system
     app.state.templates = templates
 
     @app.middleware("http")
@@ -128,6 +157,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
     app.include_router(auth_router)
     app.include_router(audit_router)
+    app.include_router(admin_router)
     app.include_router(classes_router)
     app.include_router(students_router)
     app.include_router(fees_router)
@@ -136,6 +166,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(expenses_router)
     app.include_router(arrears_router)
     app.include_router(reports_router)
+    app.include_router(system_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
@@ -145,14 +176,6 @@ def create_app(database_url: str | None = None) -> FastAPI:
             request=request,
             name="home.html",
             context=context,
-        )
-
-    @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
-    def admin_page(request: Request, _user: User = Depends(require_admin)) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request=request,
-            name="admin.html",
-            context={},
         )
 
     return app

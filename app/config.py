@@ -30,5 +30,8 @@ class Settings:
     # OWASP-recommended work factor for PBKDF2-HMAC-SHA256; tests lower it.
     PBKDF2_ITERATIONS = int(os.environ.get("SCHOOL_FINANCE_PBKDF2_ITERATIONS", "600000"))
 
+    # Backups
+    BACKUP_KEEP = int(os.environ.get("SCHOOL_FINANCE_BACKUP_KEEP", "30"))
+
 
 settings = Settings()
