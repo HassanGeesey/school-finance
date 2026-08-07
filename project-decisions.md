@@ -128,7 +128,7 @@ Grilling session log. Updated as decisions are made.
 | D-1 | What does this deployment change? (replaces the .exe or coexists?) | **Coexists — single branch.** User floated "two branches" (one per delivery path); grilled down. Verdict: one `main` branch, both delivery paths live side by side — `packaging/` for the .exe, new `docker/` folder for the container. Docker changes are purely additive (Dockerfile, .dockerignore, compose), `app/` needs zero rewrite (data dir already env-driven, sessions already DB-backed). Branching would fork 100% shared code and force cherry-picking every fix twice |
 | D-2 | Where does Dockploy run? | **Public VPS with a domain** (recommended, accepted). App reachable over the internet, HTTPS via Dockploy/Traefik Let's Encrypt, server-grade auth already in place |
 | D-3 | Domain | Subdomain of an existing domain (recommended, accepted) |
-| D-4 | Actual domain | Base domain **hgeesey.store** owned by user. School app will live at `<schoolname>.hgeesey.store` |
+| D-4 | Actual domain | Base domain **hgeesey.store** owned by user. Confirmed app domain: **ict.hgeesey.store** |
 | D-5 | Deployment method | **Docker Compose in Dokploy** (user chose; researched). Compose service joins external `dokploy-network`, `restart: always`, no `container_name`; domain via Dokploy Domains tab (Traefik/Let's Encrypt automatic). Still requires a `Dockerfile` — compose `build:` needs it |
 | D-6 | Compose file location | **Repo root** (`docker-compose.yml`), Compose Path set in Dokploy UI (recommended, accepted). Domain/secrets stay out of git via env overrides in the UI |
 | D-7 | Data persistence & backups | **Named volume `school-finance-data` → `/data`**, `SCHOOL_FINANCE_DATA=/data`. Keep app-level backups (startup + manual → `data/backups/` in the volume) **and** enable Dokploy scheduled volume backup (server disk) as second layer (recommended, accepted) |
@@ -137,3 +137,11 @@ Grilling session log. Updated as decisions are made.
 | D-10 | In-app "Shut down" button in Docker | **Disabled via env flag** (`SCHOOL_FINANCE_DISABLE_SHUTDOWN=1` → button hidden + route refused). ~10-line change in `app/system`; `.exe` path unaffected (env unset) (recommended, accepted) |
 | D-11 | Secure session cookie over HTTPS | **Set `Secure` flag when `request.is_secure`** (Traefik forwards `X-Forwarded-Proto`); localhost HTTP unaffected (recommended, accepted) |
 | D-12 | Brute-force login protection | **Out of scope now** (recommended, accepted) — PBKDF2-600k is the existing deterrent; note as a follow-up feature in deploy docs |
+
+## Deployment outcome (live)
+
+- **Live at https://ict.hgeesey.store** — deployed 2026-08-07 via Dokploy compose service `school-finance` (project `school-finance`, production env), built from `HassanGeesey/school-finance` branch `master` at commit `09e284c`.
+- Docker Compose build from repo root `docker-compose.yml`; container `schoolfinance-sokmd6-school-finance-1` running, volume `school-finance-data` → `/data`, `SCHOOL_FINANCE_DATA=/data`, `SCHOOL_FINANCE_DISABLE_SHUTDOWN=1`.
+- Domain `ict.hgeesey.store` → port 8000, HTTPS + Let's Encrypt (DNS validated); Traefik route live.
+- Setup wizard confirmed at `/setup` (fresh install, volume empty).
+- Not yet verified post-setup: admin account creation, `Secure` cookie on login, shutdown card hidden, volume backup schedule.
