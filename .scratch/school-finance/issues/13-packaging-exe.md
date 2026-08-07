@@ -26,4 +26,4 @@ Verification (final build, 2026-08-07):
 - Data persists across launches in `dist/data` (school_finance.db + backups/ next to the exe; re-setup correctly rejected with "An admin account already exists").
 - Admin login + POST `/system/shutdown` returns 200 and the whole process exits cleanly.
 
-Commit: TBD (filled in by the follow-up mark commit).
+Commit: 40f0aa1
