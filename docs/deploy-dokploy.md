@@ -26,10 +26,10 @@ and joins Dokploy's external `dokploy-network`. Traefik routes `https://<school>
 
 ## DNS
 
-Point a subdomain at the VPS's public IP. For a school using `Sunrise Primary`:
+Point a subdomain at the VPS's public IP:
 
 ```
-sunrise.hgeesey.store.  A  <VPS_PUBLIC_IP>
+ict.hgeesey.store.  A  <VPS_PUBLIC_IP>
 ```
 
 (Traefik needs the A record before it can issue a certificate.)
@@ -38,7 +38,7 @@ sunrise.hgeesey.store.  A  <VPS_PUBLIC_IP>
 
 1. **Project** → new project (e.g. `school-finance`).
 2. **Service** → **Docker Compose**, source **GitHub**.
-3. Select the `HassanGeesey/school-finance` repo, branch `main`.
+3. Select the `HassanGeesey/school-finance` repo, branch `master`.
 4. Set **Compose Path** to `docker-compose.yml`.
 5. Save, then **Deploy**. Watch the build logs for a clean exit.
 
@@ -50,7 +50,7 @@ routes to port `8000` over the network.
 ## Domain + HTTPS
 
 1. Open the service → **Domains** tab.
-2. **Add Domain**: `sunrise.hgeesey.store`, container port `8000`, HTTPS on.
+2. **Add Domain**: `ict.hgeesey.store`, container port `8000`, HTTPS on.
 3. Wait ~10s for the Let's Encrypt certificate, then visit the URL.
 4. First visit runs the **setup wizard** — create the Admin account and the
    school name (this is the only bootstrapping step).
