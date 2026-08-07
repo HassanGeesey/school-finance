@@ -18,6 +18,7 @@ from app.admin.service import (
 from app.audit.service import AuditActions, AuditService
 from app.auth.service import AuthService, verify_password
 from app.models import AuditLogEntry, User, UserRoles
+from app.profile.service import ProfileService
 
 PASSWORD = "correct horse battery staple"
 
@@ -29,7 +30,7 @@ def admin(db) -> AdminUserService:
 
 @pytest.fixture()
 def auth(db) -> AuthService:
-    return AuthService(db, audit=AuditService(db))
+    return AuthService(db, audit=AuditService(db), profile=ProfileService(db))
 
 
 def _actor(session, *, name="Head Teacher", username="admin", role=UserRoles.ADMIN) -> User:

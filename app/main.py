@@ -41,6 +41,8 @@ from .models import User
 from .money import format_cents, format_input_cents
 from .payments.routes import router as payments_router
 from .payments.service import PaymentService
+from .profile.routes import router as profile_router
+from .profile.service import LogoStorage, ProfileService, logo_url_for
 from .reports.routes import dashboard_context, router as reports_router
 from .reports.service import ReportService
 from .students.routes import router as students_router
@@ -63,6 +65,45 @@ def _register_template_globals(templates: Jinja2Templates) -> None:
     def class_status_label(status: str) -> str:
         return CLASS_STATUS_LABELS.get(status, status)
 
+    @pass_context
+    def school_name(context: Context) -> str:
+        """The school's name for the app shell, falling back to the product name.
+
+        Setup and login override their title/brand explicitly with ``app_name``;
+        everywhere else the school identity wins.
+        """
+        request = context.get("request")
+        profile = getattr(request.state, "school_profile", None) if request is not None else None
+        if profile is not None and profile.school_name:
+            return profile.school_name
+        return settings.APP_NAME
+
+    @pass_context
+    def logo_url(context: Context) -> str:
+        """The serving URL for the current school logo, or "" when unset."""
+        request = context.get("request")
+        profile = getattr(request.state, "school_profile", None) if request is not None else None
+        if profile is None:
+            return ""
+        return logo_url_for(profile)
+
+    @pass_context
+    def school_contact(context: Context) -> list[str]:
+        """The profile's non-empty contact fields, in display order.
+
+        Printed documents render only the fields that are actually set; blank
+        contact fields never print (decision S-3/S-4).
+        """
+        request = context.get("request")
+        profile = getattr(request.state, "school_profile", None) if request is not None else None
+        if profile is None:
+            return []
+        return [
+            value
+            for value in (profile.address, profile.phone, profile.email, profile.website)
+            if value
+        ]
+
     templates.env.globals.update(
         app_name=settings.APP_NAME,
         app_version=settings.VERSION,
@@ -70,6 +111,9 @@ def _register_template_globals(templates: Jinja2Templates) -> None:
         current_user=current_user,
         role_label=role_label,
         class_status_label=class_status_label,
+        school_name=school_name,
+        logo_url=logo_url,
+        school_contact=school_contact,
         money=format_cents,
         money_input=format_input_cents,
     )
@@ -81,6 +125,7 @@ def create_app(
     shutdown_stopper: Callable[[], None] | None = None,
     backup_source: Path | None = None,
     backup_dir: Path | None = None,
+    logo_dir: Path | None = None,
 ) -> FastAPI:
     url = database_url or settings.DATABASE_URL
 
@@ -90,7 +135,15 @@ def create_app(
 
     db = Database(make_engine(url))
     audit = AuditService(db)
-    auth = AuthService(db, audit=audit)
+    # The default logo location is next to the app data (docs/adr/0001): the
+    # file is written as ``<data>/logo.<ext>``. Tests (in-memory URL) inject a
+    # temp directory explicitly — otherwise logo storage is unavailable so
+    # nothing can be written to the real data folder.
+    logos = None
+    if logo_dir is not None or url == settings.DATABASE_URL:
+        logos = LogoStorage(logo_dir or settings.DATA_DIR)
+    profile = ProfileService(db, audit=audit, logos=logos)
+    auth = AuthService(db, audit=audit, profile=profile)
     classes = ClassService(db, audit=audit)
     students = StudentService(db, audit=audit)
     fees = FeeService(db, audit=audit)
@@ -141,6 +194,7 @@ def create_app(
     app.state.arrears = arrears
     app.state.reports = reports
     app.state.admin = admin
+    app.state.profile = profile
     app.state.system = system
     app.state.templates = templates
 
@@ -152,6 +206,7 @@ def create_app(
         token = request.cookies.get(settings.SESSION_COOKIE)
         if token:
             request.state.user = auth.user_for_token(token)
+        request.state.school_profile = profile.get_profile()
         return await call_next(request)
 
     app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
@@ -166,6 +221,7 @@ def create_app(
     app.include_router(expenses_router)
     app.include_router(arrears_router)
     app.include_router(reports_router)
+    app.include_router(profile_router)
     app.include_router(system_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)

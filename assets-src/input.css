@@ -129,9 +129,16 @@ body.sidebar-open #sidebar-backdrop {
   }
 }
 
+.print-only {
+  display: none;
+}
+
 @media print {
   .no-print {
     display: none !important;
+  }
+  .print-only {
+    display: block;
   }
   .print-full {
     margin: 0 !important;

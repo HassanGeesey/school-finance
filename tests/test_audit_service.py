@@ -12,8 +12,10 @@ import pytest
 from app.audit.service import AuditActions, AuditError, AuditService
 from app.auth.service import AuthService
 from app.models import AuditLogEntry, User, UserRoles, utcnow
+from app.profile.service import ProfileService
 
 PASSWORD = "correct horse battery staple"
+SCHOOL_NAME = "Sunrise Primary School"
 
 
 @pytest.fixture()
@@ -24,7 +26,7 @@ def audit(db) -> AuditService:
 @pytest.fixture()
 def authed(db) -> AuthService:
     """AuthService wired to a real AuditService so auth actions log entries."""
-    return AuthService(db, audit=AuditService(db))
+    return AuthService(db, audit=AuditService(db), profile=ProfileService(db))
 
 
 def test_log_creates_an_entry_with_no_user(audit, session):
@@ -117,7 +119,7 @@ def test_list_actions_returns_each_distinct_action_once(audit):
 
 
 def test_setup_first_admin_writes_a_system_audit_entry(authed, session):
-    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD)
+    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD, school_name=SCHOOL_NAME)
 
     row = session.query(AuditLogEntry).one()
     assert row.action == AuditActions.SETUP
@@ -127,7 +129,7 @@ def test_setup_first_admin_writes_a_system_audit_entry(authed, session):
 
 
 def test_login_writes_a_login_audit_entry(authed, session):
-    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD)
+    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD, school_name=SCHOOL_NAME)
 
     user, _token = authed.login("admin", PASSWORD)
 
@@ -137,14 +139,14 @@ def test_login_writes_a_login_audit_entry(authed, session):
 
 
 def test_login_failure_writes_no_audit_entry(authed, session):
-    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD)
+    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD, school_name=SCHOOL_NAME)
 
     assert authed.login("admin", "wrong password") is None
     assert session.query(AuditLogEntry).filter_by(action=AuditActions.LOGIN).count() == 0
 
 
 def test_logout_writes_a_logout_audit_entry(authed, session):
-    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD)
+    authed.setup_first_admin(name="Head Teacher", username="admin", password=PASSWORD, school_name=SCHOOL_NAME)
     user, token = authed.login("admin", PASSWORD)
 
     authed.destroy_session(token)

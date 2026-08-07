@@ -59,6 +59,26 @@ class AdjustmentKinds:
     WAIVER = "waiver"
 
 
+class SchoolProfile(Base):
+    """The school's identity — a single row (id always 1).
+
+    ``school_name`` is always required; the contact fields are optional free
+    text. ``logo_filename`` names the uploaded logo file, which lives next to
+    the app data (see docs/adr/0001-logo-in-data-dir.md).
+    """
+
+    __tablename__ = "school_profile"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    school_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    logo_filename: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
 class User(Base):
     __tablename__ = "users"
 

@@ -5,7 +5,7 @@
 {% from "classes/_badges.html" import class_status_badge %}
 {% from "arrears/_badges.html" import debt_age_badge %}
 
-{% block title %}Arrears — {{ app_name }}{% endblock %}
+{% block title %}Arrears — {{ school_name() }}{% endblock %}
 {% block topbar_title %}Arrears{% endblock %}
 
 {% block content %}
@@ -32,9 +32,10 @@
         </thead>
         <tbody>
           {% for line in lines %}
-          <tr>
+          <tr data-row-href="/students/{{ line.student.id }}/account" class="cursor-pointer hover:bg-base-200/60">
             <td class="font-medium text-base-content">
-              <a href="/students/{{ line.student.id }}/account" class="link link-primary">{{ line.student.full_name }}</a>
+              <a href="/students/{{ line.student.id }}/account" class="sr-only">{{ line.student.full_name }}</a>
+              {{ line.student.full_name }}
               <span class="ml-2">{{ student_status_badge(line.student_status) }}</span>
             </td>
             <td>

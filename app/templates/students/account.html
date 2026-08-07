@@ -2,8 +2,9 @@
 {% from "components/ui.html" import page_header, alert, btn %}
 {% from "components/icons.html" import icon %}
 {% from "students/_badges.html" import student_status_badge %}
+{% from "profile/_print.html" import print_profile_header %}
 
-{% block title %}{{ student.full_name }} — {{ app_name }}{% endblock %}
+{% block title %}{{ student.full_name }} — {{ school_name() }}{% endblock %}
 {% block topbar_title %}{{ student.full_name }}{% endblock %}
 
 {% block content %}
@@ -25,6 +26,15 @@
   {% if err %}
   <div>{{ alert("error", err) }}</div>
   {% endif %}
+
+  <div class="print-only">
+    <div class="border-b border-base-300 pb-4">
+      {% call print_profile_header("Student statement", school_name(), logo_url(), school_contact()) %}
+      <p class="text-sm font-semibold text-base-content">{{ student.full_name }}</p>
+      <p class="text-sm text-base-content/60">{{ student.school_class.name }}</p>
+      {% endcall %}
+    </div>
+  </div>
 
   <div id="account-finance">
     {% include "fees/_account_finance.html" %}

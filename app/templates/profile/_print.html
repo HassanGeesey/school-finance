@@ -1,0 +1,29 @@
+{# The school identity block for printed documents (receipts, statements).
+   Rendered from the current profile at print time, so reprints always carry
+   today's school name, logo, and contact details. The logo sits centred and
+   padded in its box; with no logo set only the name and contact print. The
+   caller supplies the school name, logo URL, and contact list explicitly
+   (globals that read the per-request profile are unavailable inside imported
+   macros), plus the document's own right-aligned facts (receipt number,
+   student name, ...) via the call body. #}
+{% macro print_profile_header(document_label, name="", logo="", contact=None) %}
+<div class="flex flex-wrap items-start justify-between gap-4">
+  <div class="flex min-w-0 items-center gap-4">
+    {% if logo %}
+    <span class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-200 p-1">
+      <img src="{{ logo }}" alt="School logo" class="h-full w-full object-contain">
+    </span>
+    {% endif %}
+    <div class="min-w-0">
+      <p class="text-lg font-bold text-base-content">{{ name }}</p>
+      <p class="text-sm text-base-content/60">{{ document_label }}</p>
+      {% if contact %}
+      <p class="mt-1 text-xs text-base-content/50">{{ contact|join(" · ") }}</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="shrink-0 text-right">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}

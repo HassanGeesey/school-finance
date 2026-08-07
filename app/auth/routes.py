@@ -52,25 +52,33 @@ def setup_form(request: Request) -> Response:
     return _templates(request).TemplateResponse(
         request=request,
         name="auth/setup.html",
-        context={},
+        context={"school_name": "", "name": "", "username": ""},
     )
 
 
 @router.post("/setup", response_class=HTMLResponse)
 def setup_submit(
     request: Request,
+    school_name: str = Form(""),
     name: str = Form(""),
     username: str = Form(""),
     password: str = Form(""),
 ) -> Response:
     auth = _auth(request)
     try:
-        auth.setup_first_admin(name=name, username=username, password=password)
+        auth.setup_first_admin(
+            school_name=school_name, name=name, username=username, password=password
+        )
     except AuthError as exc:
         return _templates(request).TemplateResponse(
             request=request,
             name="auth/setup.html",
-            context={"error": str(exc), "name": name, "username": username},
+            context={
+                "error": str(exc),
+                "school_name": school_name,
+                "name": name,
+                "username": username,
+            },
             status_code=400,
         )
     # The first admin is created; the app now requires login.

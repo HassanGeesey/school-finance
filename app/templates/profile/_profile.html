@@ -1,0 +1,48 @@
+{% from "components/ui.html" import alert, btn, form_field %}
+{% from "components/icons.html" import icon %}
+
+{% if error %}
+<div class="mb-4">{{ alert("error", error) }}</div>
+{% endif %}
+
+<div class="flex flex-col gap-6 lg:flex-row">
+  <div class="min-w-0 flex-1">
+    <form method="post" action="/profile" class="grid gap-4 sm:grid-cols-2"
+          hx-post="/profile" hx-target="#profile-section" hx-swap="innerHTML">
+      <div class="sm:col-span-2">
+        {{ form_field("school_name", "School name", value=form.get("school_name", profile.school_name), required=true, placeholder="e.g. Sunrise Primary School") }}
+      </div>
+      {{ form_field("address", "Address", value=form.get("address", profile.address or "")) }}
+      {{ form_field("phone", "Phone", value=form.get("phone", profile.phone or "")) }}
+      {{ form_field("email", "Email", value=form.get("email", profile.email or "")) }}
+      {{ form_field("website", "Website", value=form.get("website", profile.website or "")) }}
+      <div class="sm:col-span-2">
+        {{ btn(label="Save profile", icon="check", variant="primary", size="sm", type="submit") }}
+      </div>
+    </form>
+  </div>
+
+  <div class="w-full shrink-0 lg:w-64">
+    <h3 class="text-sm font-semibold text-base-content">Logo</h3>
+    <p class="mt-1 text-xs text-base-content/60">Shown centred in the app shell and on printed documents. The previous file is replaced.</p>
+    <div class="mt-3 flex h-24 w-24 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-200 p-2">
+      {% if current_logo_url %}
+      <img src="{{ current_logo_url }}" alt="School logo" class="max-h-full max-w-full object-contain">
+      {% else %}
+      <span class="text-base-content/40">{{ icon("banknotes", "h-8 w-8") }}</span>
+      {% endif %}
+    </div>
+    <form method="post" action="/profile/logo" enctype="multipart/form-data" class="mt-3"
+          hx-post="/profile/logo" hx-target="#profile-section" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+      <input type="file" name="logo" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" required class="file-input file-input-sm file-input-bordered w-full">
+      {{ btn(label="Upload logo", icon="arrow-up-tray", variant="outline", size="sm", type="submit", class="mt-2") }}
+    </form>
+    {% if profile.logo_filename %}
+    <form method="post" action="/profile/logo/remove" class="mt-2"
+          hx-post="/profile/logo/remove" hx-target="#profile-section" hx-swap="innerHTML">
+      <button type="submit" data-confirm="Remove the school logo? The default icon will be used."
+              class="btn btn-ghost btn-xs text-error">{{ icon("trash", "h-4 w-4") }} Remove logo</button>
+    </form>
+    {% endif %}
+  </div>
+</div>

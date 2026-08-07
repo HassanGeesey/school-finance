@@ -85,3 +85,36 @@ Grilling session log. Updated as decisions are made.
 6. Reports (all with CSV export + dashboard charts): Income vs Expense, Arrears, Expense-by-category, Paid students per month, Summarized finance, student lists. Printable HTML receipts.
 
 **Operational:** Backup automatically on startup + manual button (keep ~30). One instance. Localhost server, browser opens automatically, quit via tray icon.
+
+---
+
+## Settings / branding grilling session
+
+| # | Question | Answer |
+|---|----------|--------|
+| S-1 | "System name" = which name? (product name vs school name) | **The school name** — configurable, shown on receipts, sidebar brand, tab title, footer. Product name "School Finance" stays fixed as the software's label (setup wizard, Settings context) |
+| S-2 | Where does the school name surface? | **Everywhere currently branded** — sidebar brand block, tab title, footer, printed receipts. Setup wizard + login keep "School Finance" (they're about the software). Reports keep their own page headers |
+| S-3 | What fields make up "contact info"? | **Address** (multi-line), **Phone**, and a field for **email or website** — all optional free text |
+| S-4 | Validation on contact fields? | **No validation** — all four fields are plain strings (Address, Phone, Email, Website). Blank fields simply don't display |
+| S-5 | Logo: format, storage, placement | **Any image format accepted** (no strict size limit). Stored as a file next to the data (e.g. `data/logo.<ext>`); DB stores the filename. Shows in the sidebar brand block + top of printed receipts. No-logo fallback = current `banknotes` icon / nothing. "Remove logo" option available. **UI:** logo/name kept **centred** in their container with **padding to avoid overflow** |
+| S-6 | Where do the profile settings live? | **Single-row `school_profile` DB table** — typed columns (school_name, logo_filename, address, phone, email, website), fits the existing SQLAlchemy + create_all + audit pattern |
+| S-7 | First launch | **Setup wizard gains a required "School name" field** (alongside name/username/password). Logo + contact optional, configured later in Settings |
+| S-8 | Audit trail | **Yes — profile edits and logo uploads/removals are audited** (who changed what), consistent with backups and user management |
+| S-9 | Historical receipts | **Current profile, rendered at print time** — old receipts reprinted later show the then-current school details (no per-receipt snapshotting) |
+| S-10 | Empty school name edge case | **School name is always required** — the Settings form refuses an empty value (same as the setup wizard), so the brand can never go blank |
+| S-11 | Scope of the profile on printed documents | **Applies to printed statements too** — receipts *and* the student statement both show the current school name, logo, and contact block |
+
+---
+
+## Student list filters grilling session
+
+| # | Question | Answer |
+|---|----------|--------|
+| SLF-1 | Which student list gets the paid/unpaid + class filters? | **The `/students` page** (school-wide search page). Class page already scoped to one class, so a class filter there would be meaningless |
+| SLF-2 | How is paid/unpaid determined? | **Per selected month** (month+year picker, defaults to current month) — same basis as the paid-students report |
+| SLF-3 | Partially-paid status? | **Three-way + All** — filter options are All / Paid / Partial / Unpaid (partial is its own state, matching the domain) |
+| SLF-4 | Students never billed in the selected month | **Excluded from the Paid/Partial/Unpaid filters** (they don't owe, so "unpaid" would be wrong); they still appear under All |
+| SLF-5 | Archived students in filtered results | **Included** — their history and arrears persist, so paid status still matters; the existing status badge already marks them archived |
+| SLF-6 | What the results show | **A new "Paid" column** — the selected month's paid/partial/unpaid badge plus the remaining amount (e.g. "Unpaid — $45.00"), rendered for the selected month |
+| SLF-7 | How the month is chosen | **Dropdown of billed months only** (same as the reports), defaulting to the most recent billed month; no paid column/status filter when no month has been billed |
+| SLF-8 | Delivery | Confirmed plan (form params `q`/`period`/`class_id`/`status`; paid logic reuses `ReportService.paid_students`; `StudentService.search_students(q, class_id=None)`; defaults: most recent billed month, All status, All classes) → split into tickets and implement |

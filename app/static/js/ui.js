@@ -86,6 +86,13 @@
     });
   });
 
+  document.addEventListener('click', function (event) {
+    var row = event.target.closest('tr[data-row-href]');
+    if (!row) return;
+    if (event.target.closest('a, button')) return;
+    window.location.href = row.dataset.rowHref;
+  });
+
   function setLoading(el, loading) {
     if (el && el.classList.contains('btn')) el.classList.toggle('btn-loading', loading);
   }

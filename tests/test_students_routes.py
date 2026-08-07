@@ -5,6 +5,8 @@ Route-level smoke tests of the thin adapters + templates. Business rules
 ``test_students_service.py``.
 """
 
+from urllib.parse import urlparse
+
 from tests.helpers import (
     add_finance_user,
     authenticated_admin,
@@ -19,6 +21,54 @@ def create_class(client, name="Grade 1", status="active"):
         data={"name": name, "status": status},
         follow_redirects=False,
     )
+
+
+def create_class_id(client, name="Grade 1", status="active"):
+    response = create_class(client, name=name, status=status)
+    assert response.status_code == 303
+    return int(urlparse(response.headers["location"]).path.split("/")[-1])
+
+
+def add_fee_item(client, class_id, name="Tuition", amount="50.00"):
+    response = client.post(
+        f"/classes/{class_id}/fee-items",
+        data={"name": name, "amount": amount},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+
+def generate_fees(client, class_id, month="3", year="2026"):
+    response = client.post(
+        "/fees/generate",
+        data={"class_id": str(class_id), "month": month, "year": year},
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+
+
+def record_payment(client, student_id, amount, paid_on="2026-03-10"):
+    response = client.post(
+        "/payments/record",
+        data={"student_id": str(student_id), "amount": amount, "method": "cash", "paid_on": paid_on},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+
+def make_billed_student(client, name="Grade 1", first_name="Ada", last_name="Lovelace"):
+    class_id = create_class_id(client, name=name)
+    add_fee_item(client, class_id)
+    add_student(client, class_id, first_name=first_name, last_name=last_name)
+    generate_fees(client, class_id)
+    return class_id
+
+
+def student_ids(client):
+    from app.models import Student
+
+    with client.app.state.db.session() as session:
+        return {student.full_name: student.id for student in session.query(Student).all()}
 
 
 def add_student(client, class_id=1, first_name="Ada", last_name="Lovelace"):
@@ -117,6 +167,93 @@ def test_unknown_class_filter_returns_404(client):
     create_class(client)
 
     assert client.get("/students?class_id=999").status_code == 404
+
+
+def test_no_billed_months_hides_the_paid_ui(client):
+    authenticated_admin(client)
+    create_class(client)
+
+    response = client.get("/students")
+
+    assert response.status_code == 200
+    assert "Paid" not in response.text
+    assert "All statuses" not in response.text
+
+
+def test_billed_months_show_the_month_and_status_filters(client):
+    authenticated_admin(client)
+    make_billed_student(client, name="Grade 1")
+
+    response = client.get("/students")
+
+    assert response.status_code == 200
+    assert "March 2026" in response.text  # month dropdown, most recent billed
+    assert "Paid" in response.text  # paid column header
+    assert "All statuses" in response.text  # status dropdown
+
+
+def test_month_dropdown_defaults_to_the_most_recent_billed_month(client):
+    authenticated_admin(client)
+    grade_1 = make_billed_student(client, name="Grade 1")
+    make_billed_student(client, name="Grade 2", first_name="Grace", last_name="Hopper")
+    generate_fees(client, grade_1, month="5", year="2026")
+
+    response = client.get("/students")
+
+    assert response.status_code == 200
+    assert 'value="2026-05" selected' in response.text
+
+
+def test_paid_column_shows_badges_and_remaining_amounts(client):
+    authenticated_admin(client)
+    make_billed_student(client, name="Grade 1")
+    make_billed_student(client, name="Grade 2", first_name="Grace", last_name="Hopper")
+    record_payment(client, student_ids(client)["Ada Lovelace"], "50.00")
+
+    response = client.get("/students?period=2026-03")
+
+    assert response.status_code == 200
+    assert "Paid" in response.text
+    assert "Unpaid" in response.text
+    assert "$50.00" in response.text  # Grace Hopper's remaining amount
+
+
+def test_status_filter_excludes_never_billed_students(client):
+    authenticated_admin(client)
+    make_billed_student(client, name="Grade 1")
+    create_class_id(client, name="Grade 2")
+    add_student(client, class_id=2, first_name="Grace", last_name="Hopper")
+
+    response = client.get("/students?period=2026-03&status=unpaid")
+
+    assert response.status_code == 200
+    assert "Ada Lovelace" in response.text
+    assert "Grace Hopper" not in response.text
+
+
+def test_all_statuses_shows_everyone_including_never_billed(client):
+    authenticated_admin(client)
+    make_billed_student(client, name="Grade 1")
+    create_class_id(client, name="Grade 2")
+    add_student(client, class_id=2, first_name="Grace", last_name="Hopper")
+
+    response = client.get("/students?period=2026-03")
+
+    assert response.status_code == 200
+    assert "Ada Lovelace" in response.text
+    assert "Grace Hopper" in response.text
+
+
+def test_paid_filter_combines_with_class_and_name(client):
+    authenticated_admin(client)
+    make_billed_student(client, name="Grade 1")
+    make_billed_student(client, name="Grade 2", first_name="Ada", last_name="Byron")
+
+    response = client.get("/students?period=2026-03&status=unpaid&class_id=2&q=ada")
+
+    assert response.status_code == 200
+    assert "Ada Byron" in response.text
+    assert "Ada Lovelace" not in response.text
 
 
 def test_finance_officer_cannot_add_a_student(client):

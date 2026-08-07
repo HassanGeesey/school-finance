@@ -193,6 +193,20 @@ class StudentListLine:
 
 
 @dataclass
+class StudentStatusRow:
+    """One student on the school-wide search page, with their month's paid status.
+
+    ``paid_status`` is one of :class:`PaidStatus` when the student was billed
+    that month, else ``None`` (never billed — rendered as a dash). The rest of
+    the paid column renders from the shared ``PAID_STATUS_LABELS`` / tones.
+    """
+
+    student: Student
+    paid_status: str | None
+    remaining_cents: Money
+
+
+@dataclass
 class StudentListReport:
     """The student register: every student (or one class) with class + fee."""
 
@@ -354,6 +368,16 @@ class ReportService:
         return cls.name
 
     @staticmethod
+    def _classify_status(net: int, paid: int) -> tuple[str, int]:
+        """The paid status and remaining cents for a charge net vs paid."""
+        remaining = max(net - paid, 0)
+        if remaining <= 0:
+            return PaidStatus.PAID, remaining
+        if paid > 0:
+            return PaidStatus.PARTIAL, remaining
+        return PaidStatus.UNPAID, remaining
+
+    @staticmethod
     def _student_sort_key(
         line: PaidStudentLine | StudentListLine,
     ) -> tuple[str, str, str, int]:
@@ -475,13 +499,7 @@ class ReportService:
             student = charge.student
             net = net_cents(charge, list(charge.adjustments))
             paid = paid_by_charge.get(charge.id, 0)
-            remaining = max(net - paid, 0)
-            if remaining <= 0:
-                status = PaidStatus.PAID
-            elif paid > 0:
-                status = PaidStatus.PARTIAL
-            else:
-                status = PaidStatus.UNPAID
+            status, remaining = self._classify_status(net, paid)
             lines.append(
                 PaidStudentLine(
                     student=student,
@@ -529,6 +547,61 @@ class ReportService:
             .all()
         )
         return {charge_id: int(total) for charge_id, total in rows}
+
+    # -- Student status rows (the /students page paid column) -----------------
+
+    def billed_periods(self) -> list[tuple[int, int]]:
+        """Every (year, month) with at least one charge, newest first.
+
+        Only charged months are listed — the paid column and status filter mean
+        nothing until a month has been billed.
+        """
+        with self._session() as session:
+            rows = session.query(Charge.year, Charge.month).distinct().all()
+        return sorted({(int(year), int(month)) for year, month in rows}, reverse=True)
+
+    def student_status_rows(
+        self,
+        students: Iterable[Student],
+        month: int,
+        year: int,
+        status: str = "",
+    ) -> list[StudentStatusRow]:
+        """The given students with their paid status for one month.
+
+        A student carries a status only when they hold a charge for that month;
+        never-billed students come back with ``paid_status=None``. When a
+        ``status`` filter is active, never-billed students are dropped from the
+        result — only students billed that month can match a status.
+        """
+        ids = [student.id for student in students]
+        rows = [StudentStatusRow(student=student, paid_status=None, remaining_cents=0) for student in students]
+        if not ids:
+            return rows
+        with self._session() as session:
+            charges = (
+                session.query(Charge)
+                .options(joinedload(Charge.adjustments))
+                .filter(
+                    Charge.month == month,
+                    Charge.year == year,
+                    Charge.student_id.in_(ids),
+                )
+                .all()
+            )
+            paid_by_charge = self._paid_cents_by_charge(session, [c.id for c in charges])
+        paid_map: dict[int, tuple[str, int]] = {}
+        for charge in charges:
+            net = net_cents(charge, list(charge.adjustments))
+            paid = paid_by_charge.get(charge.id, 0)
+            paid_map[charge.student_id] = self._classify_status(net, paid)
+        for row in rows:
+            paid_state = paid_map.get(row.student.id)
+            if paid_state is not None:
+                row.paid_status, row.remaining_cents = paid_state
+        if status:
+            rows = [row for row in rows if row.paid_status == status]
+        return rows
 
     # -- Summarized finance --------------------------------------------------
 

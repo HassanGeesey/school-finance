@@ -407,6 +407,109 @@ def test_paid_students_reflects_waivers_and_extras(
 
 
 # ---------------------------------------------------------------------------
+# Student status rows for a month (the /students page paid column)
+# ---------------------------------------------------------------------------
+
+
+def test_billed_periods_lists_only_charged_months_newest_first(
+    reports, classes, students, fees, admin
+):
+    _, class_a = make_class(classes, students, fees, admin, name="Grade 1")
+    _, class_b = make_class(
+        classes, students, fees, admin, name="Grade 2", first_name="Grace", last_name="Hopper"
+    )
+    bill(fees, class_a, month=3, admin=admin)
+    bill(fees, class_b, month=5, admin=admin)
+
+    assert reports.billed_periods() == [(2026, 5), (2026, 3)]
+
+
+def test_billed_periods_is_empty_before_any_billing(reports):
+    assert reports.billed_periods() == []
+
+
+def test_student_status_rows_marks_paid_partial_and_unpaid(
+    reports, payments, classes, students, fees, admin
+):
+    paid_id, class_a = make_class(classes, students, fees, admin, name="Grade 1")
+    partial_id, class_b = make_class(
+        classes, students, fees, admin, name="Grade 2", first_name="Grace", last_name="Hopper"
+    )
+    unpaid_id, class_c = make_class(
+        classes, students, fees, admin, name="Grade 3", first_name="Alan", last_name="Turing"
+    )
+    bill(fees, class_a, month=3, admin=admin)
+    bill(fees, class_b, month=3, admin=admin)
+    bill(fees, class_c, month=3, admin=admin)
+    pay(payments, paid_id, "50.00", admin)
+    pay(payments, partial_id, "20.00", admin)
+
+    all_students = students.search_students("")
+    rows = reports.student_status_rows(all_students, 3, 2026)
+
+    by_id = {row.student.id: row for row in rows}
+    assert by_id[paid_id].paid_status == PaidStatus.PAID
+    assert by_id[paid_id].remaining_cents == 0
+    assert by_id[partial_id].paid_status == PaidStatus.PARTIAL
+    assert by_id[partial_id].remaining_cents == 3000
+    assert by_id[unpaid_id].paid_status == PaidStatus.UNPAID
+    assert by_id[unpaid_id].remaining_cents == 5000
+
+
+def test_student_status_rows_never_billed_students_have_no_status(
+    reports, classes, students, fees, admin
+):
+    billed_id, class_a = make_class(classes, students, fees, admin, name="Grade 1")
+    make_class(
+        classes, students, fees, admin, name="Grade 2", first_name="Grace", last_name="Hopper"
+    )
+    bill(fees, class_a, month=3, admin=admin)
+
+    rows = reports.student_status_rows(students.search_students(""), 3, 2026)
+
+    by_id = {row.student.id: row for row in rows}
+    assert by_id[billed_id].paid_status == PaidStatus.UNPAID
+    assert all(
+        row.paid_status is None and row.remaining_cents == 0
+        for row in rows
+        if row.student.id != billed_id
+    )
+
+
+def test_student_status_rows_status_filter_drops_never_billed(
+    reports, classes, students, fees, admin
+):
+    billed_id, class_a = make_class(classes, students, fees, admin, name="Grade 1")
+    make_class(
+        classes, students, fees, admin, name="Grade 2", first_name="Grace", last_name="Hopper"
+    )
+    bill(fees, class_a, month=3, admin=admin)
+
+    rows = reports.student_status_rows(students.search_students(""), 3, 2026, status=PaidStatus.UNPAID)
+
+    assert [row.student.id for row in rows] == [billed_id]
+    assert rows[0].paid_status == PaidStatus.UNPAID
+
+
+def test_student_status_rows_other_months_leave_everyone_statusless(
+    reports, classes, students, fees, admin
+):
+    _, class_a = make_class(classes, students, fees, admin, name="Grade 1")
+    bill(fees, class_a, month=3, admin=admin)
+
+    rows = reports.student_status_rows(students.search_students(""), 4, 2026)
+
+    assert [row.paid_status for row in rows] == [None]
+
+
+def test_student_status_rows_empty_student_list_is_empty(reports, classes, students, fees, admin):
+    _, class_a = make_class(classes, students, fees, admin, name="Grade 1")
+    bill(fees, class_a, month=3, admin=admin)
+
+    assert reports.student_status_rows([], 3, 2026) == []
+
+
+# ---------------------------------------------------------------------------
 # Summarized finance report
 # ---------------------------------------------------------------------------
 

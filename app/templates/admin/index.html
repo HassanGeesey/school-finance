@@ -2,7 +2,7 @@
 {% from "components/ui.html" import page_header, alert, card, btn, confirm_dialog %}
 {% from "components/icons.html" import icon %}
 
-{% block title %}Settings — {{ app_name }}{% endblock %}
+{% block title %}Settings — {{ school_name() }}{% endblock %}
 {% block topbar_title %}Settings{% endblock %}
 
 {% block content %}
@@ -13,13 +13,19 @@
   <div>{{ alert("success", msg) }}</div>
   {% endif %}
 
+  {% call card(title="School profile", subtitle="The school's identity — the name and logo shown in the app shell and on printed documents. Contact details are optional.") %}
+    <div id="profile-section">
+      {% include "profile/_profile.html" %}
+    </div>
+  {% endcall %}
+
   {% call card(title="Staff accounts", subtitle="Create staff accounts, reset passwords, and disable access. Disabled accounts can no longer log in but their history is kept.") %}
     <div id="users-section">
       {% include "admin/_users.html" %}
     </div>
   {% endcall %}
 
-  {% call card(title="Database backups", subtitle="The database is backed up automatically on startup and on demand. At most {{ backup_keep }} copies are kept — the oldest are removed.") %}
+  {% call card(title="Database backups", subtitle="The database is backed up automatically on startup and on demand. At most " ~ backup_keep ~ " copies are kept — the oldest are removed.") %}
     <div id="backups-section">
       {% include "system/_backups.html" %}
     </div>

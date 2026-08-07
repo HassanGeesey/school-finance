@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "components/icons.html" import icon %}
-{% from "components/ui.html" import page_header, card, btn, empty_state, table_scroll %}
+{% from "components/ui.html" import page_header, card, btn, badge, empty_state, table_scroll %}
 {% from "classes/_badges.html" import class_status_badge %}
 {% from "students/_badges.html" import student_status_badge %}
 
-{% block title %}Students — {{ app_name }}{% endblock %}
+{% block title %}Students — {{ school_name() }}{% endblock %}
 {% block topbar_title %}Students{% endblock %}
 
 {% block content %}
@@ -25,8 +25,27 @@
         {% endfor %}
       </select>
     </div>
+    {% if period_options %}
+    <div>
+      <label for="period" class="label"><span class="label-text">Month</span></label>
+      <select id="period" name="period" class="select select-sm w-full">
+        {% for value, label in period_options %}
+        <option value="{{ value }}" {% if value == selected_period %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="status" class="label"><span class="label-text">Status</span></label>
+      <select id="status" name="status" class="select select-sm w-full">
+        <option value="" {% if not selected_status %}selected{% endif %}>All statuses</option>
+        {% for value, label in paid_status_labels.items() %}
+        <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
     {{ btn(label="Search", icon="magnifying-glass", variant="primary", size="sm", type="submit") }}
-    {% if q or class_id %}
+    {% if q or class_id or selected_period or selected_status %}
     {{ btn(href="/students", label="Clear", variant="ghost", size="sm", icon="x-mark") }}
     {% endif %}
   </form>
@@ -46,22 +65,37 @@
             <th>Name</th>
             <th>Class</th>
             <th>Status</th>
+            {% if period_options %}<th>Paid</th>{% endif %}
           </tr>
         </thead>
         <tbody>
-          {% for student in rows %}
+          {% for row in rows %}
           <tr>
             <td class="font-medium text-base-content">
-              <a href="/students/{{ student.id }}/account" class="link link-primary">{{ student.full_name }}</a>
+              <a href="/students/{{ row.student.id }}/account" class="link link-primary">{{ row.student.full_name }}</a>
             </td>
             <td>
-              <a href="/classes/{{ student.class_id }}" class="link link-primary">{{ student.school_class.name }}</a>
+              <a href="/classes/{{ row.student.class_id }}" class="link link-primary">{{ row.student.school_class.name }}</a>
             </td>
-            <td>{{ student_status_badge(student.status) }}</td>
+            <td>{{ student_status_badge(row.student.status) }}</td>
+            {% if period_options %}
+            <td>
+              {% if row.paid_status %}
+              <span class="inline-flex items-center gap-2">
+                {{ badge(paid_status_labels[row.paid_status], paid_status_tones[row.paid_status]) }}
+                {% if row.remaining_cents %}
+                <span class="text-sm text-base-content/70">{{ money(row.remaining_cents) }}</span>
+                {% endif %}
+              </span>
+              {% else %}
+              <span class="text-base-content/40">—</span>
+              {% endif %}
+            </td>
+            {% endif %}
           </tr>
           {% else %}
           <tr>
-            <td colspan="3">
+            <td colspan="{{ 4 if period_options else 3 }}">
               {{ empty_state("No students found", ("No results for “" ~ q ~ "” — try a different search." if q else "Add them inside a class."), "user-group") }}
             </td>
           </tr>

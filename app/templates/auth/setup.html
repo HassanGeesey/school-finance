@@ -20,7 +20,8 @@
       {% endif %}
 
       <form method="post" action="/setup" class="mt-6 space-y-4">
-        {{ form_field("name", "Full name", value=name or "", required=true, attrs='autofocus') }}
+        {{ form_field("school_name", "School name", value=school_name or "", required=true, placeholder="e.g. Sunrise Primary School", attrs='autofocus') }}
+        {{ form_field("name", "Your full name", value=name or "", required=true) }}
         {{ form_field("username", "Username", value=username or "", required=true) }}
         {{ form_field("password", "Password", type="password", required=true) }}
         <button type="submit" class="btn btn-primary btn-block">Create admin account</button>

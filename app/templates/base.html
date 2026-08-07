@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <title>{% block title %}{{ school_name() }}{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/js/htmx.min.js" defer></script>
@@ -35,9 +35,15 @@
 <div class="flex min-h-screen">
   <aside id="app-sidebar" class="no-print fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col border-r border-base-300 bg-base-100 lg:static lg:translate-x-0">
     <div class="flex h-16 shrink-0 items-center gap-3 border-b border-base-300 px-4">
-      <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-content">{{ icon("banknotes", "h-5 w-5") }}</span>
+      <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-base-200 p-1 text-primary">
+        {% if logo_url() %}
+        <img src="{{ logo_url() }}" alt="School logo" class="h-full w-full rounded object-contain">
+        {% else %}
+        {{ icon("banknotes", "h-6 w-6") }}
+        {% endif %}
+      </span>
       <div class="min-w-0">
-        <p class="truncate text-sm font-bold leading-tight">{{ app_name }}</p>
+        <p class="truncate text-sm font-bold leading-tight">{{ school_name() }}</p>
         <p class="text-xs text-base-content/50">School finance</p>
       </div>
     </div>
@@ -118,7 +124,7 @@
     </main>
 
     <footer class="no-print px-6 py-6 text-sm text-base-content/40">
-      &copy; {{ year }} {{ app_name }}
+      &copy; {{ year }} {{ school_name() }}
     </footer>
   </div>
 </div>

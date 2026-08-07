@@ -15,12 +15,18 @@ from app.models import User, UserRoles
 NAME = "Head Teacher"
 USERNAME = "admin"
 PASSWORD = "correct horse battery staple"
+SCHOOL_NAME = "Sunrise Primary School"
 
 
 def setup_admin(client: TestClient) -> None:
     response = client.post(
         "/setup",
-        data={"name": NAME, "username": USERNAME, "password": PASSWORD},
+        data={
+            "school_name": SCHOOL_NAME,
+            "name": NAME,
+            "username": USERNAME,
+            "password": PASSWORD,
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303

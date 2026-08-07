@@ -17,6 +17,7 @@ from ..audit.service import AuditActions, AuditService
 from ..config import settings
 from ..db import Database
 from ..models import AuthSession, User, UserRoles, utcnow
+from ..profile.service import ProfileService
 
 
 class AuthError(Exception):
@@ -72,9 +73,16 @@ def _token_digest(token: str) -> str:
 class AuthService:
     """Auth business rules. Each method is one unit of work on its own session."""
 
-    def __init__(self, db: Database, audit: AuditService | None = None) -> None:
+    def __init__(
+        self,
+        db: Database,
+        *,
+        audit: AuditService | None = None,
+        profile: ProfileService,
+    ) -> None:
         self._db = db
         self._audit = audit
+        self._profile = profile
 
     def _session(self) -> Session:
         return self._db.session()
@@ -91,14 +99,24 @@ class AuthService:
     def _has_users(session: Session) -> bool:
         return session.query(User).count() > 0
 
-    def setup_first_admin(self, *, name: str, username: str, password: str) -> User:
-        """Create the first Admin account. Raises when users already exist."""
+    def setup_first_admin(
+        self, *, name: str, username: str, password: str, school_name: str = ""
+    ) -> User:
+        """Create the first Admin account and the school profile.
+
+        The school name is required here: the wizard is the first time the
+        school's identity is captured, so it is recorded via the profile
+        service. Raises when users already exist.
+        """
         name = (name or "").strip()
         username = (username or "").strip()
+        school_name = (school_name or "").strip()
         if not name or not username:
             raise AuthError("Name and username are required.")
         if not password:
             raise AuthError("A password is required.")
+        if not school_name:
+            raise AuthError("A school name is required.")
 
         with self._session() as session:
             if self._has_users(session):
@@ -112,10 +130,14 @@ class AuthService:
             session.add(user)
             session.commit()
             session.refresh(user)
+        self._profile.update_profile(user=user, school_name=school_name)
         self._log(
             user=None,
             action=AuditActions.SETUP,
-            summary=f"Created the first Admin account: {name} ({username})",
+            summary=(
+                f"Created the first Admin account: {name} ({username}); "
+                f"school profile set up as {school_name}"
+            ),
         )
         return user
 

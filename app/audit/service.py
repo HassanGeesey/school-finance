@@ -58,6 +58,11 @@ class AuditActions:
     USER_ENABLE = "user_enable"
     USER_PASSWORD_RESET = "user_password_reset"
 
+    # School profile & branding.
+    PROFILE_UPDATE = "profile_update"
+    PROFILE_LOGO_UPLOAD = "profile_logo_upload"
+    PROFILE_LOGO_REMOVE = "profile_logo_remove"
+
     # System admin — backups & shutdown.
     BACKUP_AUTOMATIC = "backup_automatic"
     BACKUP_MANUAL = "backup_manual"
@@ -89,6 +94,9 @@ class AuditActions:
         USER_DISABLE: "User disabled",
         USER_ENABLE: "User enabled",
         USER_PASSWORD_RESET: "Password reset",
+        PROFILE_UPDATE: "School profile updated",
+        PROFILE_LOGO_UPLOAD: "School logo uploaded",
+        PROFILE_LOGO_REMOVE: "School logo removed",
         BACKUP_AUTOMATIC: "Automatic backup",
         BACKUP_MANUAL: "Manual backup",
         SHUTDOWN: "App shut down",

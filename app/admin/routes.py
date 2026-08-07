@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from ..auth.deps import require_admin
 from ..config import settings
 from ..models import User
+from ..profile.routes import profile_context
 from .service import (
     USER_ROLE_LABELS,
     AdminUserError,
@@ -98,6 +99,7 @@ def settings_page(
         {
             "msg": request.query_params.get("msg", ""),
             **_backups_context(request),
+            **profile_context(request),
         }
     )
     return _templates(request).TemplateResponse(
