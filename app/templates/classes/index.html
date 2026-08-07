@@ -29,9 +29,10 @@
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr>
+        <tr data-row-href="/classes/{{ row.cls.id }}" class="cursor-pointer hover:bg-base-200/60">
           <td>
-            <a href="/classes/{{ row.cls.id }}" class="link link-primary font-medium">{{ row.cls.name }}</a>
+            <a href="/classes/{{ row.cls.id }}" class="sr-only font-medium">{{ row.cls.name }}</a>
+            <span class="font-medium">{{ row.cls.name }}</span>
           </td>
           <td>{{ class_status_badge(row.cls.status) }}</td>
           <td>{{ row.item_count }}</td>

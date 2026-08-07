@@ -6,3 +6,6 @@ data/
 backups/
 node_modules/
 .DS_Store
+build/
+dist/
+*.egg-info/
