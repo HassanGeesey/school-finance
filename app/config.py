@@ -33,5 +33,14 @@ class Settings:
     # Backups
     BACKUP_KEEP = int(os.environ.get("SCHOOL_FINANCE_BACKUP_KEEP", "30"))
 
+    # When running behind an orchestrator (Docker/Dokploy), in-app shutdown is
+    # disabled: the process would just be auto-restarted, so the "Shut down the
+    # app" wording would be misleading. The packaged EXE path leaves this unset.
+    DISABLE_SHUTDOWN = os.environ.get("SCHOOL_FINANCE_DISABLE_SHUTDOWN", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
 
 settings = Settings()

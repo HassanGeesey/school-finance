@@ -98,6 +98,7 @@ def settings_page(
     context.update(
         {
             "msg": request.query_params.get("msg", ""),
+            "disable_shutdown": settings.DISABLE_SHUTDOWN,
             **_backups_context(request),
             **profile_context(request),
         }

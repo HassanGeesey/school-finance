@@ -31,11 +31,13 @@
     </div>
   {% endcall %}
 
+  {% if not disable_shutdown %}
   {% call card(title="Shut down the app", subtitle="Stop the server from within the UI. Restart the app to use it again — data stays safe on disk.") %}
     <form method="post" action="/system/shutdown" class="flex flex-wrap items-center gap-3">
       <p class="flex-1 text-sm text-base-content/70">This stops the running application. A confirmation is required.</p>
       {{ btn(label="Shut down app", icon="arrow-right-on-rectangle", variant="error", size="sm", type="submit", attrs='data-confirm="Shut down the app? Any unsaved work is lost."') }}
     </form>
   {% endcall %}
+  {% endif %}
 </div>
 {% endblock %}

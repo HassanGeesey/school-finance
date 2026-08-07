@@ -1,0 +1,22 @@
+services:
+  school-finance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      SCHOOL_FINANCE_DATA: /data
+      SCHOOL_FINANCE_DISABLE_SHUTDOWN: "1"
+    volumes:
+      - school-finance-data:/data
+    expose:
+      - "8000"
+    networks:
+      - dokploy-network
+
+volumes:
+  school-finance-data:
+
+networks:
+  dokploy-network:
+    external: true

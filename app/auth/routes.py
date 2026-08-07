@@ -33,13 +33,14 @@ def _redirect_login() -> RedirectResponse:
     return RedirectResponse("/login", status_code=303)
 
 
-def _attach_session_cookie(response: Response, token: str) -> None:
+def _attach_session_cookie(response: Response, token: str, *, secure: bool) -> None:
     response.set_cookie(
         settings.SESSION_COOKIE,
         token,
         max_age=session_max_age_seconds(),
         httponly=True,
         samesite="lax",
+        secure=secure,
     )
 
 
@@ -119,7 +120,11 @@ def login_submit(
         )
     _user, token = user_and_token
     response = RedirectResponse(safe_post_login_target(next), status_code=303)
-    _attach_session_cookie(response, token)
+    # Behind a TLS-terminating proxy (Traefik), forward the X-Forwarded-Proto
+    # header and mark the session cookie Secure; plain-HTTP installs (the EXE
+    # on localhost) get no such header and stay on plain cookies.
+    secure = request.headers.get("x-forwarded-proto") == "https"
+    _attach_session_cookie(response, token, secure=secure)
     return response
 
 

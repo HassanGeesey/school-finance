@@ -185,3 +185,20 @@ def test_admin_can_shut_down_the_app(backup_app):
     assert stopped == [True]
     (entry,) = audit_entries(client, AuditActions.SHUTDOWN)
     assert "Head Teacher" in entry.summary
+
+
+def test_shutdown_is_disabled_when_flag_set(backup_app, monkeypatch):
+    from app.config import settings
+
+    client, _backup_dir, stopped = backup_app
+    authenticated_admin(client)
+    monkeypatch.setattr(settings, "DISABLE_SHUTDOWN", True)
+
+    response = client.post("/system/shutdown")
+
+    assert response.status_code == 403
+    assert "disabled" in response.text.lower()
+    assert stopped == []
+
+    page = client.get("/admin")
+    assert "Shut down the app" not in page.text

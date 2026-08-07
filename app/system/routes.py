@@ -93,6 +93,13 @@ def shutdown(
     request: Request,
     user: User = Depends(require_admin),
 ) -> HTMLResponse:
+    if settings.DISABLE_SHUTDOWN:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="system/shutdown_disabled.html",
+            context={},
+            status_code=403,
+        )
     _system(request).request_shutdown(user=user)
     return _templates(request).TemplateResponse(
         request=request,

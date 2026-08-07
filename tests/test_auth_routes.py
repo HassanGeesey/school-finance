@@ -122,6 +122,31 @@ def test_all_pages_require_a_session(client):
         assert response.headers["location"].startswith("/login"), path
 
 
+def test_login_skips_secure_cookie_over_plain_http(client):
+    setup_admin(client)
+
+    response = client.post(
+        "/login",
+        data={"username": USERNAME, "password": PASSWORD},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "Secure" not in response.headers.get("set-cookie", "")
+
+
+def test_login_sets_secure_cookie_when_https(client):
+    setup_admin(client)
+
+    response = client.post(
+        "/login",
+        data={"username": USERNAME, "password": PASSWORD},
+        headers={"X-Forwarded-Proto": "https"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "Secure" in response.headers.get("set-cookie", "")
+
+
 def test_admin_can_open_admin_pages(client):
     authenticated_admin(client)
 
