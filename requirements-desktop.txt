@@ -1,0 +1,5 @@
+# Desktop packaging only — the packaged .exe tray/icon (ticket 13).
+# Not needed to run the app from source or the test suite.
+pystray==0.19.5
+Pillow==12.3.0
+pyinstaller==6.21.0
