@@ -21,3 +21,6 @@
 - Setup wizard creates the initial profile (`setup_first_admin(school_name=...)`); school name is required on first run.
 
 **Verification:** `tests/test_profile_service.py` + `tests/test_profile_routes.py` cover update/validation/audit/logo upload & removal/setup wiring. Full suite 576 passed; `mypy app` clean.
+
+
+**Commit:** e37229e (implementation); ticket mark included in same commit

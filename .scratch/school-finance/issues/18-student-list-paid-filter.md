@@ -21,3 +21,6 @@
 - `app/templates/students/search.html`: month + status dropdowns (GET form, survives reloads), new "Paid" column with badge + remaining amount (`period_label` from fees service); when no month is billed the status filter and Paid column are hidden.
 
 **Verification:** `tests/test_reports_service.py` (per-month status, never-billed exclusion) + `tests/test_students_routes.py` (combined filters, empty-billing state). Full suite 576 passed; `mypy app` clean.
+
+
+**Commit:** e37229e (implementation); ticket mark included in same commit

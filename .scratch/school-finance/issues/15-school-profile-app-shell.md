@@ -20,3 +20,6 @@
 - `.scratch/.../16` test-file additions cover setup/login product name retention and dashboard school-name rendering.
 
 **Verification:** `tests/test_profile_routes.py` app-shell tests (school name in shell/title, product name on setup/login). Full suite 576 passed; `mypy app` clean.
+
+
+**Commit:** e37229e (implementation); ticket mark included in same commit
