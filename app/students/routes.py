@@ -16,19 +16,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..auth.deps import require_admin, require_login
+from ..charge_status import CHARGE_STATUS_LABELS, CHARGE_STATUS_TONES
 from ..classes.service import ClassNotFound, ClassService
 from ..fees.service import period_label
 from ..models import User
-from ..reports.service import PAID_STATUS_LABELS, ReportService, StudentStatusRow
+from ..reports.service import ReportService, StudentStatusRow
 from .service import StudentError, StudentImportError, StudentNotFound, StudentService
 
 router = APIRouter(include_in_schema=False)
-
-PAID_STATUS_TONES = {
-    "paid": "success",
-    "partial": "warning",
-    "unpaid": "error",
-}
 
 
 def _service(request: Request) -> StudentService:
@@ -104,7 +99,7 @@ def search_page(
         if period in period_values
         else (period_options[0][0] if period_options else "")
     )
-    selected_status = status if status in PAID_STATUS_LABELS else ""
+    selected_status = status if status in CHARGE_STATUS_LABELS else ""
 
     if selected_period:
         selected_year, selected_month = (int(part) for part in selected_period.split("-"))
@@ -127,8 +122,8 @@ def search_page(
             "period_options": period_options,
             "selected_period": selected_period,
             "selected_status": selected_status,
-            "paid_status_labels": PAID_STATUS_LABELS,
-            "paid_status_tones": PAID_STATUS_TONES,
+            "charge_status_labels": CHARGE_STATUS_LABELS,
+            "charge_status_tones": CHARGE_STATUS_TONES,
         },
     )
 

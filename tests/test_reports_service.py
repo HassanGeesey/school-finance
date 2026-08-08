@@ -24,11 +24,9 @@ from app.models import (
     User,
     UserRoles,
 )
+from app.charge_status import ChargeStatus
 from app.payments.service import PaymentService
-from app.reports.service import (
-    PaidStatus,
-    ReportService,
-)
+from app.reports.service import ReportService
 from app.students.service import StudentService
 
 PASSWORD = "correct horse battery staple"
@@ -305,7 +303,7 @@ def test_paid_students_statuses_and_amounts(
     assert line.charge_cents == 5000
     assert line.paid_cents == 3000
     assert line.remaining_cents == 2000
-    assert line.status == PaidStatus.PARTIAL
+    assert line.status == ChargeStatus.PARTIAL
 
 
 def test_paid_students_marks_fully_paid_and_unpaid(
@@ -322,9 +320,9 @@ def test_paid_students_marks_fully_paid_and_unpaid(
     report = reports.paid_students(3, 2026)
 
     by_student = {line.student.id: line for line in report.lines}
-    assert by_student[paid_id].status == PaidStatus.PAID
+    assert by_student[paid_id].status == ChargeStatus.PAID
     assert by_student[paid_id].remaining_cents == 0
-    assert by_student[unpaid_id].status == PaidStatus.UNPAID
+    assert by_student[unpaid_id].status == ChargeStatus.UNPAID
     assert by_student[unpaid_id].paid_cents == 0
 
 
@@ -388,7 +386,7 @@ def test_paid_students_includes_archived_students(
 
     (line,) = report.lines
     assert line.student_status == StudentStatus.INACTIVE
-    assert line.status == PaidStatus.UNPAID
+    assert line.status == ChargeStatus.UNPAID
 
 
 def test_paid_students_reflects_waivers_and_extras(
@@ -448,11 +446,11 @@ def test_student_status_rows_marks_paid_partial_and_unpaid(
     rows = reports.student_status_rows(all_students, 3, 2026)
 
     by_id = {row.student.id: row for row in rows}
-    assert by_id[paid_id].paid_status == PaidStatus.PAID
+    assert by_id[paid_id].paid_status == ChargeStatus.PAID
     assert by_id[paid_id].remaining_cents == 0
-    assert by_id[partial_id].paid_status == PaidStatus.PARTIAL
+    assert by_id[partial_id].paid_status == ChargeStatus.PARTIAL
     assert by_id[partial_id].remaining_cents == 3000
-    assert by_id[unpaid_id].paid_status == PaidStatus.UNPAID
+    assert by_id[unpaid_id].paid_status == ChargeStatus.UNPAID
     assert by_id[unpaid_id].remaining_cents == 5000
 
 
@@ -468,7 +466,7 @@ def test_student_status_rows_never_billed_students_have_no_status(
     rows = reports.student_status_rows(students.search_students(""), 3, 2026)
 
     by_id = {row.student.id: row for row in rows}
-    assert by_id[billed_id].paid_status == PaidStatus.UNPAID
+    assert by_id[billed_id].paid_status == ChargeStatus.UNPAID
     assert all(
         row.paid_status is None and row.remaining_cents == 0
         for row in rows
@@ -485,10 +483,10 @@ def test_student_status_rows_status_filter_drops_never_billed(
     )
     bill(fees, class_a, month=3, admin=admin)
 
-    rows = reports.student_status_rows(students.search_students(""), 3, 2026, status=PaidStatus.UNPAID)
+    rows = reports.student_status_rows(students.search_students(""), 3, 2026, status=ChargeStatus.UNPAID)
 
     assert [row.student.id for row in rows] == [billed_id]
-    assert rows[0].paid_status == PaidStatus.UNPAID
+    assert rows[0].paid_status == ChargeStatus.UNPAID
 
 
 def test_student_status_rows_other_months_leave_everyone_statusless(

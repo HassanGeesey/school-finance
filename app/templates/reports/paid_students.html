@@ -34,7 +34,7 @@
         <tr>
           <td class="font-medium">{{ line.student.full_name }}</td>
           <td>{{ line.class_name }}</td>
-          <td>{{ badge(paid_status_labels[line.status], paid_status_tones[line.status]) }}</td>
+          <td>{{ badge(charge_status_labels[line.status], charge_status_tones[line.status]) }}</td>
           <td class="text-right">{{ money(line.charge_cents) }}</td>
           <td class="text-right">{{ money(line.paid_cents) }}</td>
           <td class="text-right font-semibold">{{ money(line.remaining_cents) }}</td>

@@ -11,17 +11,3 @@
 } %}
 <span class="badge {{ tones.get(method, 'badge-neutral') }}">{{ labels.get(method, method) }}</span>
 {% endmacro %}
-
-{% macro charge_status_badge(status) %}
-{% set tones = {
-  "paid": "badge-success",
-  "partial": "badge-warning",
-  "unpaid": "badge-error",
-} %}
-{% set labels = {
-  "paid": "Paid",
-  "partial": "Partial",
-  "unpaid": "Unpaid",
-} %}
-<span class="badge {{ tones.get(status, 'badge-neutral') }}">{{ labels.get(status, status) }}</span>
-{% endmacro %}

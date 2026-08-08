@@ -1,6 +1,6 @@
 {% from "components/ui.html" import card, badge, btn, empty_state, stat_card, table_scroll %}
 {% from "components/icons.html" import icon %}
-{% from "payments/_badges.html" import payment_method_badge, charge_status_badge %}
+{% from "payments/_badges.html" import payment_method_badge %}
 {% set user = current_user() %}
 {% set is_admin = user is not none and user.role == "admin" %}
 
@@ -81,7 +81,7 @@
             <td class="font-semibold {{ 'text-error' if line.net_cents > 0 else 'text-success' }}">{{ money(line.net_cents) }}</td>
             <td class="{{ 'text-success' if line.paid_cents > 0 else 'text-base-content/40' }}">{{ money(line.paid_cents) }}</td>
             <td class="font-semibold {{ 'text-error' if line.remaining_cents > 0 else 'text-base-content/40' }}">{{ money(line.remaining_cents) }}</td>
-            <td>{{ charge_status_badge(line.status) }}</td>
+            <td>{{ badge(charge_status_labels[line.status], charge_status_tones[line.status]) }}</td>
             {% if is_admin %}
             <td class="text-right">
               <button type="button" class="btn btn-ghost btn-xs"

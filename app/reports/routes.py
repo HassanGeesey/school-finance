@@ -22,20 +22,15 @@ from fastapi.templating import Jinja2Templates
 
 from ..arrears.service import AGE_BAND_LABELS
 from ..auth.deps import require_login
+from ..charge_status import CHARGE_STATUS_LABELS, CHARGE_STATUS_TONES
 from ..classes.service import ClassNotFound, ClassService
 from ..expenses.service import EXPENSE_METHOD_LABELS
 from ..fees.service import period_label
 from ..models import User
 from ..payments.service import PAYMENT_METHOD_LABELS
-from .service import PAID_STATUS_LABELS, ReportService
+from .service import ReportService
 
 router = APIRouter(include_in_schema=False)
-
-PAID_STATUS_TONES = {
-    "paid": "success",
-    "partial": "warning",
-    "unpaid": "error",
-}
 
 
 def _service(request: Request) -> ReportService:
@@ -396,8 +391,8 @@ def paid_students_page(
             selected_period=_period_value(selected_month, selected_year),
             selected_class_id=class_id,
             report=report,
-            paid_status_labels=PAID_STATUS_LABELS,
-            paid_status_tones=PAID_STATUS_TONES,
+            charge_status_labels=CHARGE_STATUS_LABELS,
+            charge_status_tones=CHARGE_STATUS_TONES,
         ),
     )
 

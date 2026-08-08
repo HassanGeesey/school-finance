@@ -35,6 +35,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..arrears.service import ArrearsService
+from ..charge_status import ChargeStatus, classify_paid_status
 from ..classes.service import ClassNotFound
 from ..db import Database
 from ..fees.service import net_cents, period_label
@@ -52,18 +53,6 @@ from ..money import Money
 from ..payments.planner import paid_cents_by_charge
 from ..payments.service import PAYMENT_METHOD_LABELS
 
-
-class PaidStatus:
-    PAID = "paid"
-    PARTIAL = "partial"
-    UNPAID = "unpaid"
-
-
-PAID_STATUS_LABELS = {
-    PaidStatus.PAID: "Paid",
-    PaidStatus.PARTIAL: "Partial",
-    PaidStatus.UNPAID: "Unpaid",
-}
 
 DASHBOARD_MONTHS = 6
 
@@ -196,9 +185,10 @@ class StudentListLine:
 class StudentStatusRow:
     """One student on the school-wide search page, with their month's paid status.
 
-    ``paid_status`` is one of :class:`PaidStatus` when the student was billed
-    that month, else ``None`` (never billed — rendered as a dash). The rest of
-    the paid column renders from the shared ``PAID_STATUS_LABELS`` / tones.
+    ``paid_status`` is one of :class:`~app.charge_status.ChargeStatus` when the
+    student was billed that month, else ``None`` (never billed — rendered as a
+    dash). The rest of the paid column renders from the shared
+    ``CHARGE_STATUS_LABELS`` / tones.
     """
 
     student: Student
@@ -368,16 +358,6 @@ class ReportService:
         return cls.name
 
     @staticmethod
-    def _classify_status(net: int, paid: int) -> tuple[str, int]:
-        """The paid status and remaining cents for a charge net vs paid."""
-        remaining = max(net - paid, 0)
-        if remaining <= 0:
-            return PaidStatus.PAID, remaining
-        if paid > 0:
-            return PaidStatus.PARTIAL, remaining
-        return PaidStatus.UNPAID, remaining
-
-    @staticmethod
     def _student_sort_key(
         line: PaidStudentLine | StudentListLine,
     ) -> tuple[str, str, str, int]:
@@ -499,7 +479,7 @@ class ReportService:
             student = charge.student
             net = net_cents(charge, list(charge.adjustments))
             paid = paid_by_charge.get(charge.id, 0)
-            status, remaining = self._classify_status(net, paid)
+            status, remaining = classify_paid_status(net, paid)
             lines.append(
                 PaidStudentLine(
                     student=student,
@@ -522,9 +502,9 @@ class ReportService:
             class_id=class_id,
             class_name=class_name,
             billed_count=len(lines),
-            paid_count=sum(1 for line in lines if line.status == PaidStatus.PAID),
-            partial_count=sum(1 for line in lines if line.status == PaidStatus.PARTIAL),
-            unpaid_count=sum(1 for line in lines if line.status == PaidStatus.UNPAID),
+            paid_count=sum(1 for line in lines if line.status == ChargeStatus.PAID),
+            partial_count=sum(1 for line in lines if line.status == ChargeStatus.PARTIAL),
+            unpaid_count=sum(1 for line in lines if line.status == ChargeStatus.UNPAID),
             charged_cents=charged_cents,
             collected_cents=collected_cents,
             outstanding_cents=charged_cents - collected_cents,
@@ -577,7 +557,7 @@ class ReportService:
         for charge in charges:
             net = net_cents(charge, list(charge.adjustments))
             paid = paid_by_charge.get(charge.id, 0)
-            paid_map[charge.student_id] = self._classify_status(net, paid)
+            paid_map[charge.student_id] = classify_paid_status(net, paid)
         for row in rows:
             paid_state = paid_map.get(row.student.id)
             if paid_state is not None:

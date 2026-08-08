@@ -24,8 +24,8 @@ from app.models import (
     User,
     UserRoles,
 )
+from app.charge_status import ChargeStatus
 from app.payments.service import (
-    ChargeStatus,
     InvalidMethod,
     PaymentError,
     PaymentNotFound,

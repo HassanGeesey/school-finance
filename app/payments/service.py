@@ -34,6 +34,7 @@ from datetime import date
 from sqlalchemy.orm import Session, joinedload
 
 from ..audit.service import AuditActions, AuditService
+from ..charge_status import classify_paid_status
 from ..db import Database
 from ..fees.service import (
     ChargeAccountLine,
@@ -81,12 +82,6 @@ class InvalidDate(PaymentError):
 
 class PaymentNotFound(PaymentError):
     """No payment exists with the given id."""
-
-
-class ChargeStatus:
-    PAID = "paid"
-    PARTIAL = "partial"
-    UNPAID = "unpaid"
 
 
 @dataclass
@@ -380,13 +375,7 @@ class PaymentService:
             for charge in charges:
                 line = to_charge_line(charge)
                 paid = paid_by_charge.get(charge.id, 0)
-                remaining = max(line.net_cents - paid, 0)
-                if remaining <= 0:
-                    status = ChargeStatus.PAID
-                elif paid > 0:
-                    status = ChargeStatus.PARTIAL
-                else:
-                    status = ChargeStatus.UNPAID
+                status, remaining = classify_paid_status(line.net_cents, paid)
                 account_charges.append(
                     AccountCharge(
                         line=line,

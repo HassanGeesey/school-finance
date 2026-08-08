@@ -38,7 +38,7 @@
       <label for="status" class="label"><span class="label-text">Status</span></label>
       <select id="status" name="status" class="select select-sm w-full">
         <option value="" {% if not selected_status %}selected{% endif %}>All statuses</option>
-        {% for value, label in paid_status_labels.items() %}
+        {% for value, label in charge_status_labels.items() %}
         <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
@@ -83,7 +83,7 @@
             <td>
               {% if row.paid_status %}
               <span class="inline-flex items-center gap-2">
-                {{ badge(paid_status_labels[row.paid_status], paid_status_tones[row.paid_status]) }}
+                {{ badge(charge_status_labels[row.paid_status], charge_status_tones[row.paid_status]) }}
                 {% if row.remaining_cents %}
                 <span class="text-sm text-base-content/70">{{ money(row.remaining_cents) }}</span>
                 {% endif %}

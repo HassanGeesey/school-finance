@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..auth.deps import require_admin, require_login
+from ..charge_status import CHARGE_STATUS_LABELS, CHARGE_STATUS_TONES
 from ..models import AdjustmentKinds, User
 from ..money import format_cents
 from ..payments.service import PaymentService
@@ -70,6 +71,8 @@ def _finance_context(request: Request, student) -> dict[str, object]:
         "account": account,
         "lines": account.charges,
         "balance": account.balance_cents,
+        "charge_status_labels": CHARGE_STATUS_LABELS,
+        "charge_status_tones": CHARGE_STATUS_TONES,
     }
 
 
