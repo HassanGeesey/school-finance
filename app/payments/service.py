@@ -31,14 +31,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..audit.service import AuditActions, AuditService
 from ..db import Database
 from ..fees.service import (
     ChargeAccountLine,
-    net_cents,
     period_label,
     to_charge_line,
 )
@@ -59,6 +57,7 @@ from ..money import (
     parse_positive_cents,
 )
 from ..students.service import StudentNotFound
+from .planner import paid_cents_by_charge, plan_application
 
 PAYMENT_METHOD_LABELS = {
     PaymentMethods.CASH: "Cash",
@@ -185,19 +184,6 @@ class PaymentService:
         return self._db.session()
 
     @staticmethod
-    def _paid_cents_by_charge(session: Session, student_id: int) -> dict[int, int]:
-        rows = (
-            session.query(
-                PaymentAllocation.charge_id, func.sum(PaymentAllocation.amount_cents)
-            )
-            .join(Payment, PaymentAllocation.payment_id == Payment.id)
-            .filter(Payment.student_id == student_id)
-            .group_by(PaymentAllocation.charge_id)
-            .all()
-        )
-        return {charge_id: int(total) for charge_id, total in rows}
-
-    @staticmethod
     def _validate_amount(amount: object) -> int:
         try:
             return parse_positive_cents(amount)  # type: ignore[arg-type]
@@ -274,8 +260,6 @@ class PaymentService:
             session.add(payment)
             session.flush()
 
-            remaining = amount_cents
-            paid_by_charge = self._paid_cents_by_charge(session, student_id)
             charges = (
                 session.query(Charge)
                 .options(joinedload(Charge.adjustments))
@@ -283,31 +267,24 @@ class PaymentService:
                 .order_by(Charge.year, Charge.month, Charge.id)
                 .all()
             )
-            for charge in charges:
-                if remaining <= 0:
-                    break
-                unpaid = max(
-                    net_cents(charge, list(charge.adjustments))
-                    - paid_by_charge.get(charge.id, 0),
-                    0,
-                )
-                if unpaid <= 0:
-                    continue
-                applied = min(unpaid, remaining)
+            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
+            applied_by_charge, credit = plan_application(
+                charges, paid_by_charge, amount_cents
+            )
+            for charge_id, applied in applied_by_charge.items():
                 session.add(
                     PaymentAllocation(
                         payment_id=payment.id,
-                        charge_id=charge.id,
+                        charge_id=charge_id,
                         amount_cents=applied,
                     )
                 )
-                remaining -= applied
 
-            if remaining > 0:
+            if credit > 0:
                 session.add(
                     Credit(
                         student_id=student_id,
-                        amount_cents=remaining,
+                        amount_cents=credit,
                         payment_id=payment.id,
                     )
                 )
@@ -317,8 +294,8 @@ class PaymentService:
                 f"{student.full_name} via {PAYMENT_METHOD_LABELS[method]} "
                 f"on {paid_on.isoformat()}"
             )
-            if remaining > 0:
-                summary += f" (credit of {format_cents(remaining)})"
+            if credit > 0:
+                summary += f" (credit of {format_cents(credit)})"
             if self._audit is not None:
                 self._audit.add(
                     session,
@@ -340,7 +317,6 @@ class PaymentService:
         amount_cents = self._validate_amount(amount)
         with self._session() as session:
             self._get_student(session, student_id)
-            paid_by_charge = self._paid_cents_by_charge(session, student_id)
             charges = (
                 session.query(Charge)
                 .options(joinedload(Charge.adjustments))
@@ -348,30 +324,22 @@ class PaymentService:
                 .order_by(Charge.year, Charge.month, Charge.id)
                 .all()
             )
-            remaining = amount_cents
-            lines: list[PreviewLine] = []
-            for charge in charges:
-                if remaining <= 0:
-                    break
-                unpaid = max(
-                    net_cents(charge, list(charge.adjustments))
-                    - paid_by_charge.get(charge.id, 0),
-                    0,
+            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
+            applied_by_charge, credit = plan_application(
+                charges, paid_by_charge, amount_cents
+            )
+            lines = [
+                PreviewLine(
+                    period_label=period_label(charge.month, charge.year),
+                    applied_cents=applied_by_charge[charge.id],
                 )
-                if unpaid <= 0:
-                    continue
-                applied = min(unpaid, remaining)
-                lines.append(
-                    PreviewLine(
-                        period_label=period_label(charge.month, charge.year),
-                        applied_cents=applied,
-                    )
-                )
-                remaining -= applied
+                for charge in charges
+                if charge.id in applied_by_charge
+            ]
         return ApplicationPreview(
             lines=lines,
-            applied_cents=sum(line.applied_cents for line in lines),
-            credit_cents=remaining,
+            applied_cents=sum(applied_by_charge.values()),
+            credit_cents=credit,
         )
 
     def get_payment(self, payment_id: int) -> Payment:
@@ -400,7 +368,6 @@ class PaymentService:
         """
         with self._session() as session:
             student = self._get_student(session, student_id)
-            paid_by_charge = self._paid_cents_by_charge(session, student_id)
             charges = (
                 session.query(Charge)
                 .options(joinedload(Charge.adjustments))
@@ -408,6 +375,7 @@ class PaymentService:
                 .order_by(Charge.year.desc(), Charge.month.desc(), Charge.id.desc())
                 .all()
             )
+            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
             account_charges: list[AccountCharge] = []
             for charge in charges:
                 line = to_charge_line(charge)

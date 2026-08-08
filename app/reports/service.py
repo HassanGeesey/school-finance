@@ -45,11 +45,11 @@ from ..models import (
     Expense,
     FeeItem,
     Payment,
-    PaymentAllocation,
     Student,
     StudentStatus,
 )
 from ..money import Money
+from ..payments.planner import paid_cents_by_charge
 from ..payments.service import PAYMENT_METHOD_LABELS
 
 
@@ -490,7 +490,7 @@ class ReportService:
             if class_id is not None:
                 query = query.filter(Charge.student.has(Student.class_id == class_id))
             charges = query.all()
-            paid_by_charge = self._paid_cents_by_charge(
+            paid_by_charge = paid_cents_by_charge(
                 session, [charge.id for charge in charges]
             )
 
@@ -530,23 +530,6 @@ class ReportService:
             outstanding_cents=charged_cents - collected_cents,
             lines=lines,
         )
-
-    @staticmethod
-    def _paid_cents_by_charge(
-        session: Session, charge_ids: list[int]
-    ) -> dict[int, int]:
-        if not charge_ids:
-            return {}
-        rows = (
-            session.query(
-                PaymentAllocation.charge_id,
-                func.sum(PaymentAllocation.amount_cents),
-            )
-            .filter(PaymentAllocation.charge_id.in_(charge_ids))
-            .group_by(PaymentAllocation.charge_id)
-            .all()
-        )
-        return {charge_id: int(total) for charge_id, total in rows}
 
     # -- Student status rows (the /students page paid column) -----------------
 
@@ -589,7 +572,7 @@ class ReportService:
                 )
                 .all()
             )
-            paid_by_charge = self._paid_cents_by_charge(session, [c.id for c in charges])
+            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
         paid_map: dict[int, tuple[str, int]] = {}
         for charge in charges:
             net = net_cents(charge, list(charge.adjustments))

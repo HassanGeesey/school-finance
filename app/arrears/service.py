@@ -37,8 +37,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..db import Database
 from ..fees.service import net_cents, period_label
-from ..models import Charge, Credit, PaymentAllocation, Student
+from ..models import Charge, Credit, Student
 from ..money import Money
+from ..payments.planner import paid_cents_by_charge
 
 LATE_THRESHOLD_DAYS = 30
 OVERDUE_THRESHOLD_DAYS = 60
@@ -97,18 +98,6 @@ class ArrearsService:
         return self._db.session()
 
     @staticmethod
-    def _paid_cents_by_charge(session: Session) -> dict[int, int]:
-        """Total amount cleared per charge, across every payment."""
-        rows = (
-            session.query(
-                PaymentAllocation.charge_id, func.sum(PaymentAllocation.amount_cents)
-            )
-            .group_by(PaymentAllocation.charge_id)
-            .all()
-        )
-        return {charge_id: int(total) for charge_id, total in rows}
-
-    @staticmethod
     def _credits_by_student(session: Session) -> dict[int, int]:
         """Total credit held per student."""
         rows = (
@@ -137,7 +126,7 @@ class ArrearsService:
                 )
                 .all()
             )
-            paid_by_charge = self._paid_cents_by_charge(session)
+            paid_by_charge = paid_cents_by_charge(session)
             credits_by_student = self._credits_by_student(session)
 
         by_student: dict[int, tuple[Student, int, tuple[int, int]]] = {}
