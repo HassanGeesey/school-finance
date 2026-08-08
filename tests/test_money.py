@@ -4,7 +4,15 @@ from decimal import Decimal
 
 import pytest
 
-from app.money import cents_from_decimal, cents_from_string, format_cents, to_cents
+from app.money import (
+    InvalidAmount,
+    NonPositiveAmount,
+    cents_from_decimal,
+    cents_from_string,
+    format_cents,
+    parse_positive_cents,
+    to_cents,
+)
 
 
 def test_cents_from_string_parses_plain_amounts():
@@ -47,3 +55,39 @@ def test_format_cents_formats_usd():
     assert format_cents(10000) == "$100.00"
     assert format_cents(0) == "$0.00"
     assert format_cents(-1250) == "-$12.50"
+
+
+def test_parse_positive_cents_accepts_positive_amounts():
+    assert parse_positive_cents("5.00") == 500
+    assert parse_positive_cents(Decimal("5.00")) == 500
+    assert parse_positive_cents(12.5) == 1250
+    assert parse_positive_cents(500) == 500
+
+
+def test_parse_positive_cents_rejects_unparsable_input():
+    with pytest.raises(InvalidAmount):
+        parse_positive_cents("not-a-number")
+    with pytest.raises(InvalidAmount):
+        parse_positive_cents(None)
+
+
+def test_parse_positive_cents_rejects_non_finite_amounts():
+    with pytest.raises(InvalidAmount):
+        parse_positive_cents("Infinity")
+    with pytest.raises(InvalidAmount):
+        parse_positive_cents(float("inf"))
+    with pytest.raises(InvalidAmount):
+        parse_positive_cents("NaN")
+    with pytest.raises(InvalidAmount):
+        parse_positive_cents(True)
+
+
+def test_parse_positive_cents_rejects_non_positive_amounts():
+    with pytest.raises(NonPositiveAmount):
+        parse_positive_cents("0")
+    with pytest.raises(NonPositiveAmount):
+        parse_positive_cents("0.004")
+    with pytest.raises(NonPositiveAmount):
+        parse_positive_cents("-5.00")
+    with pytest.raises(NonPositiveAmount):
+        parse_positive_cents(0)

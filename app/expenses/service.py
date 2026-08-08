@@ -32,7 +32,13 @@ from sqlalchemy.orm import Session, joinedload
 from ..audit.service import AuditActions, AuditService
 from ..db import Database
 from ..models import Expense, ExpenseCategory, PaymentMethods, User
-from ..money import AmountInput, Money, format_cents, to_cents
+from ..money import (
+    InvalidAmount,
+    Money,
+    NonPositiveAmount,
+    format_cents,
+    parse_positive_cents,
+)
 
 EXPENSE_METHOD_LABELS = {
     PaymentMethods.CASH: "Cash",
@@ -85,12 +91,11 @@ class ExpenseService:
     @staticmethod
     def _validate_amount(amount: object) -> int:
         try:
-            cents = to_cents(amount)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+            return parse_positive_cents(amount)  # type: ignore[arg-type]
+        except InvalidAmount:
             raise ExpenseError("Enter a valid amount.") from None
-        if cents <= 0:
-            raise ExpenseError("Amount must be greater than zero.")
-        return cents
+        except NonPositiveAmount:
+            raise ExpenseError("Amount must be greater than zero.") from None
 
     @staticmethod
     def _validate_method(method: str) -> str:

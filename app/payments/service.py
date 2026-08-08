@@ -51,7 +51,13 @@ from ..models import (
     Student,
     User,
 )
-from ..money import Money, format_cents, to_cents
+from ..money import (
+    InvalidAmount,
+    Money,
+    NonPositiveAmount,
+    format_cents,
+    parse_positive_cents,
+)
 from ..students.service import StudentNotFound
 
 PAYMENT_METHOD_LABELS = {
@@ -194,12 +200,11 @@ class PaymentService:
     @staticmethod
     def _validate_amount(amount: object) -> int:
         try:
-            cents = to_cents(amount)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+            return parse_positive_cents(amount)  # type: ignore[arg-type]
+        except InvalidAmount:
             raise PaymentError("Enter a valid amount.") from None
-        if cents <= 0:
-            raise PaymentError("Amount must be greater than zero.")
-        return cents
+        except NonPositiveAmount:
+            raise PaymentError("Amount must be greater than zero.") from None
 
     @staticmethod
     def _validate_method(method: str) -> str:

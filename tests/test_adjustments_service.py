@@ -246,6 +246,20 @@ def test_adjustment_rejects_a_bad_amount(adjustments, fees, classes, students, a
         adjustments.add_extra(user=admin, charge_id=charge.id, label="Lunch", amount="not-money")
 
 
+def test_adjustment_translates_the_shared_amount_rule(
+    adjustments, fees, classes, students, admin, session
+):
+    _, student_id = make_billed_student(fees, classes, students, admin)
+    charge = first_charge(session, student_id)
+
+    with pytest.raises(AdjustmentError, match="Enter a valid amount"):
+        adjustments.add_extra(user=admin, charge_id=charge.id, label="Lunch", amount="not-money")
+    with pytest.raises(AdjustmentError, match="greater than zero"):
+        adjustments.add_extra(user=admin, charge_id=charge.id, label="Lunch", amount="0")
+    with pytest.raises(AdjustmentError, match="greater than zero"):
+        adjustments.apply_waiver(user=admin, charge_id=charge.id, label="Oops", amount="-5.00")
+
+
 def test_adjusting_a_missing_charge_raises(adjustments, admin):
     with pytest.raises(AdjustmentError):
         adjustments.add_extra(user=admin, charge_id=999, label="Lunch", amount="5.00")

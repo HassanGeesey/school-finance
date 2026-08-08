@@ -55,7 +55,13 @@ from ..models import (
     StudentStatus,
     User,
 )
-from ..money import Money, format_cents, to_cents
+from ..money import (
+    InvalidAmount,
+    Money,
+    NonPositiveAmount,
+    format_cents,
+    parse_positive_cents,
+)
 
 MONTH_NAMES = [
     "January",
@@ -519,12 +525,11 @@ class AdjustmentsService:
     @staticmethod
     def _validate_amount(amount: object) -> int:
         try:
-            cents = to_cents(amount)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+            return parse_positive_cents(amount)  # type: ignore[arg-type]
+        except InvalidAmount:
             raise AdjustmentError("Enter a valid amount.") from None
-        if cents <= 0:
-            raise AdjustmentError("Amount must be greater than zero.")
-        return cents
+        except NonPositiveAmount:
+            raise AdjustmentError("Amount must be greater than zero.") from None
 
     @staticmethod
     def _net_cents(charge: Charge, adjustments: list[Adjustment]) -> int:

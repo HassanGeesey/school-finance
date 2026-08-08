@@ -224,6 +224,21 @@ def test_record_expense_rejects_a_bad_amount(expenses, admin):
         )
 
 
+def test_record_expense_translates_the_shared_amount_rule(expenses, admin):
+    category = expenses.create_category(user=admin, name="Supplies")
+
+    with pytest.raises(ExpenseError, match="Enter a valid amount"):
+        expenses.record_expense(
+            user=admin, category_id=category.id, description="Chalk",
+            amount="not-money", method="cash", occurred_on=date(2026, 8, 6),
+        )
+    with pytest.raises(ExpenseError, match="greater than zero"):
+        expenses.record_expense(
+            user=admin, category_id=category.id, description="Chalk",
+            amount="0", method="cash", occurred_on=date(2026, 8, 6),
+        )
+
+
 def test_record_expense_rejects_an_unknown_method(expenses, admin):
     category = expenses.create_category(user=admin, name="Supplies")
 

@@ -26,7 +26,14 @@ from sqlalchemy.orm import Session
 from ..audit.service import AuditActions, AuditService
 from ..db import Database
 from ..models import Class, ClassStatus, FeeItem, User
-from ..money import AmountInput, Money, format_cents, to_cents
+from ..money import (
+    AmountInput,
+    InvalidAmount,
+    Money,
+    NonPositiveAmount,
+    format_cents,
+    parse_positive_cents,
+)
 
 CLASS_STATUS_LABELS = {
     ClassStatus.ACTIVE: "Active",
@@ -99,12 +106,11 @@ class ClassService:
     @staticmethod
     def _validate_amount(amount: AmountInput) -> int:
         try:
-            cents = to_cents(amount)
-        except (TypeError, ValueError):
+            return parse_positive_cents(amount)
+        except InvalidAmount:
             raise ClassError("Enter a valid amount.") from None
-        if cents <= 0:
-            raise ClassError("Amount must be greater than zero.")
-        return cents
+        except NonPositiveAmount:
+            raise ClassError("Amount must be greater than zero.") from None
 
     def create_class(
         self,

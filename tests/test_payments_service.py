@@ -287,6 +287,30 @@ def test_a_payment_rejects_a_bad_amount(payments, fees, classes, students, admin
         )
 
 
+def test_a_payment_translates_the_shared_amount_rule(
+    payments, fees, classes, students, admin
+):
+    student_id, _ = make_billed_student(fees, classes, students, admin)
+
+    with pytest.raises(PaymentError, match="Enter a valid amount"):
+        payments.record_payment(
+            user=admin, student_id=student_id, amount="not-money", method="cash", paid_on=date(2026, 8, 6)
+        )
+    with pytest.raises(PaymentError, match="greater than zero"):
+        payments.record_payment(
+            user=admin, student_id=student_id, amount="0", method="cash", paid_on=date(2026, 8, 6)
+        )
+
+
+def test_a_preview_translates_the_shared_amount_rule(payments, fees, classes, students, admin):
+    student_id, _ = make_billed_student(fees, classes, students, admin)
+
+    with pytest.raises(PaymentError, match="Enter a valid amount"):
+        payments.preview_application(student_id, "not-money")
+    with pytest.raises(PaymentError, match="greater than zero"):
+        payments.preview_application(student_id, "0")
+
+
 def test_a_payment_rejects_an_unknown_method(payments, fees, classes, students, admin):
     student_id, _ = make_billed_student(fees, classes, students, admin)
 

@@ -15,6 +15,18 @@ Money = int
 AmountInput = Union[str, Decimal, int, float]
 
 
+class AmountError(ValueError):
+    """An incoming amount was rejected: unparsable, or not strictly positive."""
+
+
+class InvalidAmount(AmountError):
+    """The input could not be parsed as a dollar amount."""
+
+
+class NonPositiveAmount(AmountError):
+    """The input parsed to zero or fewer cents; only positive amounts are allowed."""
+
+
 def cents_from_decimal(value: Decimal) -> Money:
     """Convert a Decimal dollar amount to integer cents (half-up rounding)."""
     return int((value * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -43,6 +55,27 @@ def to_cents(value: AmountInput) -> Money:
     if isinstance(value, float):
         return cents_from_decimal(Decimal(repr(value)))
     return int(value)
+
+
+def parse_positive_cents(value: AmountInput) -> Money:
+    """Coerce an amount to positive integer cents, or reject it.
+
+    The single validation rule for incoming amounts: the value must parse as a
+    dollar amount (decimal string, Decimal, float, or int) and round to a
+    strictly positive number of cents (half-up). Unparsable input raises
+    :class:`InvalidAmount`; zero or negative amounts raise
+    :class:`NonPositiveAmount`. Services translate these into their own domain
+    errors, so no feature re-implements the positivity check.
+    """
+    try:
+        if isinstance(value, bool):
+            raise InvalidAmount(f"Not a valid amount: {value!r}")
+        cents = to_cents(value)
+    except (ArithmeticError, TypeError, ValueError):
+        raise InvalidAmount(f"Not a valid amount: {value!r}") from None
+    if cents <= 0:
+        raise NonPositiveAmount("Amount must be greater than zero.")
+    return cents
 
 
 def format_cents(cents: Money) -> str:

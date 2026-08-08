@@ -244,6 +244,17 @@ def test_add_fee_item_requires_a_positive_amount(classes, admin):
         classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="not-a-number")
 
 
+def test_add_fee_item_translates_the_shared_amount_rule(classes, admin):
+    cls = classes.create_class(user=admin, name="Grade 1")
+
+    with pytest.raises(ClassError, match="Enter a valid amount"):
+        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="not-a-number")
+    with pytest.raises(ClassError, match="greater than zero"):
+        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="0")
+    with pytest.raises(ClassError, match="greater than zero"):
+        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="-5.00")
+
+
 def test_add_fee_item_rejects_a_duplicate_name_in_the_class(classes, admin, session):
     cls = classes.create_class(user=admin, name="Grade 1")
     classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
