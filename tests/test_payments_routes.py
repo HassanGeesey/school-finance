@@ -111,7 +111,7 @@ def test_payments_page_requires_login(client):
     assert response.headers["location"].startswith("/login")
 
 
-def test_payments_page_lists_students_with_balances(client):
+def test_payments_page_shows_the_selected_students_live_balance(client):
     authenticated_admin(client)
     sid = make_billed_student(client)
 
@@ -120,7 +120,7 @@ def test_payments_page_lists_students_with_balances(client):
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
     assert "$50.00" in response.text  # live balance
-    assert "No payments yet" in response.text
+    assert "Owes $50.00" in response.text
 
 
 def test_payments_page_search_filters_students(client):
@@ -164,7 +164,7 @@ def test_record_form_shows_the_student_balance(client):
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
     assert "$50.00" in response.text
-    assert "Confirmation" in response.text
+    assert "Record payment" in response.text
 
 
 def test_payment_preview_shows_the_allocation_without_writing(client):
@@ -309,7 +309,7 @@ def test_a_finance_officer_can_record_a_payment(client):
     assert len(audit_entries(client)) == 1
 
 
-def test_recent_payments_show_on_the_index(client):
+def test_a_recorded_payment_reduces_the_balance_on_the_payments_page(client):
     authenticated_admin(client)
     sid = make_billed_student(client)
     client.post(
@@ -323,7 +323,7 @@ def test_recent_payments_show_on_the_index(client):
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
     assert "Cash" in response.text
-    assert "$10.00" in response.text
+    assert "$40.00" in response.text  # $50 owed minus the $10 payment
 
 
 # ---------------------------------------------------------------------------

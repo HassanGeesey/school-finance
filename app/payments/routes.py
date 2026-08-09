@@ -59,6 +59,23 @@ def _student(request: Request, student_id: int):
         raise HTTPException(status_code=404, detail="Student not found.") from None
 
 
+def _student_picker(request: Request, q: str) -> dict[str, object] | None:
+    """The first student matching ``q`` with their live balance/credit.
+
+    Returns None when nothing matches; the record screen treats that as "no
+    student selected".
+    """
+    students = _students(request).search_students(q)
+    if not students:
+        return None
+    account = _service(request).student_account(students[0].id)
+    return {
+        "student": students[0],
+        "balance_cents": account.balance_cents,
+        "credits_cents": account.credits_cents,
+    }
+
+
 def _record_context(
     request: Request,
     student_id: int,
@@ -87,17 +104,21 @@ def payments_page(
     q: str = "",
     _user: User = Depends(require_login),
 ) -> HTMLResponse:
-    """Payments page: search a student to record money in, plus recent payments."""
-    rows = _students(request).search_students(q)
-    recent = _service(request).list_recent_payments()
-    student_rows = [
-        {"student": student, "balance_cents": _service(request).student_balance(student.id)}
-        for student in rows
-    ]
+    """Payments page: prototype-style record screen.
+
+    A search narrows the picker to the first matching student, whose live
+    balance and credit are shown alongside the amount/method form and a
+    receipt preview.
+    """
     return _templates(request).TemplateResponse(
         request=request,
         name="payments/index.html",
-        context={"rows": student_rows, "q": q, "recent": recent},
+        context={
+            "selected": _student_picker(request, q),
+            "q": q,
+            "methods": PAYMENT_METHOD_LABELS,
+            "today": date.today().isoformat(),
+        },
     )
 
 
@@ -119,12 +140,15 @@ def payment_preview(
     request: Request,
     student_id: int = Query(...),
     amount: str = Query(""),
+    part: str = Query("list"),
     _user: User = Depends(require_login),
 ) -> HTMLResponse:
     """Live confirmation line for the record screen (htmx fragment).
 
     Shows which charges a payment of ``amount`` would clear (oldest unpaid
-    first) and how much would become a credit — nothing is written.
+    first) and how much would become a credit — nothing is written. With
+    ``part=clears`` it renders just the one-line strip total instead of the
+    full breakdown.
     """
     service = _service(request)
     try:
@@ -138,11 +162,67 @@ def payment_preview(
         error = ""
     return _templates(request).TemplateResponse(
         request=request,
-        name="payments/_preview.html",
+        name="payments/_clears.html" if part == "clears" else "payments/_preview.html",
         context={
             "preview": preview,
             "amount": amount,
             "error": error,
+        },
+    )
+
+
+@router.get("/payments/student-picker", response_class=HTMLResponse)
+def payment_student_picker(
+    request: Request,
+    q: str = "",
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    """Live student picker for the record screen (htmx fragment).
+
+    Returns just the summary card (and hidden ``student_id``) for the first
+    student matching ``q``, so typing in the search box can swap it without a
+    full page reload.
+    """
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="payments/_student_picker.html",
+        context={"selected": _student_picker(request, q), "q": q},
+    )
+
+
+@router.get("/payments/receipt-preview", response_class=HTMLResponse)
+def payment_receipt_preview(
+    request: Request,
+    student_id: int = Query(0),
+    amount: str = Query(""),
+    method: str = Query("cash"),
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    """Live receipt preview for the record screen (htmx fragment).
+
+    Shows how the printable receipt would look for the entered amount, method,
+    and picked student. Nothing is written.
+    """
+    student = None
+    if student_id:
+        try:
+            student = _students(request).get_student(student_id)
+        except StudentNotFound:
+            student = None
+    if method not in PAYMENT_METHOD_LABELS:
+        method = "cash"
+    try:
+        amount_cents = round(float(amount or "0") * 100)
+    except ValueError:
+        amount_cents = 0
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="payments/_receipt_preview.html",
+        context={
+            "student": student,
+            "amount_cents": amount_cents,
+            "method_label": PAYMENT_METHOD_LABELS[method],
+            "paid_on": date.today().isoformat(),
         },
     )
 

@@ -1,0 +1,13 @@
+{% set today_compact = paid_on.replace("-", "") %}
+<div style="border:1px dashed var(--rule);border-radius:6px;padding:20px;max-width:420px;margin:0 auto;text-align:center">
+  <div style="font-size:15px;font-weight:700">{{ school_name() }}</div>
+  <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">{{ school_contact() | join(" · ") }}</div>
+  <div style="border-top:1px solid var(--rule);margin:14px 0"></div>
+  <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)">Receipt #R-{{ today_compact }}</div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:12px"><span class="muted">Student</span><b>{{ student.full_name if student else "—" }}</b></div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px"><span class="muted">Amount</span><b class="num" style="font-size:18px">{{ money(amount_cents) if amount_cents else "—" }}</b></div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px"><span class="muted">Method</span><b>{{ method_label }}</b></div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px"><span class="muted">Date</span><b>{{ paid_on }}</b></div>
+  <div style="border-top:1px solid var(--rule);margin:16px 0 6px"></div>
+  <div style="font-size:11px;color:var(--ink-faint)">Thank you — received by {{ current_user().name }}</div>
+</div>
