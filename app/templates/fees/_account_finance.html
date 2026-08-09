@@ -5,25 +5,33 @@
 {% set is_admin = user is not none and user.role == "admin" %}
 
 {% set bal_tone = "error" if account.balance_cents > 0 else "success" if account.balance_cents < 0 else "neutral" %}
-{% set hero_style = {
-  "error": "border-error bg-error/10 text-error",
-  "success": "border-success bg-success/10 text-success",
-  "neutral": "border-base-300 bg-base-100 text-base-content",
-}[bal_tone] %}
 {% set hero_label = "Balance owed" if account.balance_cents > 0 else "Credit balance" if account.balance_cents < 0 else "Account up to date" %}
+{% set hero_value_class = {
+  "error": "text-error",
+  "success": "text-success",
+  "neutral": "",
+}[bal_tone] %}
+{% set hero_owed = account.balance_cents > 0 %}
 
 <div class="space-y-6">
-  <div class="rounded-box border p-6 {{ hero_style }}">
-    <div class="flex flex-wrap items-center justify-between gap-6">
-      <div>
-        <p class="text-sm font-medium opacity-70">{{ hero_label }}</p>
-        <p class="mt-2 text-4xl font-bold tracking-tight">{{ money(account.balance_cents) }}</p>
-        <p class="mt-1 text-xs opacity-60">Outstanding charges minus credits — extras, waivers, payments, and credit are all included.</p>
+  <div class="hero {{ 'owed' if hero_owed }}">
+    <div>
+      <div class="hero-label">{{ hero_label }}</div>
+      <div class="hero-amount num {{ hero_value_class }}">{{ money(account.balance_cents) }}</div>
+      <div class="hero-note">Outstanding charges minus credits — extras, waivers, payments, and credit are all included.</div>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <div class="rounded-lg border border-base-300 bg-base-100 px-4 py-2.5">
+        <div class="stat-label">Outstanding charges</div>
+        <div class="stat-value num" style="font-size:18px;color:var(--amber)">{{ money(account.outstanding_cents) }}</div>
       </div>
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {{ stat_card("Outstanding charges", money(account.outstanding_cents), "receipt-percent", "warning" if account.outstanding_cents > 0 else "neutral", hint="Unpaid charge net amounts.") }}
-        {{ stat_card("Credit held", money(account.credits_cents), "check-circle", "success" if account.credits_cents > 0 else "neutral", hint="Overpayments carried forward.") }}
-        {{ stat_card("Received", money(account.received_cents), "banknotes", "neutral", hint="Total payments recorded to date.") }}
+      <div class="rounded-lg border border-base-300 bg-base-100 px-4 py-2.5">
+        <div class="stat-label">Credit held</div>
+        <div class="stat-value num" style="font-size:18px">{{ money(account.credits_cents) }}</div>
+      </div>
+      <div class="rounded-lg border border-base-300 bg-base-100 px-4 py-2.5">
+        <div class="stat-label">Received</div>
+        <div class="stat-value num" style="font-size:18px;color:var(--green)">{{ money(account.received_cents) }}</div>
       </div>
     </div>
   </div>

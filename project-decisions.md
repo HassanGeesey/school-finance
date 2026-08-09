@@ -138,6 +138,22 @@ Grilling session log. Updated as decisions are made.
 | D-11 | Secure session cookie over HTTPS | **Set `Secure` flag when `request.is_secure`** (Traefik forwards `X-Forwarded-Proto`); localhost HTTP unaffected (recommended, accepted) |
 | D-12 | Brute-force login protection | **Out of scope now** (recommended, accepted) — PBKDF2-600k is the existing deterrent; note as a follow-up feature in deploy docs |
 
+## UI redesign grilling session
+
+| # | Question | Answer |
+|---|----------|--------|
+| R-1 | Who primarily uses the app day-to-day? | **School admin/secretary at one desk** — one person on the school's machine runs the whole finance flow (setup, fees, payments, expenses, arrears) |
+| R-2 | What does "simple, structured, easy to navigate" mean for this redesign? | **Reskin the existing structure** — keep the pages, routes, and navigation groups as-is; make the visual design cleaner, calmer, and more consistent |
+| R-3 | Binding visual constraints? | **Must stay light and professional** (it's school money data). No school-color or other brand commitments beyond the configurable name/logo |
+| R-4 | How to decide the direction? | **Prototype first** — user asked to see the design as a working prototype before committing to a direction |
+| R-5 | Workflow preference | **Prototype every time** — for every design change going forward, show a working prototype in the browser before building it for real |
+| R-6 | Chosen direction | **Office Noticeboard** — warm paper-white boards with hairline edges, pin tabs, grouped "board index" sidebar, school-ink blue accent, semantic green/amber/red only for money status. Full-screen prototype of the key screens approved next |
+| R-7 | Dashboard charts | **Real charts, not hand-drawn mockups** — use the app's own Chart.js: income-vs-expenses bar+line combo, arrears-by-age doughnut, expenses-by-category horizontal bar, plus a Recent expenses board |
+| R-8 | Accent color | User disliked the first navy-on-paper default. Prototype got a **live palette switcher** (accent Teal/Navy/Forest × ground Paper/Cool). **Final pick: Navy accent on Cool ground** — the user's favourite, now the prototype default |
+| R-9 | Page layout approval | User reviewed the live reskin and **approved the layout across pages** (Payments, Expenses, and the rest of the app) — the board/noticeboard structure stays as built |
+
+---
+
 ## Deployment outcome (live)
 
 - **Live at https://ict.hgeesey.store** — deployed 2026-08-07 via Dokploy compose service `school-finance` (project `school-finance`, production env), built from `HassanGeesey/school-finance` branch `master` at commit `09e284c`.

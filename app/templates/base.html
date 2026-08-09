@@ -12,20 +12,18 @@
   <script src="/static/js/chart.umd.min.js" defer></script>
   <script src="/static/js/ui.js" defer></script>
 </head>
-<body class="min-h-screen bg-base-200 text-base-content antialiased">
+<body class="min-h-screen bg-base-200 antialiased">
 {% block layout %}
 {% set user = current_user() %}
 {% set path = request.url.path %}
 {% macro nav_item(href, label, icon_name, active) %}
-<a href="{{ href }}"
-   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {{ 'bg-primary/10 font-semibold text-primary' if active else 'text-base-content/70 hover:bg-base-200 hover:text-base-content' }}">
-  {{ icon(icon_name, "h-5 w-5 shrink-0") }}
+<a href="{{ href }}" class="nav-link {{ 'active' if active else '' }}">
+  {{ icon(icon_name, "h-[17px] w-[17px] shrink-0") }}
   {{ label }}
 </a>
 {% endmacro %}
 {% macro nav_placeholder(label, icon_name, title) %}
-<span title="{{ title }}" aria-disabled="true"
-      class="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm text-base-content/35">
+<span title="{{ title }}" aria-disabled="true" class="flex cursor-not-allowed items-center gap-3 px-3 py-2 text-sm text-base-content/35">
   {{ icon(icon_name, "h-5 w-5 shrink-0") }}
   <span class="flex-1">{{ label }}</span>
   <span class="badge badge-ghost badge-xs">Soon</span>
@@ -33,9 +31,9 @@
 {% endmacro %}
 
 <div class="flex min-h-screen">
-  <aside id="app-sidebar" class="no-print fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col border-r border-base-300 bg-base-100 lg:static lg:translate-x-0">
-    <div class="flex h-16 shrink-0 items-center gap-3 border-b border-base-300 px-4">
-      <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-base-200 p-1 text-primary">
+  <aside id="app-sidebar" class="no-print fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col lg:static lg:translate-x-0">
+    <div class="index-brand flex h-16 shrink-0 items-center gap-3 px-4">
+      <span class="index-logo inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden p-1">
         {% if logo_url() %}
         <img src="{{ logo_url() }}" alt="School logo" class="h-full w-full rounded object-contain">
         {% else %}
@@ -43,52 +41,52 @@
         {% endif %}
       </span>
       <div class="min-w-0">
-        <p class="truncate text-sm font-bold leading-tight">{{ school_name() }}</p>
-        <p class="text-xs text-base-content/50">School finance</p>
+        <p class="index-brand-name truncate">{{ school_name() }}</p>
+        <p class="index-brand-sub">School finance</p>
       </div>
     </div>
 
-    <nav class="flex-1 overflow-y-auto px-3 pb-4">
-      <p class="mt-4 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">School</p>
-      <div class="mt-1 space-y-1">
+    <nav class="index-nav px-3 pb-4">
+      <p class="nav-group-label mt-4 px-3">School</p>
+      <div class="mt-1">
         {{ nav_item("/", "Dashboard", "home", path == "/") }}
         {{ nav_item("/classes", "Classes", "rectangle-stack", path.startswith("/classes")) }}
         {{ nav_item("/students", "Students", "user-group", path.startswith("/students")) }}
       </div>
 
-      <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">Finance</p>
-      <div class="mt-1 space-y-1">
+      <p class="nav-group-label mt-5 px-3">Finance</p>
+      <div class="mt-1">
         {{ nav_item("/fees", "Fee generation", "academic-cap", path.startswith("/fees")) }}
         {{ nav_item("/payments", "Payments", "receipt-percent", path.startswith("/payments")) }}
         {{ nav_item("/expenses", "Expenses", "banknotes", path.startswith("/expenses")) }}
       </div>
 
-      <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">Reports</p>
-      <div class="mt-1 space-y-1">
+      <p class="nav-group-label mt-5 px-3">Reports</p>
+      <div class="mt-1">
         {{ nav_item("/arrears", "Arrears", "exclamation-triangle", path.startswith("/arrears")) }}
         {{ nav_item("/reports", "Reports", "chart-bar", path.startswith("/reports")) }}
       </div>
 
       {% if user and user.role == "admin" %}
-      <p class="mt-5 px-3 text-xs font-semibold uppercase tracking-wider text-base-content/40">System</p>
-      <div class="mt-1 space-y-1">
+      <p class="nav-group-label mt-5 px-3">System</p>
+      <div class="mt-1">
         {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
         {{ nav_item("/admin", "Settings", "cog-6-tooth", path == "/admin") }}
       </div>
       {% endif %}
     </nav>
 
-    <p class="shrink-0 border-t border-base-300 px-4 py-3 text-xs text-base-content/40">v{{ app_version }}</p>
+    <p class="index-foot shrink-0 px-4 py-3">v{{ app_version }}</p>
   </aside>
 
   <div id="sidebar-backdrop" class="no-print fixed inset-0 z-30 hidden bg-slate-900/40"></div>
 
   <div class="flex min-h-screen min-w-0 flex-1 flex-col">
-    <header class="no-print sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-base-300 bg-base-100/90 px-4 backdrop-blur sm:px-6">
+    <header id="app-topbar" class="no-print sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 px-4 sm:px-6">
       <button id="sidebar-toggle" type="button" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="Toggle navigation">
         {{ icon("menu", "h-5 w-5") }}
       </button>
-      <p class="min-w-0 flex-1 truncate text-sm font-semibold">{% block topbar_title %}{{ app_name }}{% endblock %}</p>
+      <p class="topbar-title min-w-0 flex-1 truncate">{% block topbar_title %}{{ app_name }}{% endblock %}</p>
       <form method="get" action="/students" class="hidden md:block">
         <label class="relative block">
           <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-base-content/40">{{ icon("magnifying-glass", "h-4 w-4") }}</span>
@@ -97,15 +95,15 @@
       </form>
       {% if user %}
       <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-base-200">
-          <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-content">{{ user.name[:1] | upper }}</span>
+        <div tabindex="0" role="button" class="user">
+          <span class="user-avatar inline-flex h-8 w-8 items-center justify-center text-sm">{{ user.name[:1] | upper }}</span>
           <span class="hidden text-left sm:block">
-            <span class="block text-sm font-medium leading-tight">{{ user.name }}</span>
-            <span class="block text-xs leading-tight text-base-content/50">{{ role_label(user.role) }}</span>
+            <span class="user-name block">{{ user.name }}</span>
+            <span class="user-role block">{{ role_label(user.role) }}</span>
           </span>
           {{ icon("chevron-down", "h-4 w-4 text-base-content/40") }}
         </div>
-        <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-48 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+        <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-48 p-1 shadow-lg">
           {% if user.role == "admin" %}
           <li><a href="/admin">{{ icon("cog-6-tooth", "h-4 w-4") }} Settings</a></li>
           {% endif %}
@@ -120,7 +118,9 @@
     </header>
 
     <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-      {% block content %}{% endblock %}
+      <div class="mx-auto w-full max-w-[1180px]">
+        {% block content %}{% endblock %}
+      </div>
     </main>
 
     <footer class="no-print px-6 py-6 text-sm text-base-content/40">

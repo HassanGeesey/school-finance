@@ -1,4 +1,5 @@
 {% from "components/ui.html" import card, btn, alert, empty_state %}
+{% from "components/icons.html" import icon %}
 
 {% if msg %}
 <div class="mb-4">{{ alert("success", msg) }}</div>
@@ -10,10 +11,10 @@
 {% if class_options %}
 {% call card(title="Generate monthly fees", subtitle="One bill per active student, itemized from the class fee structure and snapshotted at generation time.") %}
   <form id="fee-form">
-    <div class="grid gap-4 sm:grid-cols-3">
+    <div class="frow">
       <div>
-        <label for="fee-class" class="label"><span class="label-text">Class</span></label>
-        <select id="fee-class" name="class_id" class="select w-full">
+        <label for="fee-class" class="label-t">Class</label>
+        <select id="fee-class" name="class_id" class="select">
           <option value="" {% if selected_class_id == "" %}selected{% endif %}>All classes</option>
           {% for value, label in class_options %}
           <option value="{{ value }}" {% if selected_class_id == value %}selected{% endif %}>{{ label }}</option>
@@ -21,25 +22,26 @@
         </select>
       </div>
       <div>
-        <label for="fee-month" class="label"><span class="label-text">Month</span></label>
-        <select id="fee-month" name="month" class="select w-full">
+        <label for="fee-month" class="label-t">Month</label>
+        <select id="fee-month" name="month" class="select">
           {% for value, label in months %}
           <option value="{{ value }}" {% if (month if month is not none else default_month) == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label for="fee-year" class="label"><span class="label-text">Year</span></label>
-        <select id="fee-year" name="year" class="select w-full">
+        <label for="fee-year" class="label-t">Year</label>
+        <select id="fee-year" name="year" class="select">
           {% for value in years %}
           <option value="{{ value }}" {% if (year if year is not none else default_year) == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
         </select>
       </div>
-    </div>
-    <div class="mt-6 flex items-center gap-3">
       {{ btn(label="Review and generate", icon="receipt-percent", variant="primary", type="button", attrs='hx-post="/fees/preview" hx-target="#fee-preview-modal-container" hx-swap="innerHTML"') }}
-      <p class="text-xs text-base-content/60">You'll confirm the breakdown before anything is billed.</p>
+    </div>
+    <div class="notice">
+      {{ icon("information-circle", "h-4 w-4 shrink-0") }}
+      <div><b>Preview first</b> — the per-class breakdown is snapshotted now, so later fee-structure edits never rewrite already-billed months. Nothing is billed until you confirm.</div>
     </div>
   </form>
 {% endcall %}

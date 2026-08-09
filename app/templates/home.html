@@ -98,15 +98,15 @@
       data: {
         labels: {{ chart_labels | tojson }},
         datasets: [
-          { label: "Income", data: {{ chart_income | tojson }}, backgroundColor: "rgba(16,185,129,0.75)", borderRadius: 4 },
-          { label: "Expenses", data: {{ chart_expenses | tojson }}, backgroundColor: "rgba(239,68,68,0.75)", borderRadius: 4 }
+          { label: "Income", data: {{ chart_income | tojson }}, backgroundColor: "#1e7d4b", borderRadius: 5, barPercentage: 0.55 },
+          { label: "Expenses", data: {{ chart_expenses | tojson }}, type: "line", borderColor: "#b23a2e", backgroundColor: "#b23a2e", borderWidth: 2.2, pointRadius: 3, tension: 0.32 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: { y: { ticks: { callback: moneyTick } } },
-        plugins: { legend: { position: "bottom" } }
+        plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 8 } } }
       }
     });
 
@@ -114,12 +114,13 @@
       type: "doughnut",
       data: {
         labels: {{ chart_bands | map(attribute="label") | list | tojson }},
-        datasets: [{ data: {{ chart_bands | map(attribute="count") | list | tojson }}, backgroundColor: ["rgba(16,185,129,0.8)", "rgba(245,158,11,0.8)", "rgba(239,68,68,0.8)"] }]
+        datasets: [{ data: {{ chart_bands | map(attribute="count") | list | tojson }}, backgroundColor: ["#1e7d4b", "#b57f14", "#b23a2e"], borderWidth: 0, hoverOffset: 6 }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: "bottom" } }
+        cutout: "62%",
+        plugins: { legend: { position: "right", labels: { usePointStyle: true, boxWidth: 8 } } }
       }
     });
 
@@ -127,7 +128,7 @@
       type: "bar",
       data: {
         labels: {{ chart_category_labels | tojson }},
-        datasets: [{ label: "Total spent", data: {{ chart_category_values | tojson }}, backgroundColor: "rgba(59,130,246,0.75)", borderRadius: 4 }]
+        datasets: [{ label: "Total spent", data: {{ chart_category_values | tojson }}, backgroundColor: "#2b5f8a", borderRadius: 5, barPercentage: 0.58 }]
       },
       options: {
         indexAxis: "y",

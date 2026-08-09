@@ -14,7 +14,7 @@
   <div>
     <a href="/classes" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All classes</a>
     <div class="mt-2">
-      {{ page_header(cls.name, "Monthly fee per student: " ~ money(monthly_total_cents) ~ " (" ~ (items | length) ~ " item" ~ ("s" if items | length != 1 else "") ~ ")", actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
+      {{ page_header(cls.name ~ " " ~ class_status_badge(cls.status), "Monthly fee per student: " ~ money(monthly_total_cents) ~ " (" ~ (items | length) ~ " item" ~ ("s" if items | length != 1 else "") ~ ")", actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
     </div>
   </div>
 

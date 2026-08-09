@@ -18,6 +18,11 @@
     {{ stat_card("Over 60 days", overdue_count, "exclamation-triangle", "warning", overdue_count ~ " student" ~ ("s" if overdue_count != 1 else "") ~ " with debt older than 60 days") }}
   </div>
 
+  <div class="notice">
+    {{ icon("information-circle", "h-4 w-4 shrink-0") }}
+    <div>Arrears are colored by age — <span class="badge badge-warning badge-sm">amber</span> for 30–60 days, <span class="badge badge-error badge-sm">red</span> for over 60 days.</div>
+  </div>
+
   {% call card(title="Outstanding balances", subtitle="Sorted by oldest debt first — the accounts that need chasing first are on top.") %}
     {% call table_scroll() %}
       <table class="table">
