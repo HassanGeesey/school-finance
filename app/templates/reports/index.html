@@ -7,18 +7,21 @@
 
 {% block content %}
 <div class="space-y-6">
-  {{ page_header("Reports", "Five report surfaces, every one exportable to CSV.") }}
+  {{ page_header("Reports", "Income, expenses, paid students, and summaries — each with CSV export.") }}
 
   <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for report in reports %}
-    <a href="{{ report.href }}"
-       class="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-base-200/60">
-      <span class="inline-flex h-10 w-10 items-center justify-center rounded-box bg-primary/10 text-primary">{{ icon(report.icon, "w-5 h-5") }}</span>
-      <h2 class="mt-4 text-base font-semibold text-base-content">{{ report.title }}</h2>
-      <p class="mt-1 text-sm text-base-content/60">{{ report.description }}</p>
-      <p class="mt-4 flex items-center gap-1 text-sm font-medium text-primary">
-        {{ icon("arrow-right", "w-4 h-4") }} Open report
-      </p>
+    <a href="{{ report.href }}" class="stat stat-card">
+      <div class="flex items-start justify-between gap-3">
+        <div class="stat-label">{{ report.title }}</div>
+        {% if report.icon %}
+        <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-base-200 text-base-content/50">{{ icon(report.icon, "h-4 w-4") }}</span>
+        {% endif %}
+      </div>
+      <div class="stat-value num">{{ report.description }}</div>
+      <div class="stat-hint">
+        {{ icon("arrow-right", "h-3.5 w-3.5") }} Open report
+      </div>
     </a>
     {% endfor %}
   </div>

@@ -14,7 +14,7 @@
   <div>
     <a href="/classes" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All classes</a>
     <div class="mt-2">
-      {{ page_header(cls.name, "Monthly fee per student: " ~ money(monthly_total_cents) ~ " (" ~ (items | length) ~ " item" ~ ("s" if items | length != 1 else "") ~ ")", actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
+      {{ page_header(cls.name ~ " " ~ class_status_badge(cls.status), "Monthly fee per student: " ~ money(monthly_total_cents) ~ " (" ~ (items | length) ~ " item" ~ ("s" if items | length != 1 else "") ~ ")", actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
     </div>
   </div>
 
@@ -51,7 +51,7 @@
   </form>
   {% endif %}
 
-  {% call card(title="Students", subtitle=(students | length) ~ " student" ~ ("s" if students | length != 1 else "") ~ " in this class. Archived students stay on the register with their history; they are never deleted.", actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) %}
+  {% call card(title="Students", subtitle=(students | length) ~ " student" ~ ("s" if students | length != 1 else "") ~ " in this class. Archived students stay on the register with their history; they are never deleted.", actions=((btn(label="Add student", icon="plus", variant="primary", size="sm", type="button", attrs='onclick="document.getElementById(\'add-student-modal\').showModal()"') ~ " " ~ btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm")) if is_admin else "")) %}
     {% call table_scroll() %}
       <table class="table">
         <thead>
@@ -63,32 +63,33 @@
         </thead>
         <tbody>
           {% for student in students %}
-          <tr>
+          <tr data-row-href="/students/{{ student.id }}/account" class="cursor-pointer hover:bg-base-200/60">
             <td class="font-medium text-base-content">
-              <a href="/students/{{ student.id }}/account" class="link link-primary">{{ student.full_name }}</a>
-              {% if is_admin %}
-              <a href="/students/{{ student.id }}/edit" class="ml-2 text-xs text-base-content/40 hover:text-primary">{{ icon("pencil-square", "h-3.5 w-3.5 inline") }} Edit</a>
-              {% endif %}
+              <a href="/students/{{ student.id }}/account" class="sr-only">{{ student.full_name }}</a>
+              {{ student.full_name }}
             </td>
             <td>{{ student_status_badge(student.status) }}</td>
             {% if is_admin %}
-            <td class="text-right">
-              {% if student.status == "active" %}
-              <form method="post" action="/students/{{ student.id }}/archive">
-                <button type="submit" data-confirm="Archive {{ student.full_name }}? History and any outstanding charges stay." class="btn btn-ghost btn-xs text-error">{{ icon("archive-box", "h-4 w-4") }} Archive</button>
-              </form>
-              {% else %}
-              <form method="post" action="/students/{{ student.id }}/restore">
-                <button type="submit" class="btn btn-ghost btn-xs text-success">{{ icon("arrow-path", "h-4 w-4") }} Restore</button>
-              </form>
-              {% endif %}
+            <td class="text-right whitespace-nowrap">
+              <div class="inline-flex items-center gap-1">
+                <a href="/students/{{ student.id }}/edit" class="btn btn-ghost btn-xs">{{ icon("pencil-square", "h-4 w-4") }} Edit</a>
+                {% if student.status == "active" %}
+                <form method="post" action="/students/{{ student.id }}/archive">
+                  <button type="submit" data-confirm="Archive {{ student.full_name }}? History and any outstanding charges stay." class="btn btn-ghost btn-xs text-error">{{ icon("archive-box", "h-4 w-4") }} Archive</button>
+                </form>
+                {% else %}
+                <form method="post" action="/students/{{ student.id }}/restore">
+                  <button type="submit" class="btn btn-ghost btn-xs text-success">{{ icon("arrow-path", "h-4 w-4") }} Restore</button>
+                </form>
+                {% endif %}
+              </div>
             </td>
             {% endif %}
           </tr>
           {% else %}
           <tr>
             <td colspan="{{ 3 if is_admin else 2 }}">
-              {{ empty_state("No students yet", ("Add the first one below." if is_admin else "Students are added by an admin."), "user-group") }}
+              {{ empty_state("No students yet", ("Use the Add student button to add the first one." if is_admin else "Students are added by an admin."), "user-group") }}
             </td>
           </tr>
           {% endfor %}
@@ -97,7 +98,6 @@
     {% endcall %}
   {% endcall %}
 
-  <div class="grid gap-6 lg:grid-cols-2">
   {% call card(title="Fee structure", subtitle="Itemized monthly charges billed to each student when fees are generated. Editing the structure never rewrites already-generated bills.") %}
     {% if is_admin %}
     {% for item in items %}
@@ -165,19 +165,24 @@
     {% endif %}
   {% endcall %}
 
-    {% if is_admin %}
-    <form method="post" action="/classes/{{ cls.id }}/students" class="rounded-box border border-dashed border-base-300 bg-base-200/50 p-4">
-      <h3 class="text-sm font-semibold text-base-content">Add student</h3>
-      <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {{ form_field("first_name", "First name", placeholder="e.g. Ada", required=true, id="student-first", input_class="input input-sm w-full") }}
-        {{ form_field("last_name", "Last name", placeholder="e.g. Lovelace", required=true, id="student-last", input_class="input input-sm w-full") }}
-        <div class="flex items-end">
-          {{ btn(label="Add student", icon="plus", variant="primary", size="sm", type="submit") }}
-        </div>
-      </div>
-      <p class="mt-3 text-xs text-base-content/60">New students inherit this class's fee structure when monthly fees are generated.</p>
+<dialog id="add-student-modal" class="modal">
+  <div class="modal-box">
+    <form method="dialog">
+      <button type="button" class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close" onclick="this.closest('dialog').close()">{{ icon("x-mark", "h-4 w-4") }}</button>
     </form>
-    {% endif %}
+    <h3 class="text-lg font-semibold">Add student</h3>
+    <p class="mt-1 text-sm text-base-content/60">New students inherit this class's fee structure when monthly fees are generated.</p>
+    <form method="post" action="/classes/{{ cls.id }}/students" class="mt-4">
+      <div class="grid gap-4 sm:grid-cols-2">
+        {{ form_field("first_name", "First name", placeholder="e.g. Ada", required=true, id="student-first") }}
+        {{ form_field("last_name", "Last name", placeholder="e.g. Lovelace", required=true, id="student-last") }}
+      </div>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">{{ icon("plus", "h-4 w-4") }} Add student</button>
+      </div>
+    </form>
   </div>
-</div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
 {% endblock %}

@@ -580,7 +580,7 @@ class ReportService:
             SummaryRow("Income (payments)", report.income_cents),
             SummaryRow("Expenses", report.expenses_cents),
             SummaryRow("Net cash flow", report.net_cents),
-            SummaryRow("Outstanding arrears", arrears_cents),
+            SummaryRow("Outstanding unpaid fees", arrears_cents),
             SummaryRow("Credit balances", credits_cents),
         ]
         return FinanceSummary(

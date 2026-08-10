@@ -79,11 +79,28 @@ def _detail_response(
 
 @router.get("/classes", response_class=HTMLResponse)
 def class_index(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
+    rows = _service(request).list_class_summaries()
+    counts = _service(request).student_counts()
+    arrears_by_class: dict[int, int] = {}
+    for line in request.app.state.arrears.arrears_report():
+        arrears_by_class[line.student.class_id] = (
+            arrears_by_class.get(line.student.class_id, 0) + line.owed_cents
+        )
+    index_rows = [
+        {
+            "cls": row.cls,
+            "item_count": row.item_count,
+            "monthly_total_cents": row.monthly_total_cents,
+            "student_count": counts.get(row.cls.id, 0),
+            "arrears_cents": arrears_by_class.get(row.cls.id, 0),
+        }
+        for row in rows
+    ]
     return _templates(request).TemplateResponse(
         request=request,
         name="classes/index.html",
         context={
-            "rows": _service(request).list_class_summaries(),
+            "rows": index_rows,
             "msg": request.query_params.get("msg", ""),
         },
     )

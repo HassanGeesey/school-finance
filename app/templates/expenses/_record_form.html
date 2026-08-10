@@ -1,0 +1,42 @@
+{% from "components/ui.html" import form_field, alert %}
+{% from "components/icons.html" import icon %}
+
+<form method="post" action="/expenses" class="space-y-4"
+      hx-post="/expenses" hx-target="#record-expense-modal-content" hx-swap="innerHTML">
+  {% if error %}
+  <div>{{ alert("error", error) }}</div>
+  {% endif %}
+
+  {% if not categories %}
+  <div>{{ alert("info", "No expense categories yet — an admin can add them via Manage categories.") }}</div>
+  {% else %}
+  <div>
+    <label for="expense-category" class="label"><span class="label-text">Category</span></label>
+    {% include "expenses/_category_options.html" %}
+  </div>
+  <div>
+    <label for="expense-description" class="label"><span class="label-text">Description</span></label>
+    <input id="expense-description" name="description" type="text" required
+           value="{{ record.get('description', '') }}" placeholder="e.g. Bus fuel for the week" class="input w-full">
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2">
+    {{ form_field("amount", "Amount (USD)", placeholder="0.00", value=record.get('amount', ''), required=true, id="expense-amount") }}
+    {{ form_field("occurred_on", "Date", type="date", value=(record.get('occurred_on', today)), required=true, id="expense-date") }}
+  </div>
+  <div>
+    <span class="label"><span class="label-text">Method</span></span>
+    <div class="flex flex-wrap gap-4">
+      {% for value, text in methods.items() %}
+      <label class="flex cursor-pointer items-center gap-2">
+        <input type="radio" name="method" value="{{ value }}" {% if (record.get('method') or 'cash') == value %}checked{% endif %} class="radio radio-sm">
+        <span class="text-sm">{{ text }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="flex items-center gap-2 pt-2">
+    <button type="submit" class="btn btn-primary">{{ icon("banknotes", "h-4 w-4") }} Record expense</button>
+    <p class="text-xs text-base-content/60">Partial expenses are fine — amounts are never limited.</p>
+  </div>
+  {% endif %}
+</form>

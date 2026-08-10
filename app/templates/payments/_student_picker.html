@@ -1,0 +1,28 @@
+{% from "students/_badges.html" import student_status_badge %}
+{% if selected %}
+<div class="board shadow-none mb-3.5">
+  <div class="flex items-center justify-between gap-2.5 border-b border-base-300 px-3.5 py-3">
+    <div>
+      <div class="strong">{{ selected.student.full_name }}</div>
+      <div class="muted text-[12px]">{{ selected.student.school_class.name }} · {{ student_status_badge(selected.student.status) }}</div>
+    </div>
+    {% if selected.balance_cents > 0 %}
+    <span class="badge badge-warning">Owes {{ money(selected.balance_cents) }}</span>
+    {% elif selected.balance_cents < 0 %}
+    <span class="badge badge-success">Credit {{ money(selected.credits_cents) }}</span>
+    {% else %}
+    <span class="badge badge-neutral">Up to date</span>
+    {% endif %}
+  </div>
+  <div class="px-3.5 py-3 text-[12.5px]">
+    <span class="muted">Balance to date:</span> <b class="num {{ 'text-error' if selected.balance_cents > 0 else '' }}">{{ money(selected.balance_cents) }}</b>
+    <span class="muted ml-2.5">Credit held:</span> <b class="num">{{ money(selected.credits_cents) }}</b>
+  </div>
+</div>
+<input type="hidden" name="student_id" value="{{ selected.student.id }}">
+{% else %}
+<div class="board shadow-none mb-3.5">
+  <div class="muted p-4 text-center">No student selected — search above and pick one from the list.</div>
+</div>
+<input type="hidden" name="student_id" value="">
+{% endif %}

@@ -16,7 +16,7 @@ from app.classes.service import (
     DuplicateFeeItemName,
     FeeItemNotFound,
 )
-from app.models import AuditLogEntry, Class, ClassStatus, FeeItem, User, UserRoles
+from app.models import AuditLogEntry, Class, ClassStatus, FeeItem, Student, User, UserRoles
 
 PASSWORD = "correct horse battery staple"
 
@@ -199,6 +199,26 @@ def test_get_class_returns_the_matching_class(classes, admin):
     cls = classes.create_class(user=admin, name="Grade 1")
 
     assert classes.get_class(cls.id).name == "Grade 1"
+
+
+def test_student_counts_groups_students_by_class(classes, session):
+    first = classes.create_class(user=None, name="Grade 1")
+    second = classes.create_class(user=None, name="Grade 2")
+    for first_name, last_name, class_id in [
+        ("Ada", "Lovelace", first.id),
+        ("Grace", "Hopper", first.id),
+        ("Alan", "Turing", second.id),
+    ]:
+        session.add(
+            Student(first_name=first_name, last_name=last_name, class_id=class_id)
+        )
+    session.commit()
+
+    assert classes.student_counts() == {first.id: 2, second.id: 1}
+
+
+def test_student_counts_is_empty_with_no_students(classes):
+    assert classes.student_counts() == {}
 
 
 def test_get_class_missing_raises(classes):

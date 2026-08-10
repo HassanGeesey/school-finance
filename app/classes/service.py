@@ -20,12 +20,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..audit.service import AuditActions, AuditService
 from ..db import Database
-from ..models import Class, ClassStatus, FeeItem, User
+from ..models import Class, ClassStatus, FeeItem, Student, User
 from ..money import (
     AmountInput,
     InvalidAmount,
@@ -203,6 +204,16 @@ class ClassService:
             item_count=len(items),
             monthly_total_cents=sum(item.amount_cents for item in items),
         )
+
+    def student_counts(self) -> dict[int, int]:
+        """How many students belong to each class id."""
+        with self._session() as session:
+            rows = (
+                session.query(Student.class_id, func.count(Student.id))
+                .group_by(Student.class_id)
+                .all()
+            )
+        return {class_id: int(count) for class_id, count in rows}
 
     def _fee_item_name_taken(
         self, session: Session, class_id: int, name: str, exclude_item_id: int | None = None

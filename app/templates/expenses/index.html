@@ -7,20 +7,36 @@
 
 {% block content %}
 <div class="space-y-6">
-  {{ page_header("Expenses", "Record money out against an Admin-managed category list. Every expense is written to the audit log.", actions=(btn(label="Manage categories", icon="cog-6-tooth", variant="outline", size="sm", type="button", attrs='onclick="document.getElementById(\'categories-modal\').showModal()"') if is_admin else "")) }}
+  {% set record_action = btn(label="Record expense", icon="plus", variant="primary", size="sm", type="button", attrs='onclick="document.getElementById(\'record-expense-modal\').showModal()"') %}
+  {% set manage_action = btn(label="Manage categories", icon="cog-6-tooth", variant="outline", size="sm", type="button", attrs='onclick="document.getElementById(\'categories-modal\').showModal()"') if is_admin else "" %}
+  {{ page_header("Expenses", "Record money out against an Admin-managed category list. Every expense is written to the audit log.", actions=(record_action, manage_action) if manage_action else record_action) }}
 
   {% if msg %}
   <div>{{ alert("success", msg) }}</div>
   {% endif %}
+  {% if err %}
+  <div>{{ alert("error", err) }}</div>
+  {% endif %}
 
   <div id="expense-dashboard"
        hx-get="/expenses/dashboard"
-       hx-trigger="expense-categories-changed from:body"
+       hx-trigger="expense-categories-changed from:body, expense-recorded from:body"
        hx-target="this"
        hx-swap="innerHTML"
        hx-include="#expense-filters">
     {% include "expenses/_dashboard.html" %}
   </div>
+
+  <dialog id="record-expense-modal" class="modal">
+    <div class="modal-box" id="record-expense-modal-content"
+         hx-get="/expenses/record-form"
+         hx-trigger="expense-categories-changed from:body"
+         hx-target="this"
+         hx-swap="innerHTML">
+      {% include "expenses/_record_form.html" %}
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
 
   {% if is_admin %}
   <dialog id="categories-modal" class="modal">
@@ -31,4 +47,13 @@
   </dialog>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+  document.body.addEventListener('expense-recorded', function () {
+    var dialog = document.getElementById('record-expense-modal');
+    if (dialog && dialog.open) dialog.close();
+  });
+</script>
 {% endblock %}

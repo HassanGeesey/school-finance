@@ -8,33 +8,35 @@
 <div class="flex min-h-screen items-center justify-center bg-base-200 px-4">
   <div class="w-full max-w-md">
     <div class="mb-8 flex flex-col items-center text-center">
-      <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-content">{{ icon("banknotes", "h-6 w-6") }}</span>
-      <h1 class="mt-4 text-xl font-bold text-base-content">{{ app_name }}</h1>
-      <p class="mt-1 text-sm text-base-content/60">School fee collection, expenses, and arrears.</p>
+      <span class="index-logo inline-flex h-12 w-12 items-center justify-center">{{ icon("banknotes", "h-6 w-6") }}</span>
+      <h1 class="mt-4 text-xl font-bold">{{ app_name }}</h1>
+      <p class="page-sub mt-1">School fee collection, expenses, and unpaid fees.</p>
     </div>
 
-    <div class="rounded-box border border-base-300 bg-base-100 p-8 shadow-sm">
-      <h2 class="text-lg font-semibold text-base-content">Log in</h2>
-      {% if error %}
-      <div class="mt-4">{{ alert("error", error) }}</div>
-      {% endif %}
+    <div class="board">
+      <div class="board-body p-8">
+        <div class="board-title-wrap mb-1"><span class="pin"></span><h2 class="board-title text-lg">Log in</h2></div>
+        {% if error %}
+        <div class="mt-4">{{ alert("error", error) }}</div>
+        {% endif %}
 
-      <form method="post" action="/login" class="mt-6 space-y-4">
-        <input type="hidden" name="next" value="{{ next }}">
-        {{ form_field("username", "Username", value=username or "", required=true, attrs='autofocus') }}
-        <div>
-          <label for="password" class="label"><span class="label-text">Password</span></label>
-          <div class="relative">
-            <input id="password" name="password" type="password" required class="input w-full pr-11">
-            <button type="button" data-password-toggle="#password" aria-label="Show password"
-                    class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-base-content/40 transition-colors hover:text-base-content">
-              <span data-icon="eye">{{ icon("eye", "h-5 w-5") }}</span>
-              <span data-icon="eye-slash" class="hidden">{{ icon("eye-slash", "h-5 w-5") }}</span>
-            </button>
+        <form method="post" action="/login" class="mt-6 space-y-4">
+          <input type="hidden" name="next" value="{{ next }}">
+          {{ form_field("username", "Username", value=username or "", required=true, attrs='autofocus') }}
+          <div>
+            <label for="password" class="label"><span class="label-text">Password</span></label>
+            <div class="relative">
+              <input id="password" name="password" type="password" required class="input w-full pr-11">
+              <button type="button" data-password-toggle="#password" aria-label="Show password"
+                      class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-base-content/40 transition-colors hover:text-base-content">
+                <span data-icon="eye">{{ icon("eye", "h-5 w-5") }}</span>
+                <span data-icon="eye-slash" class="hidden">{{ icon("eye-slash", "h-5 w-5") }}</span>
+              </button>
+            </div>
           </div>
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Log in</button>
-      </form>
+          <button type="submit" class="btn btn-primary btn-block">Log in</button>
+        </form>
+      </div>
     </div>
 
     <p class="mt-6 text-center text-xs text-base-content/40">v{{ app_version }}</p>

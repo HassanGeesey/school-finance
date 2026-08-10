@@ -1,102 +1,150 @@
 {% extends "base.html" %}
 {% from "components/icons.html" import icon %}
-{% from "components/ui.html" import page_header, card, btn, badge, empty_state, table_scroll %}
-{% from "students/_badges.html" import student_status_badge %}
-{% from "payments/_badges.html" import payment_method_badge %}
+{% from "components/ui.html" import page_header, btn %}
 
-{% block title %}Payments — {{ school_name() }}{% endblock %}
-{% block topbar_title %}Payments{% endblock %}
+{% block title %}Record payment — {{ school_name() }}{% endblock %}
+{% block topbar_title %}Record payment{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-  {{ page_header("Payments", "Find a student, check their live balance, and record a payment. A payment clears the oldest unpaid charges first; any excess becomes a credit on the student's account.") }}
+  {{ page_header("Record payment", "Search for the student, pick one from the list, then enter the amount and method. Partial payments clear the oldest unpaid charges first.") }}
 
-  <form method="get" action="/payments" class="flex flex-wrap items-end gap-3">
-    <div>
-      <label for="payment-search" class="label"><span class="label-text">Search student</span></label>
-      <input id="payment-search" name="q" type="search" value="{{ q }}" placeholder="Search by name…" class="input input-sm w-full max-w-sm">
+  <div class="grid items-start gap-6 lg:grid-cols-[440px_minmax(0,1fr)]">
+    <div class="board">
+      <div class="board-body">
+        <form method="get" action="/payments">
+          <div class="field relative">
+            <label for="payment-search">Search student</label>
+            <input id="payment-search" name="q" type="search" value="{{ q }}" placeholder="Type a name…"
+                   autocomplete="off" class="input"
+                   hx-get="/payments/student-picker"
+                   hx-trigger="input changed delay:400ms, search"
+                   hx-target="#payment-results" hx-swap="innerHTML">
+            <div id="payment-results" class="{{ '' if q else 'hidden' }} absolute left-0 right-0 top-full z-50 mt-1">
+              {% if q %}{% include "payments/_student_options.html" %}{% endif %}
+            </div>
+          </div>
+        </form>
+
+        <form method="post" action="/payments/record">
+          <div id="payment-student">
+            {% include "payments/_student_picker.html" %}
+          </div>
+
+          <div class="field">
+            <label for="payment-amount">Amount (USD)</label>
+            <input id="payment-amount" name="amount" type="number" step="0.01" min="0.01" placeholder="0.00" class="input num"
+                   hx-get="/payments/preview?part=clears"
+                   hx-trigger="input changed delay:400ms, load, htmx:afterSwap from:#payment-student"
+                   hx-target="#payment-clears" hx-swap="innerHTML"
+                   hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value}">
+          </div>
+
+          <div class="field">
+            <label for="payment-method">Method</label>
+            <select id="payment-method" name="method" class="input w-full">
+              {% for value, text in methods.items() %}
+              <option value="{{ value }}">{{ text }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <input type="hidden" name="paid_on" value="{{ today }}">
+
+          <div class="alert alert-info">
+            <div class="flex w-full items-center justify-between gap-2.5 py-0.5">
+              <span class="text-sm font-semibold">Clears oldest unpaid charges</span>
+              <span id="payment-clears" class="num muted text-sm">—</span>
+            </div>
+          </div>
+
+          <div class="mt-3.5 flex gap-2">
+            {{ btn(href="/payments", label="Cancel", variant="ghost") }}
+            <button id="payment-save" type="submit" class="btn btn-primary flex-1 justify-center" disabled>{{ icon("arrow-right", "h-4 w-4") }} Save &amp; print receipt</button>
+          </div>
+        </form>
+      </div>
     </div>
-    {{ btn(label="Search", icon="magnifying-glass", variant="primary", size="sm", type="submit") }}
-    {% if q %}
-    {{ btn(href="/payments", label="Clear", variant="ghost", size="sm", icon="x-mark") }}
-    {% endif %}
-  </form>
 
-  {% call card(title="Record a payment", subtitle="Pick a student to open the record form with their live balance.") %}
-    {% call table_scroll() %}
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Class</th>
-            <th>Balance</th>
-            <th>Status</th>
-            <th class="text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
-          <tr data-row-href="/students/{{ row.student.id }}/account" class="cursor-pointer hover:bg-base-200/60">
-            <td class="font-medium text-base-content">
-              <a href="/students/{{ row.student.id }}/account" class="sr-only">{{ row.student.full_name }}</a>
-              {{ row.student.full_name }}
-            </td>
-            <td>
-              <a href="/classes/{{ row.student.class_id }}" class="link link-primary">{{ row.student.school_class.name }}</a>
-            </td>
-            <td class="font-semibold {{ 'text-error' if row.balance_cents > 0 else 'text-success' if row.balance_cents < 0 else 'text-base-content' }}">
-              {{ money(row.balance_cents) }}
-            </td>
-            <td>{{ student_status_badge(row.student.status) }}</td>
-            <td class="text-right">
-              {{ btn(href="/payments/record?student_id=" ~ row.student.id, label="Record payment", icon="plus", variant="outline", size="xs") }}
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="5">
-              {{ empty_state("No students found", ("No results for “" ~ q ~ "” — try a different search." if q else "Add students inside a class first."), "user-group") }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endcall %}
-  {% endcall %}
-
-  {% call card(title="Recent payments", subtitle="The latest receipts, newest first.") %}
-    {% call table_scroll() %}
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Student</th>
-            <th>Method</th>
-            <th>Amount</th>
-            <th class="text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for payment in recent %}
-          <tr>
-            <td>{{ payment.paid_on.isoformat() }}</td>
-            <td class="font-medium text-base-content">{{ payment.student.full_name }}</td>
-            <td>{{ payment_method_badge(payment.method) }}</td>
-            <td class="font-semibold">{{ money(payment.amount_cents) }}</td>
-            <td class="text-right">
-              {{ btn(href="/payments/" ~ payment.id ~ "/receipt", label="Receipt", icon="receipt-percent", variant="ghost", size="xs") }}
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="5">
-              {{ empty_state("No payments yet", "Record the first payment to see it here.", "receipt-percent") }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endcall %}
-  {% endcall %}
+    <div class="board">
+      <div class="board-head">
+        <div class="board-title-wrap min-w-0">
+          <span class="pin"></span>
+          <div>
+            <div class="board-title">Receipt preview</div>
+            <div class="board-sub">Printed with the school's name, logo, and contact block.</div>
+          </div>
+        </div>
+      </div>
+      <div class="board-body">
+        <div id="receipt-preview"
+             hx-get="/payments/receipt-preview"
+             hx-trigger="input changed delay:400ms from:#payment-amount, change from:#payment-method, load, htmx:afterSwap from:#payment-student"
+             hx-swap="innerHTML"
+             hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value, method: document.getElementById('payment-method').value}">
+          <p class="text-sm text-base-content/50">Pick a student, then fill in the amount and method to preview the receipt.</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+  (function () {
+    var results = document.getElementById('payment-results');
+    var search = document.getElementById('payment-search');
+    var save = document.getElementById('payment-save');
+
+    function sidInput() {
+      return document.querySelector('#payment-student input[name=student_id]');
+    }
+
+    function hasSelection() {
+      var sid = sidInput();
+      return !!sid && sid.value !== '';
+    }
+
+    function refreshSave() {
+      if (save) save.disabled = !hasSelection();
+    }
+
+    function showResults() {
+      if (results) results.classList.remove('hidden');
+    }
+
+    function hideResults() {
+      if (results) results.classList.add('hidden');
+    }
+
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      var t = e.detail.target;
+      if (!t) return;
+      if (t.id === 'payment-results') {
+        showResults();
+      } else if (t.id === 'payment-student') {
+        hideResults();
+        refreshSave();
+        var name = t.querySelector('.strong');
+        if (name && search) search.value = name.textContent.trim();
+      }
+    });
+
+    if (search) {
+      search.addEventListener('input', function () {
+        var sid = sidInput();
+        if (sid) sid.value = '';
+        refreshSave();
+      });
+    }
+
+    document.addEventListener('click', function (e) {
+      var inside = (results && results.contains(e.target)) || e.target === search;
+      if (!inside) hideResults();
+    });
+
+    refreshSave();
+  })();
+</script>
 {% endblock %}

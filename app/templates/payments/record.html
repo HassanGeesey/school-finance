@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import page_header, card, alert, form_field, stat_card, btn %}
+{% from "components/ui.html" import page_header, alert, btn %}
 {% from "components/icons.html" import icon %}
 {% from "students/_badges.html" import student_status_badge %}
-{% from "payments/_badges.html" import payment_method_badge %}
 
 {% block title %}Record payment — {{ school_name() }}{% endblock %}
 {% block topbar_title %}Record payment{% endblock %}
@@ -10,9 +9,9 @@
 {% block content %}
 <div class="space-y-6">
   <div>
-    <a href="/payments" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All payments</a>
+    <a href="/students/{{ student.id }}/account" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} {{ student.full_name }} · account</a>
     <div class="mt-2">
-      {{ page_header("Record payment", student.full_name ~ " · " ~ student.school_class.name ~ " · " ~ student_status_badge(student.status)) }}
+      {{ page_header("Record payment", "Enter the amount and method. Partial payments clear the oldest unpaid charges first.") }}
     </div>
   </div>
 
@@ -20,49 +19,72 @@
   <div>{{ alert("error", error) }}</div>
   {% endif %}
 
-  <div class="grid gap-4 sm:grid-cols-3">
-    {{ stat_card("Balance owed", money(account.balance_cents), "banknotes", "error" if account.balance_cents > 0 else "success" if account.balance_cents < 0 else "neutral", hint="Net of extras, waivers, and credits.") }}
-    {{ stat_card("Outstanding charges", money(account.outstanding_cents), "receipt-percent", "warning" if account.outstanding_cents > 0 else "neutral") }}
-    {{ stat_card("Credit held", money(account.credits_cents), "check-circle", "success" if account.credits_cents > 0 else "neutral") }}
-  </div>
-
-  {% call card(title="Payment details", subtitle="The payment applies to the oldest unpaid charges first; any excess becomes a credit on the account. Every payment is recorded in the audit log.") %}
-    <form method="post" action="/payments/record" class="max-w-lg space-y-4">
-      <input type="hidden" name="student_id" value="{{ student.id }}">
-      <div>
-        <label for="payment-amount" class="label"><span class="label-text">Amount (USD)</span></label>
-        <input id="payment-amount" name="amount" type="number" step="0.01" min="0.01" required
-               value="{{ amount }}" placeholder="0.00" class="input w-full"
-               hx-get="/payments/preview"
-               hx-trigger="input changed delay:400ms, load"
-               hx-target="#payment-preview"
-               hx-swap="innerHTML"
-               hx-vals="js:{student_id: document.querySelector('input[name=student_id]').value, amount: document.getElementById('payment-amount').value}">
-        <p class="mt-1 text-xs text-base-content/60">Partial payments are fine — the oldest charges are reduced first.</p>
-      </div>
-      <div>
-        <span class="label"><span class="label-text">Method</span></span>
-        <div class="flex gap-5">
-          {% for value, text in methods.items() %}
-          <label class="flex cursor-pointer items-center gap-2">
-            <input type="radio" name="method" value="{{ value }}" {% if (method or "cash") == value %}checked{% endif %} class="radio radio-sm">
-            <span class="text-sm">{{ text }}</span>
-          </label>
-          {% endfor %}
+  <div class="grid items-start gap-6 lg:grid-cols-2">
+    <div class="board">
+      <div class="board-body">
+        <div class="mb-4 flex items-start justify-between gap-3 border-b border-base-300 pb-4">
+          <div>
+            <div class="strong">{{ student.full_name }}</div>
+            <div class="muted text-[12px]">{{ student.school_class.name }} · {{ student_status_badge(student.status) }}</div>
+          </div>
+          {% if account.balance_cents > 0 %}
+          <span class="badge badge-error">Owes {{ money(account.balance_cents) }}</span>
+          {% elif account.balance_cents < 0 %}
+          <span class="badge badge-success">Credit {{ money(account.credits_cents) }}</span>
+          {% else %}
+          <span class="badge badge-neutral">Up to date</span>
+          {% endif %}
         </div>
+
+        <p class="mb-4 text-sm">
+          <span class="muted">Balance to date:</span> <b class="num {{ 'text-error' if account.balance_cents > 0 else '' }}">{{ money(account.balance_cents) }}</b>
+          <span class="muted ml-3">Credit held:</span> <b class="num">{{ money(account.credits_cents) }}</b>
+        </p>
+
+        <form method="post" action="/payments/record">
+          <input type="hidden" name="student_id" value="{{ student.id }}">
+          <div class="field">
+            <label for="payment-amount">Amount (USD)</label>
+            <input id="payment-amount" name="amount" type="number" step="0.01" min="0.01" required
+                   value="{{ amount }}" placeholder="0.00" class="input num"
+                   hx-get="/payments/preview"
+                   hx-trigger="input changed delay:400ms, load"
+                   hx-target="#payment-preview"
+                   hx-swap="innerHTML"
+                   hx-vals="js:{student_id: document.querySelector('input[name=student_id]').value, amount: document.getElementById('payment-amount').value}">
+          </div>
+          <div class="field">
+            <span class="block text-[12.5px] font-semibold mb-1.5">Method</span>
+            <div class="flex flex-wrap gap-4">
+              {% for value, text in methods.items() %}
+              <label class="flex cursor-pointer items-center gap-2">
+                <input type="radio" name="method" value="{{ value }}" {% if (method or "cash") == value %}checked{% endif %} class="radio radio-sm">
+                <span class="text-sm">{{ text }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="field">
+            <label for="payment-paid-on">Payment date</label>
+            <input id="payment-paid-on" name="paid_on" type="date" value="{{ paid_on }}" required class="input">
+          </div>
+          <div class="mt-4 flex gap-2">
+            {{ btn(href="/students/" ~ student.id ~ "/account", label="Cancel", variant="ghost") }}
+            <button type="submit" class="btn btn-primary flex-1 justify-center">{{ icon("banknotes", "h-4 w-4") }} Record payment</button>
+          </div>
+        </form>
       </div>
-      {{ form_field("paid_on", "Payment date", type="date", value=paid_on, required=true, id="payment-paid-on") }}
-      <div class="rounded-box border border-base-300 p-4">
-        <p class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Confirmation</p>
-        <div id="payment-preview" class="mt-2">
+    </div>
+
+    <div class="board">
+      <div class="board-head"><div class="board-title-wrap"><span class="pin"></span><div class="board-title">What this payment clears</div></div></div>
+      <div class="board-body">
+        <p class="mb-4 text-sm muted">The amount applies to the oldest unpaid charges first; any excess becomes credit on the account. Every payment is written to the audit log.</p>
+        <div id="payment-preview">
           <p class="text-sm text-base-content/50">Enter an amount to see what this payment clears.</p>
         </div>
       </div>
-      <div class="flex flex-wrap items-center gap-2 pt-2">
-        {{ btn(href="/students/" ~ student.id ~ "/account", label="Cancel", variant="ghost") }}
-        <button type="submit" class="btn btn-primary">{{ icon("banknotes", "h-4 w-4") }} Record payment</button>
-      </div>
-    </form>
-  {% endcall %}
+    </div>
+  </div>
 </div>
 {% endblock %}

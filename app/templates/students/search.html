@@ -9,15 +9,15 @@
 
 {% block content %}
 <div class="space-y-6">
-  {{ page_header("Students", "Search every student in the school by first name, last name, or full name. Archived students stay searchable — their history and arrears remain.") }}
+  {{ page_header("Students", "Search every student in the school by first name, last name, or full name. Archived students stay searchable — their history and unpaid fees remain.") }}
 
-  <form method="get" action="/students" class="flex flex-wrap items-end gap-3">
+  <form method="get" action="/students" class="frow">
     <div>
-      <label for="student-search" class="label"><span class="label-text">Search</span></label>
+      <label for="student-search" class="label-t">Search</label>
       <input id="student-search" name="q" type="search" value="{{ q }}" placeholder="Search by name…" class="input input-sm w-full max-w-sm">
     </div>
     <div>
-      <label for="class_id" class="label"><span class="label-text">Class</span></label>
+      <label for="class_id" class="label-t">Class</label>
       <select id="class_id" name="class_id" class="select select-sm w-full">
         <option value="">All classes</option>
         {% for value, label in class_options %}
@@ -27,7 +27,7 @@
     </div>
     {% if period_options %}
     <div>
-      <label for="period" class="label"><span class="label-text">Month</span></label>
+      <label for="period" class="label-t">Month</label>
       <select id="period" name="period" class="select select-sm w-full">
         {% for value, label in period_options %}
         <option value="{{ value }}" {% if value == selected_period %}selected{% endif %}>{{ label }}</option>
@@ -35,7 +35,7 @@
       </select>
     </div>
     <div>
-      <label for="status" class="label"><span class="label-text">Status</span></label>
+      <label for="status" class="label-t">Status</label>
       <select id="status" name="status" class="select select-sm w-full">
         <option value="" {% if not selected_status %}selected{% endif %}>All statuses</option>
         {% for value, label in charge_status_labels.items() %}
@@ -51,7 +51,7 @@
   </form>
 
   {% if q %}
-  <p class="text-sm text-base-content/70">
+  <p class="text-sm muted">
     {{ rows | length }} result{{ "s" if rows | length != 1 else "" }} for
     <span class="font-semibold text-base-content">&ldquo;{{ q }}&rdquo;</span>
   </p>

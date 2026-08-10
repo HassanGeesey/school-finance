@@ -11,7 +11,6 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import (
-    JSON,
     Boolean,
     Date,
     DateTime,
@@ -26,6 +25,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 def utcnow() -> datetime:
     """Naive UTC now (SQLite-safe) for created_at defaults."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def today() -> date:
+    """The current local calendar date (SQLite-safe) for enrollment defaults."""
+    return date.today()
 
 
 class Base(DeclarativeBase):

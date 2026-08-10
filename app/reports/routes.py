@@ -198,7 +198,7 @@ def reports_page(
         },
         {
             "title": "Summarized finance",
-            "description": "A month's income, expenses, and net, together with live arrears and credit balances.",
+            "description": "A month's income, expenses, and net, together with unpaid-fee and credit balances.",
             "href": "/reports/summary",
             "icon": "banknotes",
         },
@@ -459,7 +459,7 @@ def summary_page(
         context=_frame_context(
             request,
             title="Summarized finance",
-            subtitle="A month's totals rolled up with the live arrears and credit balances.",
+            subtitle="A month's totals rolled up with the live unpaid-fee and credit balances.",
 
             page_url="/reports/summary",
             export_url="/reports/summary.csv",

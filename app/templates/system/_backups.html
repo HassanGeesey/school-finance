@@ -15,25 +15,35 @@
 </div>
 
 {% if backups %}
-<div class="mt-4 overflow-x-auto">
-  <table class="table table-sm">
-    <thead>
-      <tr>
-        <th>Backup</th>
-        <th>Size</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for info in backups %}
-      <tr>
-        <td class="font-mono text-xs">{{ info.name }}</td>
-        <td>{{ "%.1f"|format(info.size_bytes / 1024) }} KB</td>
-        <td>{{ info.created_at.strftime("%Y-%m-%d %H:%M:%S") }} UTC</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="mt-4">
+  <div class="backup-scroll">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Backup</th>
+          <th>Size</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for info in backups %}
+        <tr{% if loop.index > 3 %} class="backup-row-more hidden"{% endif %}>
+          <td class="font-mono text-xs">{{ info.name }}</td>
+          <td>{{ "%.1f"|format(info.size_bytes / 1024) }} KB</td>
+          <td>{{ info.created_at.strftime("%Y-%m-%d %H:%M:%S") }} UTC</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if backups|length > 3 %}
+  <div class="mt-2">
+    <button type="button" id="backup-show-all" class="btn btn-ghost btn-sm">
+      {{ icon("chevron-down", "h-4 w-4 backup-chevron") }}
+      <span class="backup-toggle-label">Show all ({{ backups|length - 3 }} more)</span>
+    </button>
+  </div>
+  {% endif %}
 </div>
 {% else %}
 <div class="mt-4">
@@ -43,3 +53,22 @@
 {% else %}
 <p class="text-sm text-base-content/60">Backups are not available for this instance.</p>
 {% endif %}
+
+<script>
+  (function () {
+    if (window.__sfBackupToggle) return;
+    window.__sfBackupToggle = true;
+    document.addEventListener("click", function (event) {
+      var toggle = event.target.closest("#backup-show-all");
+      if (!toggle) return;
+      var rows = document.querySelectorAll(".backup-row-more");
+      var expanded = toggle.getAttribute("data-expanded") === "1";
+      rows.forEach(function (row) { row.classList.toggle("hidden", expanded); });
+      toggle.setAttribute("data-expanded", expanded ? "0" : "1");
+      var chevron = toggle.querySelector(".backup-chevron");
+      var label = toggle.querySelector(".backup-toggle-label");
+      if (chevron) chevron.style.transform = expanded ? "" : "rotate(180deg)";
+      if (label) label.textContent = expanded ? "Show all (" + rows.length + " more)" : "Show fewer";
+    });
+  })();
+</script>
