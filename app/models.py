@@ -9,8 +9,10 @@ a student owes from their ``enrolled_on`` month through their ``archived_on``
 month (service-through-period-end), excluding ``ClosedMonth`` rows, while active.
 The monthly obligation is a ``FeeTemplate`` amount (linked or custom) minus any
 stacked ``Waiver`` rows for that month, and ``Payment`` rows carry a month+year
-tag for the expected-vs-paid comparison. There are no charge rows and no
-generation step.
+tag for the expected-vs-paid comparison. Amounts are **effective-dated**
+(FW-20): a change carries an effective month, recorded as a per-student
+``StudentAmountChange`` row, and a past month's amount is never rewritten.
+There are no charge rows and no generation step.
 """
 
 from __future__ import annotations
@@ -116,8 +118,14 @@ class Class(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ClassStatus.ACTIVE)
+    # The class's default FeeTemplate — the amount a newly added student is
+    # expected to pay each month (replaces the old per-class fee items, FW-7).
+    default_template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fee_templates.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
+    default_template: Mapped[FeeTemplate | None] = relationship()
     students: Mapped[list[Student]] = relationship(back_populates="school_class")
 
 
@@ -134,9 +142,15 @@ class Student(Base):
     # (service-through-period-end, FW-14) and is captured when archiving.
     enrolled_on: Mapped[date] = mapped_column(Date, nullable=False, default=today)
     archived_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The linked FeeTemplate (FW-7): template amount raises propagate to every
+    # student linked here. A null link means the student holds a custom amount.
+    fee_template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fee_templates.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     school_class: Mapped[Class] = relationship(back_populates="students")
+    fee_template: Mapped[FeeTemplate | None] = relationship(back_populates="students")
 
     @property
     def full_name(self) -> str:
@@ -146,14 +160,44 @@ class Student(Base):
 class FeeTemplate(Base):
     """A named monthly amount (e.g. "Standard — $100") a class defaults to and a
     student can be linked to. Defines what a linked student is expected to pay
-    each month (``CONTEXT.md`` — "Fee Template")."""
+    each month (``CONTEXT.md`` — "Fee Template").
+
+    Archiving (``archived``) is the "remove": the row and its linkage stay, but
+    the template stops appearing in pickers (no hard deletes). An amount change
+    is effective-dated (FW-20): linked students get a :class:`StudentAmountChange`
+    row so past months keep the amount in force then.
+    """
 
     __tablename__ = "fee_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    students: Mapped[list[Student]] = relationship(back_populates="fee_template")
+
+
+class StudentAmountChange(Base):
+    """An effective-dated amount for one student (FW-20).
+
+    ``amount_cents`` is what the student is expected to pay from ``month``/``year``
+    onward. Template amount raises write one row per linked student (ticket 02);
+    a month's expected amount is the last change effective on or before that
+    month, so past months are never rewritten by a later change.
+    """
+
+    __tablename__ = "student_amount_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    student: Mapped[Student] = relationship()
 
 
 class Waiver(Base):

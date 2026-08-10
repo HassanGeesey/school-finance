@@ -1,5 +1,8 @@
 """Schema foundation: tables are created on startup, amounts stay as cents, and
 the fee-billing reshape is reflected (no charge rows — enrollment-derived model).
+Templates carry a default template per class, an optional linked template per
+student, and an ``archived`` flag; amount changes are effective-dated rows in
+``student_amount_changes``.
 """
 
 from datetime import date
@@ -15,6 +18,7 @@ from app.models import (
     FeeTemplate,
     Payment,
     Student,
+    StudentAmountChange,
     User,
     Waiver,
 )
@@ -25,6 +29,7 @@ EXPECTED_TABLES = {
     "classes",
     "students",
     "fee_templates",
+    "student_amount_changes",
     "waivers",
     "closed_months",
     "payments",
@@ -177,3 +182,75 @@ def test_round_trip_user_and_class(db, session: Session):
 
     assert session.query(User).count() == 1
     assert session.query(Class).one().name == "Grade 3"
+
+
+# ---------------------------------------------------------------------------
+# Fee-template wiring (ticket 02)
+# ---------------------------------------------------------------------------
+
+
+def test_class_default_template_foreign_key(db):
+    fks = inspect(db.engine).get_foreign_keys("classes")
+
+    assert any(
+        fk["constrained_columns"] == ["default_template_id"]
+        and fk["referred_table"] == "fee_templates"
+        for fk in fks
+    )
+
+
+def test_student_linked_template_foreign_key(db):
+    fks = inspect(db.engine).get_foreign_keys("students")
+
+    assert any(
+        fk["constrained_columns"] == ["fee_template_id"]
+        and fk["referred_table"] == "fee_templates"
+        for fk in fks
+    )
+
+
+def test_fee_template_defaults_to_not_archived(db, session: Session):
+    session.add(FeeTemplate(name="Standard", amount_cents=10000))
+    session.commit()
+
+    assert session.query(FeeTemplate).one().archived is False
+
+
+def test_class_default_template_round_trip(db, session: Session):
+    template = FeeTemplate(name="Standard", amount_cents=10000)
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    school_class = Class(name="Grade 3", default_template_id=template.id)
+    session.add(school_class)
+    session.commit()
+
+    stored = session.query(Class).one()
+    assert stored.default_template_id == template.id
+    assert stored.default_template.name == "Standard"
+
+
+def test_student_amount_change_stores_an_effective_dated_amount(
+    db, session: Session
+):
+    school_class = _make_class(db)
+    template = FeeTemplate(name="Standard", amount_cents=10000)
+    session.add(template)
+    session.flush()
+    student = Student(
+        class_id=school_class.id,
+        first_name="Ada",
+        last_name="Lovelace",
+        fee_template_id=template.id,
+    )
+    session.add(student)
+    session.flush()
+    session.add(
+        StudentAmountChange(student_id=student.id, amount_cents=12000, month=4, year=2026)
+    )
+    session.commit()
+
+    stored = session.query(StudentAmountChange).one()
+    assert stored.student_id == student.id
+    assert stored.amount_cents == 12000
+    assert (stored.month, stored.year) == (4, 2026)

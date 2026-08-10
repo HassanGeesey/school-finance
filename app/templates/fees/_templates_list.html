@@ -1,0 +1,58 @@
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import card, badge, btn, empty_state, table_scroll %}
+
+{% call card(title="Templates", subtitle="An archived template keeps its history and linked students but stops appearing in the class and student pickers.") %}
+  {% call table_scroll() %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Template</th>
+          <th>Amount / month</th>
+          <th>Linked students</th>
+          <th>Status</th>
+          {% if is_admin %}<th class="w-44 text-right">Actions</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for template in templates %}
+        <tr>
+          <td class="font-medium">{{ template.name }}</td>
+          <td>{{ money(template.amount_cents) }}</td>
+          <td>{{ counts.get(template.id, 0) }}</td>
+          <td>{% if template.archived %}{{ badge("Archived", "neutral") }}{% endif %}</td>
+          {% if is_admin %}
+          <td class="text-right whitespace-nowrap">
+            <button type="button" class="btn btn-ghost btn-xs"
+                    hx-get="/fees/templates/{{ template.id }}/edit-form"
+                    hx-target="#template-modal-content" hx-swap="innerHTML"
+                    onclick="document.getElementById('template-modal').showModal()">
+              {{ icon("pencil-square", "h-4 w-4") }} Edit
+            </button>
+            {% if template.archived %}
+            <button type="button" class="btn btn-ghost btn-xs text-success"
+                    hx-post="/fees/templates/{{ template.id }}/restore"
+                    hx-target="#templates-list" hx-swap="outerHTML">
+              {{ icon("arrow-path", "h-4 w-4") }} Restore
+            </button>
+            {% else %}
+            <button type="button" class="btn btn-ghost btn-xs text-error"
+                    data-confirm="Archive {{ template.name }}? Its history and linked students stay, but it stops appearing in pickers."
+                    hx-post="/fees/templates/{{ template.id }}/archive"
+                    hx-target="#templates-list" hx-swap="outerHTML">
+              {{ icon("archive-box", "h-4 w-4") }} Archive
+            </button>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="{{ 5 if is_admin else 4 }}">
+            {{ empty_state("No fee templates yet", "Create the first template — classes and students can then be pointed at it.", "banknotes") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endcall %}
+{% endcall %}

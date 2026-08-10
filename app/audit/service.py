@@ -26,9 +26,14 @@ class AuditActions:
     CLASS_CREATE = "class_create"
     CLASS_RENAME = "class_rename"
     CLASS_STATUS = "class_status"
-    FEE_ITEM_ADD = "fee_item_add"
-    FEE_ITEM_UPDATE = "fee_item_update"
-    FEE_ITEM_REMOVE = "fee_item_remove"
+
+    # Fee templates & class defaults (fee-billing rework).
+    TEMPLATE_CREATE = "template_create"
+    TEMPLATE_RENAME = "template_rename"
+    TEMPLATE_AMOUNT_CHANGE = "template_amount_change"
+    TEMPLATE_ARCHIVE = "template_archive"
+    TEMPLATE_RESTORE = "template_restore"
+    CLASS_DEFAULT_TEMPLATE = "class_default_template"
 
     # Students.
     STUDENT_ADD = "student_add"
@@ -36,12 +41,15 @@ class AuditActions:
     STUDENT_ARCHIVE = "student_archive"
     STUDENT_RESTORE = "student_restore"
     STUDENT_IMPORT = "student_import"
+    STUDENT_AMOUNT_CHANGE = "student_amount_change"
+    STUDENT_TEMPLATE = "student_template"
 
-    # Monthly fee generation.
-    FEE_GENERATE = "fee_generate"
+    # Per-(student, month) waivers.
+    WAIVER_ADD = "waiver_add"
 
-    # Per-student month adjustments (extras/waivers).
-    ADJUSTMENT_ADD = "adjustment_add"
+    # School-wide closed months.
+    CLOSED_MONTH_ADD = "closed_month_add"
+    CLOSED_MONTH_REMOVE = "closed_month_remove"
 
     # Payments & receipts.
     PAYMENT_RECORD = "payment_record"
@@ -75,16 +83,22 @@ class AuditActions:
         CLASS_CREATE: "Class created",
         CLASS_RENAME: "Class renamed",
         CLASS_STATUS: "Class status changed",
-        FEE_ITEM_ADD: "Fee item added",
-        FEE_ITEM_UPDATE: "Fee item updated",
-        FEE_ITEM_REMOVE: "Fee item removed",
+        TEMPLATE_CREATE: "Fee template created",
+        TEMPLATE_RENAME: "Fee template renamed",
+        TEMPLATE_AMOUNT_CHANGE: "Fee template amount changed",
+        TEMPLATE_ARCHIVE: "Fee template archived",
+        TEMPLATE_RESTORE: "Fee template restored",
+        CLASS_DEFAULT_TEMPLATE: "Class default template changed",
         STUDENT_ADD: "Student added",
         STUDENT_UPDATE: "Student updated",
         STUDENT_ARCHIVE: "Student archived",
         STUDENT_RESTORE: "Student restored",
         STUDENT_IMPORT: "Students imported",
-        FEE_GENERATE: "Monthly fees generated",
-        ADJUSTMENT_ADD: "Adjustment made",
+        STUDENT_AMOUNT_CHANGE: "Student monthly amount changed",
+        STUDENT_TEMPLATE: "Student fee template changed",
+        WAIVER_ADD: "Waiver applied",
+        CLOSED_MONTH_ADD: "Month closed",
+        CLOSED_MONTH_REMOVE: "Month reopened",
         PAYMENT_RECORD: "Payment recorded",
         EXPENSE_CATEGORY_ADD: "Expense category added",
         EXPENSE_CATEGORY_RENAME: "Expense category renamed",

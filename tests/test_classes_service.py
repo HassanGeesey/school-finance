@@ -1,22 +1,17 @@
-"""Class service: creating/updating classes and their itemized fee structures.
+"""Class service: creating/updating classes and their default fee template (FW-7).
 
 Business rules only — the single testing seam. Every change is audited; no change
-is a hard delete (a class is created/renamed/reopened; fee items are removed but
-their snapshots in already-generated charges are untouched). Route concerns live
-in ``test_classes_routes.py``.
+is a hard delete. A class carries an optional default :class:`FeeTemplate` that
+fixes its monthly fee per student; setting/clearing it is audited. Route concerns
+live in ``test_classes_routes.py``.
 """
 
 import pytest
 
 from app.audit.service import AuditActions, AuditService
-from app.classes.service import (
-    ClassError,
-    ClassNotFound,
-    ClassService,
-    DuplicateFeeItemName,
-    FeeItemNotFound,
-)
-from app.models import AuditLogEntry, Class, ClassStatus, FeeItem, Student, User, UserRoles
+from app.classes.service import ClassError, ClassNotFound, ClassService
+from app.fees.service import TemplateService
+from app.models import AuditLogEntry, Class, ClassStatus, Student, User, UserRoles
 
 PASSWORD = "correct horse battery staple"
 
@@ -32,6 +27,11 @@ def classes(db, audit) -> ClassService:
 
 
 @pytest.fixture()
+def templates(db, audit) -> TemplateService:
+    return TemplateService(db, audit=audit)
+
+
+@pytest.fixture()
 def admin(db, session) -> User:
     user = User(
         username="admin",
@@ -44,6 +44,15 @@ def admin(db, session) -> User:
     return user
 
 
+def make_template(templates, admin, name="Standard", amount="100.00"):
+    return templates.create_template(user=admin, name=name, amount=amount)
+
+
+# ---------------------------------------------------------------------------
+# Create
+# ---------------------------------------------------------------------------
+
+
 def test_create_class_defaults_to_active(classes, session):
     cls = classes.create_class(user=None, name="Grade 1")
 
@@ -51,6 +60,7 @@ def test_create_class_defaults_to_active(classes, session):
     assert row.id == cls.id
     assert row.name == "Grade 1"
     assert row.status == ClassStatus.ACTIVE
+    assert row.default_template_id is None
 
 
 def test_create_class_accepts_an_explicit_status(classes, session):
@@ -78,6 +88,37 @@ def test_create_class_is_audited(classes, admin, session):
     assert entry.action == AuditActions.CLASS_CREATE
     assert entry.user_id == admin.id
     assert "Grade 1" in entry.summary
+
+
+def test_create_class_links_the_default_template(classes, templates, admin, session):
+    template = make_template(templates, admin)
+
+    cls = classes.create_class(
+        user=admin, name="Grade 1", default_template_id=template.id
+    )
+
+    assert session.query(Class).one().default_template_id == template.id
+    assert cls.default_template_id == template.id
+
+
+def test_create_class_rejects_a_missing_template(classes, admin):
+    with pytest.raises(ClassError):
+        classes.create_class(user=admin, name="Grade 1", default_template_id=999)
+
+
+def test_create_class_rejects_an_archived_template(classes, templates, admin):
+    template = make_template(templates, admin)
+    templates.archive_template(user=admin, template_id=template.id)
+
+    with pytest.raises(ClassError, match="valid fee template"):
+        classes.create_class(
+            user=admin, name="Grade 1", default_template_id=template.id
+        )
+
+
+# ---------------------------------------------------------------------------
+# Update
+# ---------------------------------------------------------------------------
 
 
 def test_update_class_renames(classes, admin, session):
@@ -160,6 +201,120 @@ def test_update_class_without_change_writes_no_audit(classes, admin, session):
     assert session.query(AuditLogEntry).count() == 1  # only the creation entry
 
 
+# ---------------------------------------------------------------------------
+# Default fee template (FW-7)
+# ---------------------------------------------------------------------------
+
+
+def test_set_default_template_links_and_audits(classes, templates, admin, session):
+    cls = classes.create_class(user=admin, name="Grade 1")
+    template = make_template(templates, admin, name="Standard")
+
+    classes.set_default_template(user=admin, class_id=cls.id, default_template_id=template.id)
+
+    assert session.query(Class).one().default_template_id == template.id
+    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.CLASS_DEFAULT_TEMPLATE).one()
+    assert entry.user_id == admin.id
+    assert "Grade 1" in entry.summary
+    assert "Standard" in entry.summary
+
+
+def test_set_default_template_can_change_the_template(classes, templates, admin, session):
+    cls = classes.create_class(user=admin, name="Grade 1")
+    first = make_template(templates, admin, name="Standard")
+    second = make_template(templates, admin, name="Premium")
+
+    classes.set_default_template(user=admin, class_id=cls.id, default_template_id=first.id)
+    classes.set_default_template(user=admin, class_id=cls.id, default_template_id=second.id)
+
+    assert session.query(Class).one().default_template_id == second.id
+    entries = session.query(AuditLogEntry).filter_by(action=AuditActions.CLASS_DEFAULT_TEMPLATE).all()
+    assert len(entries) == 2
+
+
+def test_set_default_template_clears_and_audits(classes, templates, admin, session):
+    template = make_template(templates, admin)
+    cls = classes.create_class(user=admin, name="Grade 1", default_template_id=template.id)
+
+    classes.set_default_template(user=admin, class_id=cls.id, default_template_id=None)
+
+    assert session.query(Class).one().default_template_id is None
+    entry = (
+        session.query(AuditLogEntry)
+        .filter_by(action=AuditActions.CLASS_DEFAULT_TEMPLATE)
+        .order_by(AuditLogEntry.id.desc())
+        .first()
+    )
+    assert "Cleared" in entry.summary
+    assert "Standard" in entry.summary
+
+
+def test_set_default_template_to_the_same_choice_is_a_no_op(classes, templates, admin, session):
+    template = make_template(templates, admin)
+    cls = classes.create_class(user=admin, name="Grade 1", default_template_id=template.id)
+    before = session.query(AuditLogEntry).count()
+
+    classes.set_default_template(user=admin, class_id=cls.id, default_template_id=template.id)
+
+    assert session.query(AuditLogEntry).count() == before
+
+
+def test_set_default_template_rejects_a_missing_template(classes, templates, admin):
+    cls = classes.create_class(user=admin, name="Grade 1")
+    make_template(templates, admin)
+
+    with pytest.raises(ClassError):
+        classes.set_default_template(user=admin, class_id=cls.id, default_template_id=999)
+
+
+def test_set_default_template_rejects_an_archived_template(classes, templates, admin, session):
+    cls = classes.create_class(user=admin, name="Grade 1")
+    template = make_template(templates, admin)
+    templates.archive_template(user=admin, template_id=template.id)
+
+    with pytest.raises(ClassError, match="valid fee template"):
+        classes.set_default_template(user=admin, class_id=cls.id, default_template_id=template.id)
+    assert session.query(Class).one().default_template_id is None
+
+
+def test_set_default_template_missing_class_raises(classes, templates, admin):
+    template = make_template(templates, admin)
+
+    with pytest.raises(ClassNotFound):
+        classes.set_default_template(user=admin, class_id=999, default_template_id=template.id)
+
+
+# ---------------------------------------------------------------------------
+# Summaries
+# ---------------------------------------------------------------------------
+
+
+def test_class_summary_reports_student_count_and_default_amount(
+    classes, templates, admin, session
+):
+    template = make_template(templates, admin, amount="75.00")
+    cls = classes.create_class(user=admin, name="Grade 1", default_template_id=template.id)
+    for first, last in [("Ada", "Lovelace"), ("Grace", "Hopper")]:
+        session.add(Student(first_name=first, last_name=last, class_id=cls.id))
+    session.commit()
+
+    summary = classes.class_summary(cls.id)
+
+    assert summary.cls.id == cls.id
+    assert summary.student_count == 2
+    assert summary.monthly_total_cents == 7500
+    assert summary.cls.default_template.name == "Standard"
+
+
+def test_class_summary_without_a_default_template_reports_zero(classes, admin):
+    cls = classes.create_class(user=admin, name="Grade 1")
+
+    summary = classes.class_summary(cls.id)
+
+    assert summary.monthly_total_cents == 0
+    assert summary.cls.default_template is None
+
+
 def test_list_class_summaries_returns_all_in_creation_order(classes, admin):
     first = classes.create_class(user=admin, name="Grade 1")
     second = classes.create_class(user=admin, name="Grade 2")
@@ -168,37 +323,32 @@ def test_list_class_summaries_returns_all_in_creation_order(classes, admin):
     assert [c.cls.id for c in rows] == [first.id, second.id]
 
 
-def test_class_summary_reports_items_and_monthly_total(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-    classes.add_fee_item(user=admin, class_id=cls.id, name="Boarding", amount="12.50")
-
-    summary = classes.class_summary(cls.id)
-
-    assert summary.cls.id == cls.id
-    assert summary.item_count == 2
-    assert summary.monthly_total_cents == 6250
-    assert [item.name for item in summary.items] == ["Tuition", "Boarding"]
-
-
-def test_list_class_summaries_aggregates_each_class_separately(classes, admin):
-    first = classes.create_class(user=admin, name="Grade 1")
-    second = classes.create_class(user=admin, name="Grade 2")
-    classes.add_fee_item(user=admin, class_id=first.id, name="Tuition", amount="50.00")
-    classes.add_fee_item(user=admin, class_id=second.id, name="Tuition", amount="80.00")
+def test_list_class_summaries_uses_each_default_template_amount(
+    classes, templates, admin
+):
+    low = make_template(templates, admin, name="Low", amount="50.00")
+    high = make_template(templates, admin, name="High", amount="80.00")
+    first = classes.create_class(user=admin, name="Grade 1", default_template_id=low.id)
+    second = classes.create_class(user=admin, name="Grade 2", default_template_id=high.id)
+    classes.create_class(user=admin, name="Grade 3")
 
     rows = classes.list_class_summaries()
 
-    assert {row.cls.id: row.monthly_total_cents for row in rows} == {
-        first.id: 5000,
-        second.id: 8000,
-    }
+    totals = {row.cls.id: row.monthly_total_cents for row in rows}
+    assert totals[first.id] == 5000
+    assert totals[second.id] == 8000
+    assert totals[rows[2].cls.id] == 0
 
 
 def test_get_class_returns_the_matching_class(classes, admin):
     cls = classes.create_class(user=admin, name="Grade 1")
 
     assert classes.get_class(cls.id).name == "Grade 1"
+
+
+def test_get_class_missing_raises(classes):
+    with pytest.raises(ClassNotFound):
+        classes.get_class(999)
 
 
 def test_student_counts_groups_students_by_class(classes, session):
@@ -209,9 +359,7 @@ def test_student_counts_groups_students_by_class(classes, session):
         ("Grace", "Hopper", first.id),
         ("Alan", "Turing", second.id),
     ]:
-        session.add(
-            Student(first_name=first_name, last_name=last_name, class_id=class_id)
-        )
+        session.add(Student(first_name=first_name, last_name=last_name, class_id=class_id))
     session.commit()
 
     assert classes.student_counts() == {first.id: 2, second.id: 1}
@@ -219,226 +367,3 @@ def test_student_counts_groups_students_by_class(classes, session):
 
 def test_student_counts_is_empty_with_no_students(classes):
     assert classes.student_counts() == {}
-
-
-def test_get_class_missing_raises(classes):
-    with pytest.raises(ClassNotFound):
-        classes.get_class(999)
-
-
-def test_add_fee_item_stores_integer_cents(classes, admin, session):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    row = session.query(FeeItem).one()
-    assert row.id == item.id
-    assert row.class_id == cls.id
-    assert row.name == "Tuition"
-    assert row.amount_cents == 5000
-
-
-def test_add_fee_item_accepts_a_decimal_amount(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="Boarding", amount=12.5)
-
-    assert item.amount_cents == 1250
-
-
-def test_add_fee_item_requires_a_name(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    with pytest.raises(ClassError):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="", amount="50.00")
-
-
-def test_add_fee_item_requires_a_positive_amount(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    with pytest.raises(ClassError):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="0")
-    with pytest.raises(ClassError):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="-5.00")
-    with pytest.raises(ClassError):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="not-a-number")
-
-
-def test_add_fee_item_translates_the_shared_amount_rule(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    with pytest.raises(ClassError, match="Enter a valid amount"):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="not-a-number")
-    with pytest.raises(ClassError, match="greater than zero"):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="0")
-    with pytest.raises(ClassError, match="greater than zero"):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="-5.00")
-
-
-def test_add_fee_item_rejects_a_duplicate_name_in_the_class(classes, admin, session):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    with pytest.raises(DuplicateFeeItemName):
-        classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="60.00")
-    assert session.query(FeeItem).count() == 1
-
-
-def test_fee_item_name_uniqueness_matches_the_database_collation(classes, admin, session):
-    """The DB constraint is case-sensitive; the app check mirrors it exactly."""
-    cls = classes.create_class(user=admin, name="Grade 1")
-    classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="tuition", amount="60.00")
-
-    assert item.amount_cents == 6000
-    assert session.query(FeeItem).count() == 2
-
-
-def test_add_fee_item_allows_same_name_in_another_class(classes, admin):
-    first = classes.create_class(user=admin, name="Grade 1")
-    second = classes.create_class(user=admin, name="Grade 2")
-
-    classes.add_fee_item(user=admin, class_id=first.id, name="Tuition", amount="50.00")
-    item = classes.add_fee_item(user=admin, class_id=second.id, name="Tuition", amount="80.00")
-
-    assert item.amount_cents == 8000
-
-
-def test_add_fee_item_missing_class_raises(classes, admin):
-    with pytest.raises(ClassNotFound):
-        classes.add_fee_item(user=admin, class_id=999, name="Tuition", amount="50.00")
-
-
-def test_add_fee_item_is_audited(classes, admin, session):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.FEE_ITEM_ADD).one()
-    assert entry.user_id == admin.id
-    assert "Tuition" in entry.summary
-    assert "Grade 1" in entry.summary
-
-
-def test_update_fee_item_changes_name_and_price(classes, admin, session):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    classes.update_fee_item(
-        user=admin, class_id=cls.id, item_id=item.id, name="Tuition Fee", amount="55.50"
-    )
-
-    row = session.query(FeeItem).one()
-    assert row.name == "Tuition Fee"
-    assert row.amount_cents == 5550
-
-
-def test_update_fee_item_requires_a_positive_amount(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    with pytest.raises(ClassError):
-        classes.update_fee_item(
-            user=admin, class_id=cls.id, item_id=item.id, name="Tuition", amount="0"
-        )
-
-
-def test_update_fee_item_rejects_a_duplicate_name(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    tuition = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-    classes.add_fee_item(user=admin, class_id=cls.id, name="Boarding", amount="30.00")
-
-    with pytest.raises(DuplicateFeeItemName):
-        classes.update_fee_item(
-            user=admin, class_id=cls.id, item_id=tuition.id, name="Boarding", amount="50.00"
-        )
-
-
-def test_update_fee_item_keeps_its_own_name(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    updated = classes.update_fee_item(
-        user=admin, class_id=cls.id, item_id=item.id, name="Tuition", amount="60.00"
-    )
-
-    assert updated.name == "Tuition"
-    assert updated.amount_cents == 6000
-
-
-def test_update_fee_item_missing_item_raises(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    with pytest.raises(FeeItemNotFound):
-        classes.update_fee_item(
-            user=admin, class_id=cls.id, item_id=999, name="Tuition", amount="50.00"
-        )
-
-
-def test_update_fee_item_rejects_an_item_from_another_class(classes, admin, session):
-    first = classes.create_class(user=admin, name="Grade 1")
-    second = classes.create_class(user=admin, name="Grade 2")
-    item = classes.add_fee_item(user=admin, class_id=second.id, name="Tuition", amount="80.00")
-
-    with pytest.raises(FeeItemNotFound):
-        classes.update_fee_item(
-            user=admin, class_id=first.id, item_id=item.id, name="Tuition", amount="90.00"
-        )
-    assert session.query(FeeItem).one().amount_cents == 8000
-
-
-def test_update_fee_item_audits_old_and_new_values(classes, admin, session):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    classes.update_fee_item(
-        user=admin, class_id=cls.id, item_id=item.id, name="Tuition", amount="60.00"
-    )
-
-    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.FEE_ITEM_UPDATE).one()
-    assert entry.user_id == admin.id
-    assert "Grade 1" in entry.summary
-    assert "Tuition ($50.00)" in entry.summary
-    assert "Tuition ($60.00)" in entry.summary
-
-
-def test_remove_fee_item_deletes_and_audits(classes, admin, session):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    item = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-
-    classes.remove_fee_item(user=admin, class_id=cls.id, item_id=item.id)
-
-    assert session.query(FeeItem).count() == 0
-    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.FEE_ITEM_REMOVE).one()
-    assert entry.user_id == admin.id
-    assert "Tuition" in entry.summary
-    assert "Grade 1" in entry.summary
-
-
-def test_remove_fee_item_missing_item_raises(classes, admin):
-    cls = classes.create_class(user=admin, name="Grade 1")
-
-    with pytest.raises(FeeItemNotFound):
-        classes.remove_fee_item(user=admin, class_id=cls.id, item_id=999)
-
-
-def test_remove_fee_item_rejects_an_item_from_another_class(classes, admin, session):
-    first = classes.create_class(user=admin, name="Grade 1")
-    second = classes.create_class(user=admin, name="Grade 2")
-    item = classes.add_fee_item(user=admin, class_id=second.id, name="Tuition", amount="80.00")
-
-    with pytest.raises(FeeItemNotFound):
-        classes.remove_fee_item(user=admin, class_id=first.id, item_id=item.id)
-    assert session.query(FeeItem).count() == 1
-
-
-def test_removing_an_item_leaves_other_items_untouched(classes, admin, session):
-    cls = classes.create_class(user=admin, name="Grade 1")
-    tuition = classes.add_fee_item(user=admin, class_id=cls.id, name="Tuition", amount="50.00")
-    boarding = classes.add_fee_item(user=admin, class_id=cls.id, name="Boarding", amount="30.00")
-
-    classes.remove_fee_item(user=admin, class_id=cls.id, item_id=tuition.id)
-
-    remaining = session.query(FeeItem).one()
-    assert remaining.id == boarding.id

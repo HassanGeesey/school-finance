@@ -1,0 +1,53 @@
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import alert, btn, form_field %}
+
+<div class="flex items-start justify-between gap-4">
+  <div>
+    <h3 class="text-lg font-semibold">{{ "Edit fee template" if template else "New fee template" }}</h3>
+    <p class="mt-1 text-sm text-base-content/60">
+      {% if template %}
+      Changing the amount takes effect from the chosen month and updates every linked student.
+      {% else %}
+      A template is a named monthly amount; classes and students can be pointed at it.
+      {% endif %}
+    </p>
+  </div>
+  <button type="button" class="btn btn-sm btn-circle btn-ghost" aria-label="Close" onclick="this.closest('dialog').close()">{{ icon("x-mark", "h-4 w-4") }}</button>
+</div>
+
+{% if error %}
+<div class="mt-4">{{ alert("error", error) }}</div>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="mt-4 space-y-4"
+      hx-post="{{ action }}" hx-target="#template-modal-content" hx-swap="innerHTML">
+  {{ form_field("name", "Name", placeholder="e.g. Standard tuition", value=name, required=true, id="template-name") }}
+  {{ form_field("amount", "Amount / month (USD)", placeholder="50.00", value=amount, required=true, id="template-amount") }}
+
+  {% if template %}
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="template-month" class="label"><span class="label-text">Effective from month</span></label>
+      <select id="template-month" name="month" class="select w-full">
+        {% for m, label in months %}
+        <option value="{{ m }}" {% if (month or default_month) == m|string %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="template-year" class="label"><span class="label-text">Year</span></label>
+      <select id="template-year" name="year" class="select w-full">
+        {% for y in years %}
+        <option value="{{ y }}" {% if (year or default_year) == y|string %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <p class="text-xs text-base-content/60">The effective month only applies when the amount changes — past months are already set and stay frozen.</p>
+  {% endif %}
+
+  <div class="flex items-center gap-2 pt-2">
+    {{ btn(label="Save template" if template else "Create template", icon="check", variant="primary", size="sm", type="submit") }}
+    <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+  </div>
+</form>

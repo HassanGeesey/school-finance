@@ -2,18 +2,18 @@
 {% from "components/icons.html" import icon %}
 {% from "components/ui.html" import page_header, btn, alert, form_field %}
 
-{% block title %}New class — {{ school_name() }}{% endblock %}
-{% block topbar_title %}New class{% endblock %}
+{% block title %}{% if cls %}Edit class{% else %}New class{% endif %} — {{ school_name() }}{% endblock %}
+{% block topbar_title %}{% if cls %}Edit class{% else %}New class{% endif %}{% endblock %}
 
 {% block content %}
 <div class="mx-auto max-w-lg space-y-6">
-  {{ page_header("New class", "A class groups students and carries its own itemized fee structure.") }}
+  {{ page_header("New class" if not cls else "Edit class", "A class groups students and defaults to a fee template for its monthly fee.") }}
 
   {% if error %}
   <div>{{ alert("error", error) }}</div>
   {% endif %}
 
-  <form method="post" action="/classes" class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+  <form method="post" action="{{ action }}" class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
     {{ form_field("name", "Name", placeholder="e.g. Grade 1", value=name, required=true, id="class-name") }}
     <div class="mt-4">
       <label for="class-status" class="label"><span class="label-text">Status</span></label>
@@ -23,8 +23,18 @@
         {% endfor %}
       </select>
     </div>
+    <div class="mt-4">
+      <label for="class-template" class="label"><span class="label-text">Default fee template</span></label>
+      <select id="class-template" name="default_template_id" class="select w-full">
+        <option value="">— No default (students bill nothing) —</option>
+        {% for t in template_options %}
+        <option value="{{ t.id }}" {% if default_template_id == t.id|string %}selected{% endif %}>{{ t.name }}{% if t.archived %} (archived){% endif %} — {{ money(t.amount_cents) }}/month</option>
+        {% endfor %}
+      </select>
+      <p class="mt-1 text-xs text-base-content/60">Students in this class use this template's amount until they are given their own. Managed under Fee templates.</p>
+    </div>
     <div class="mt-6 flex items-center gap-3">
-      {{ btn(label="Create class", icon="plus", variant="primary", type="submit") }}
+      {{ btn(label="Save class", icon="check", variant="primary", type="submit") }}
       {{ btn(href="/classes", label="Cancel", variant="ghost") }}
     </div>
   </form>

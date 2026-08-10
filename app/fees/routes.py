@@ -1,11 +1,13 @@
-"""Fee generation routes: the monthly billing page and its HTMX partials.
+"""Fee template routes: the Admin's templates page and its HTMX partials.
 
-Thin adapters over :class:`app.fees.service.FeeService`. The page is a single
-card (Class/All + Month + Year) whose "Review and generate" button opens a
-confirm dialog with the per-class breakdown. Confirming posts to
-``/fees/generate`` which swaps the card in place and raises a toast. Any
-logged-in user may generate fees (the Finance officer role exists for exactly
-this); every generation is audited by the service layer.
+Thin adapters over :class:`app.fees.service.TemplateService`. Viewing the list
+is open to any logged-in user; creating, editing, and archiving templates is
+Admin-only (Q24) and audited by the service layer. The add/edit form lives in a
+modal opened by the page action and posts over htmx — a save returns a fresh
+form and raises a toast + ``templates-changed`` event (which closes the modal
+and refreshes the list), with a plain-redirect fallback when htmx isn't present.
+Editing a template's amount asks for the month the change takes effect (default:
+next month); the amount itself is the current amount until that month.
 """
 
 from __future__ import annotations
@@ -14,29 +16,28 @@ import json
 from datetime import datetime
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from ..auth.deps import require_login
-from ..classes.service import ClassNotFound
-from ..models import ClassStatus, User
-from ..money import format_cents
+from ..auth.deps import require_admin, require_login
+from ..models import User
+from ..money import format_cents, format_input_cents
 from .service import (
-    FeeError,
-    FeeService,
-    GenerationPreview,
-    GenerationResult,
-    InvalidPeriod,
     MONTH_NAMES,
+    InvalidPeriod,
+    TemplateError,
+    TemplateNotFound,
+    TemplateService,
+    default_effective_month,
 )
 
 router = APIRouter(include_in_schema=False)
 
 
-def _service(request: Request) -> FeeService:
+def _service(request: Request) -> TemplateService:
     service = request.app.state.fees
-    assert isinstance(service, FeeService)
+    assert isinstance(service, TemplateService)
     return service
 
 
@@ -50,133 +51,110 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request") == "true"
 
 
-def _coerce_class_id(raw: str) -> int | None:
-    """Empty string means "All classes"."""
+def _is_admin(request: Request) -> bool:
+    user = getattr(request.state, "user", None)
+    return user is not None and user.role == "admin"
+
+
+def _coerce_month(raw: str) -> int | None:
+    """Empty means "use the default (next month)"; junk is rejected."""
+    raw = (raw or "").strip()
     if raw == "":
         return None
     try:
         return int(raw)
     except (TypeError, ValueError):
-        raise ClassNotFound("Choose a class.") from None
+        raise InvalidPeriod("Choose a valid month.") from None
 
 
-def _coerce_period(month_raw: str, year_raw: str) -> tuple[int, int]:
-    try:
-        return int(month_raw), int(year_raw)
-    except (TypeError, ValueError):
-        raise InvalidPeriod("Choose a month and a year.") from None
-
-
-def _safe_int(raw: str) -> int | None:
+def _coerce_year(raw: str) -> int | None:
+    raw = (raw or "").strip()
+    if raw == "":
+        return None
     try:
         return int(raw)
     except (TypeError, ValueError):
-        return None
+        raise InvalidPeriod("Choose a valid year.") from None
 
 
-def _period_label(month: int, year: int) -> str:
-    return f"{MONTH_NAMES[month - 1]} {year}"
-
-
-def _class_options(request: Request) -> list[tuple[str, str]]:
-    """Active classes for the dropdown, labelled with their monthly fee."""
-    options: list[tuple[str, str]] = []
-    for summary in request.app.state.classes.list_class_summaries():
-        if summary.cls.status == ClassStatus.ACTIVE:
-            options.append(
-                (
-                    str(summary.cls.id),
-                    f"{summary.cls.name} — {format_cents(summary.monthly_total_cents)}/month",
-                )
-            )
-    return options
-
-
-def _card_context(
-    request: Request,
-    *,
-    msg: str = "",
-    err: str = "",
-    selected_class_id: str = "",
-    month: int | None = None,
-    year: int | None = None,
-) -> dict[str, object]:
-    now = datetime.now()
+def _list_context(request: Request) -> dict[str, object]:
+    service = _service(request)
     return {
-        "class_options": _class_options(request),
-        "months": [(i, MONTH_NAMES[i - 1]) for i in range(1, 13)],
-        "years": list(range(now.year - 5, now.year + 2)),
-        "default_month": now.month,
-        "default_year": now.year,
-        "month": month,
-        "year": year,
-        "selected_class_id": selected_class_id,
-        "msg": msg,
-        "err": err,
+        "templates": service.list_templates(),
+        "counts": service.linked_student_counts(),
+        "is_admin": _is_admin(request),
     }
 
 
-def _card_response(
+def _list_response(
     request: Request,
     *,
-    msg: str = "",
-    err: str = "",
     toast: dict[str, str] | None = None,
-    selected_class_id: str = "",
-    month: int | None = None,
-    year: int | None = None,
-) -> Response:
-    context = _card_context(
-        request,
-        msg=msg,
-        err=err,
-        selected_class_id=selected_class_id,
-        month=month,
-        year=year,
-    )
-    headers = {"HX-Trigger": json.dumps({"toast": toast})} if toast else None
+    headers: dict[str, str] | None = None,
+) -> HTMLResponse:
+    merged = dict(headers or {})
+    if toast is not None:
+        merged["HX-Trigger"] = json.dumps({"toast": toast})
     return _templates(request).TemplateResponse(
         request=request,
-        name="fees/_generate_card.html",
-        context=context,
+        name="fees/_templates_list.html",
+        context=_list_context(request),
+        headers=merged or None,
+    )
+
+
+def _form_response(
+    request: Request,
+    *,
+    template=None,
+    error: str = "",
+    name: str = "",
+    amount: str = "",
+    month: str = "",
+    year: str = "",
+    headers: dict[str, str] | None = None,
+) -> HTMLResponse:
+    now = datetime.now()
+    default_month, default_year = default_effective_month()
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="fees/_template_form.html",
+        context={
+            "template": template,
+            "action": (
+                f"/fees/templates/{template.id}/edit"
+                if template is not None
+                else "/fees/templates"
+            ),
+            "name": name,
+            "amount": amount,
+            "month": month,
+            "year": year,
+            "default_month": str(default_month),
+            "default_year": str(default_year),
+            "months": [(i, MONTH_NAMES[i - 1]) for i in range(1, 13)],
+            "years": list(range(now.year, now.year + 2)),
+            "error": error,
+        },
         headers=headers,
     )
 
 
-def _preview_response(
-    request: Request,
-    *,
-    preview: GenerationPreview | None = None,
-    period: str = "",
-    error: str = "",
-) -> HTMLResponse:
-    return _templates(request).TemplateResponse(
-        request=request,
-        name="fees/_preview.html",
-        context={"preview": preview, "period": period, "error": error},
-    )
-
-
-def _success_message(result: GenerationResult) -> tuple[str, str]:
-    """Human summary for the success alert/toast."""
-    month, year = result.month, result.year
-    period = _period_label(month, year)
-    if not result.generated:
-        return (
-            f"Nothing new was generated for {period} — every class in scope was "
-            "already billed or is not eligible.",
-            "info",
+def _success_headers(message: str) -> dict[str, str]:
+    """Toast + tell the page the templates changed (closes the modal, refreshes)."""
+    return {
+        "HX-Trigger": json.dumps(
+            {
+                "toast": {"message": message, "tone": "success"},
+                "templates-changed": True,
+            }
         )
-    total = format_cents(result.total_cents)
-    count = result.charges_created
-    if len(result.generated) == 1:
-        name = result.generated[0].class_name
-        message = f"{name} — {period}: {count} charge(s), {total}."
-    else:
-        message = f"Generated {period} fees: {count} charge(s), {total}."
-    if result.skipped:
-        message += f" {len(result.skipped)} class(es) skipped."
-    return message, "success"
+    }
+
+
+def _redirect(msg_or_err: str, *, err: bool = False) -> RedirectResponse:
+    params = {"err": msg_or_err} if err else {"msg": msg_or_err}
+    return RedirectResponse(f"/fees?{urlencode(params)}", status_code=303)
 
 
 @router.get("/fees", response_class=HTMLResponse)
@@ -184,76 +162,133 @@ def fees_page(request: Request, _user: User = Depends(require_login)) -> HTMLRes
     return _templates(request).TemplateResponse(
         request=request,
         name="fees/index.html",
-        context=_card_context(
-            request,
-            msg=request.query_params.get("msg", ""),
-            err=request.query_params.get("err", ""),
-        ),
+        context={
+            **_list_context(request),
+            "msg": request.query_params.get("msg", ""),
+            "err": request.query_params.get("err", ""),
+        },
     )
 
 
-@router.post("/fees/preview", response_class=HTMLResponse)
-def preview_fees(
-    request: Request,
-    class_id: str = Form(""),
-    month: str = Form(""),
-    year: str = Form(""),
-    _user: User = Depends(require_login),
+@router.get("/fees/templates/list", response_class=HTMLResponse)
+def templates_list(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
+    """The list alone, so the page can refresh it after a template change."""
+    return _list_response(request)
+
+
+@router.get("/fees/templates/new-form", response_class=HTMLResponse)
+def new_template_form(request: Request, _user: User = Depends(require_admin)) -> HTMLResponse:
+    """The blank create form, loaded into the modal by the "New template" action."""
+    return _form_response(request)
+
+
+@router.get("/fees/templates/{template_id}/edit-form", response_class=HTMLResponse)
+def edit_template_form(
+    request: Request, template_id: int, _user: User = Depends(require_admin)
 ) -> HTMLResponse:
-    service = _service(request)
+    """The prefilled edit form, loaded into the modal by a row's Edit action."""
     try:
-        selected = _coerce_class_id(class_id)
-        selected_month, selected_year = _coerce_period(month, year)
-        preview = service.preview(selected, selected_month, selected_year)
-    except (FeeError, ClassNotFound) as exc:
-        return _preview_response(request, error=str(exc))
-    if (
-        selected is not None
-        and preview.lines
-        and preview.lines[0].skip_reason is not None
-    ):
-        skip_error = service._error_for_reason(
-            preview.lines[0].skip_reason,
-            preview.lines[0].class_name,
-            _period_label(selected_month, selected_year),
-        )
-        return _preview_response(request, error=str(skip_error))
-    return _preview_response(
+        template = _service(request).get_template(template_id)
+    except TemplateNotFound:
+        raise HTTPException(status_code=404, detail="Fee template not found.")
+    return _form_response(
         request,
-        preview=preview,
-        period=_period_label(selected_month, selected_year),
+        template=template,
+        name=template.name,
+        amount=format_input_cents(template.amount_cents),
     )
 
 
-@router.post("/fees/generate", response_class=HTMLResponse)
-def generate_fees(
+@router.post("/fees/templates", response_class=HTMLResponse)
+def create_template(
     request: Request,
-    class_id: str = Form(""),
-    month: str = Form(""),
-    year: str = Form(""),
-    user: User = Depends(require_login),
+    name: str = Form(""),
+    amount: str = Form(""),
+    user: User = Depends(require_admin),
 ) -> Response:
     try:
-        selected = _coerce_class_id(class_id)
-        selected_month, selected_year = _coerce_period(month, year)
-        result = _service(request).generate(
-            user=user, class_id=selected, month=selected_month, year=selected_year
-        )
-    except (FeeError, ClassNotFound) as exc:
-        msg, err, toast = "", str(exc), {"message": str(exc), "tone": "error"}
-    else:
-        msg, tone = _success_message(result)
-        err, toast = "", {"message": msg, "tone": tone}
-
+        _service(request).create_template(user=user, name=name, amount=amount)
+    except TemplateError as exc:
+        if not _is_htmx(request):
+            return _redirect(str(exc), err=True)
+        return _form_response(request, error=str(exc), name=name, amount=amount)
+    message = "Fee template created."
     if not _is_htmx(request):
-        params = {"msg": msg} if msg else {"err": err}
-        return RedirectResponse(f"/fees?{urlencode(params)}", status_code=303)
-    return _card_response(
-        request,
-        msg=msg,
-        err=err,
-        toast=toast,
-        selected_class_id=class_id,
-        month=_safe_int(month),
-        year=_safe_int(year),
-    )
+        return _redirect(message)
+    return _form_response(request, headers=_success_headers(message))
+
+
+@router.post("/fees/templates/{template_id}/edit", response_class=HTMLResponse)
+def edit_template(
+    request: Request,
+    template_id: int,
+    name: str = Form(""),
+    amount: str = Form(""),
+    month: str = Form(""),
+    year: str = Form(""),
+    user: User = Depends(require_admin),
+) -> Response:
+    try:
+        template = _service(request).update_template(
+            user=user,
+            template_id=template_id,
+            name=name,
+            amount=amount,
+            month=_coerce_month(month),
+            year=_coerce_year(year),
+        )
+    except TemplateNotFound:
+        raise HTTPException(status_code=404, detail="Fee template not found.")
+    except TemplateError as exc:
+        if not _is_htmx(request):
+            return _redirect(str(exc), err=True)
+        current = _service(request).get_template(template_id)
+        return _form_response(
+            request,
+            template=current,
+            error=str(exc),
+            name=name,
+            amount=amount,
+            month=month,
+            year=year,
+        )
+    message = "Fee template updated."
+    if not _is_htmx(request):
+        return _redirect(message)
+    return _form_response(request, headers=_success_headers(message))
+
+
+@router.post("/fees/templates/{template_id}/archive", response_class=HTMLResponse)
+def archive_template(
+    request: Request,
+    template_id: int,
+    user: User = Depends(require_admin),
+) -> Response:
+    return _status_mutation(request, template_id, user, archive=True)
+
+
+@router.post("/fees/templates/{template_id}/restore", response_class=HTMLResponse)
+def restore_template(
+    request: Request,
+    template_id: int,
+    user: User = Depends(require_admin),
+) -> Response:
+    return _status_mutation(request, template_id, user, archive=False)
+
+
+def _status_mutation(
+    request: Request, template_id: int, user: User, *, archive: bool
+) -> Response:
+    service = _service(request)
+    try:
+        if archive:
+            service.archive_template(user=user, template_id=template_id)
+            message = "Fee template archived."
+        else:
+            service.restore_template(user=user, template_id=template_id)
+            message = "Fee template restored."
+    except TemplateNotFound:
+        raise HTTPException(status_code=404, detail="Fee template not found.")
+    if not _is_htmx(request):
+        return _redirect(message)
+    return _list_response(request, toast={"message": message, "tone": "success"})

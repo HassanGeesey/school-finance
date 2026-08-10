@@ -1,63 +1,47 @@
-"""Fee service layer: monthly billing and per-student month adjustments.
+"""Fee template service layer: the Admin's fee plans.
 
-The core billing mechanic is :class:`FeeService`: a Finance officer (or Admin)
-picks a Class or All classes, a Month and a Year, and every student in scope
-gets one monthly :class:`Charge` summing their class's fee items, with the item
-breakdown snapshotted at generation time so later fee-structure edits never
-rewrite history. Generation is duplicate-safe per class+month+year via
-:class:`GenerationRecord`.
-
-:class:`AdjustmentsService` handles the Admin's per-student month exceptions on
-top of a generated charge: adding an extra item (increases the charge) or
-applying a waiver/discount (decreases it). The net charge is always computed
-live as base + extras - waivers, so an adjustment reflects on the student's
-balance immediately, and a waiver can never drive a charge below zero.
-
-Routes are thin adapters over this module — it is the single testing seam.
+The fee-billing rework replaced charge rows with templates: a :class:`FeeTemplate`
+is a named monthly amount a class defaults to and a student can be linked to
+(``CONTEXT.md`` — "Fee Template"). This module is the Admin's configuration
+surface for those templates. Routes are thin adapters over it — it is the single
+testing seam.
 
 Rules that live here:
-- Month must be 1-12 and year must be a sensible value (``InvalidPeriod``).
-- Only *active* students in a class are billed; archived students keep their
-  history and arrears but accrue no new charges.
-- Only classes with an itemized fee structure generate; a class with no fee
-  items is skipped (or refused, when chosen explicitly) so no zero-dollar
-  charges are ever created.
-- Completed/Inactive classes are excluded from "All classes" and refused when
-  chosen explicitly (``ClassNotActive``).
-- A class+month+year can be generated exactly once; a second attempt is refused
-  (``AlreadyGenerated``) and never doubles charges. "All classes" re-runs skip
-  classes that already have a generation record while generating the rest.
-- Every generation (that creates anything) is recorded in the audit log.
-- Adjustments need a label and a positive amount; extras increase and waivers
-  decrease the charge's net amount. A waiver is refused when it would take the
-  net below zero (``WaiverExceedsBalance``). Every adjustment is audited.
+- A template name is required; the amount is positive integer cents
+  (``app.money``), never floats.
+- An **amount change is effective-dated** (FW-20): it carries an effective month
+  (default: next month) that may not be before the current month, so past months
+  are frozen. The change propagates to every student linked to the template,
+  writing one per-student amount-change entry at the effective month so a month's
+  expected amount can be resolved without rewriting history.
+- Renaming a template changes its name for every linked student (the linkage is
+  by id, not by name); it never touches amounts or history.
+- Archiving is a status transition (no hard deletes): an archived template stops
+  appearing in pickers but keeps its linkage and history; restore is the reverse.
+- Every change is recorded in the audit log with the acting user.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from ..audit.service import AuditActions, AuditService
-from ..classes.service import ClassNotFound
 from ..db import Database
 from ..models import (
-    Adjustment,
-    AdjustmentKinds,
-    Charge,
-    Class,
-    ClassStatus,
-    FeeItem,
-    GenerationRecord,
+    ClosedMonth,
+    FeeTemplate,
     Student,
-    StudentStatus,
+    StudentAmountChange,
     User,
+    Waiver,
 )
 from ..money import (
+    AmountInput,
     InvalidAmount,
-    Money,
     NonPositiveAmount,
     format_cents,
     parse_positive_cents,
@@ -81,102 +65,34 @@ MONTH_NAMES = [
 MIN_YEAR = 2000
 MAX_YEAR = 2100
 
-SKIP_ALREADY_GENERATED = "already generated for this month"
-SKIP_NOT_ACTIVE = "class is not active"
-SKIP_NO_FEE_ITEMS = "no fee items set up"
+
+class TemplateError(Exception):
+    """Rejected input or state in a fee-template operation."""
 
 
-class FeeError(Exception):
-    """Rejected input or state in a fee-generation operation."""
+class TemplateNotFound(TemplateError):
+    """No fee template exists with the given id."""
 
 
-class InvalidPeriod(FeeError):
-    """Month/year fall outside the supported range."""
+class InvalidPeriod(TemplateError):
+    """The effective month/year falls outside the supported range, or is past."""
 
 
-class AlreadyGenerated(FeeError):
-    """The class+month+year already has charges; a re-run would double them."""
+def period_label(month: int, year: int) -> str:
+    """Human label for a month+year, e.g. ``April 2026``."""
+    return f"{MONTH_NAMES[month - 1]} {year}"
 
 
-class ClassNotActive(FeeError):
-    """Fee generation only runs for Active classes."""
+def default_effective_month() -> tuple[int, int]:
+    """The month/year an amount change defaults to: the next calendar month."""
+    today = date.today()
+    if today.month == 12:
+        return 1, today.year + 1
+    return today.month + 1, today.year
 
 
-class NoFeeItems(FeeError):
-    """The class has no fee structure, so there is nothing to bill."""
-
-
-@dataclass
-class ClassGenerationLine:
-    """One class's row in a preview: what would be billed, or why not."""
-
-    class_id: int
-    class_name: str
-    student_count: int
-    per_student_cents: Money
-    total_cents: Money
-    skip_reason: str | None = None
-
-    @property
-    def will_generate(self) -> bool:
-        return self.skip_reason is None
-
-
-@dataclass
-class GenerationPreview:
-    """The per-class breakdown shown in the confirm dialog."""
-
-    month: int
-    year: int
-    class_id: int | None
-    class_name: str | None
-    lines: list[ClassGenerationLine]
-
-    @property
-    def generatable_lines(self) -> list[ClassGenerationLine]:
-        return [line for line in self.lines if line.will_generate]
-
-    @property
-    def total_students(self) -> int:
-        return sum(line.student_count for line in self.generatable_lines)
-
-    @property
-    def total_cents(self) -> Money:
-        return sum(line.total_cents for line in self.generatable_lines)
-
-
-@dataclass
-class GeneratedClass:
-    """One class actually generated in a run."""
-
-    class_id: int
-    class_name: str
-    charges_created: int
-    per_student_cents: Money
-    total_cents: Money
-
-
-@dataclass
-class GenerationResult:
-    """What a generation run did: classes generated and classes skipped."""
-
-    month: int
-    year: int
-    class_id: int | None
-    generated: list[GeneratedClass]
-    skipped: list[str]
-
-    @property
-    def charges_created(self) -> int:
-        return sum(line.charges_created for line in self.generated)
-
-    @property
-    def total_cents(self) -> Money:
-        return sum(line.total_cents for line in self.generated)
-
-
-class FeeService:
-    """Fee generation business rules. Each public method is one unit of work."""
+class TemplateService:
+    """Fee-template business rules. Each public method is one unit of work."""
 
     def __init__(self, db: Database, audit: AuditService | None = None) -> None:
         self._db = db
@@ -190,303 +106,268 @@ class FeeService:
             self._audit.log(user=user, action=action, summary=summary)
 
     @staticmethod
-    def _validate_period(month: int, year: int) -> tuple[int, int]:
+    def _get_template(session: Session, template_id: int) -> FeeTemplate:
+        template = session.get(FeeTemplate, template_id)
+        if template is None:
+            raise TemplateNotFound(f"No fee template with id {template_id} exists.")
+        return template
+
+    @staticmethod
+    def _validate_name(name: str) -> str:
+        cleaned = (name or "").strip()
+        if not cleaned:
+            raise TemplateError("A template name is required.")
+        return cleaned
+
+    @staticmethod
+    def _validate_amount(amount: AmountInput) -> int:
+        try:
+            return parse_positive_cents(amount)
+        except InvalidAmount:
+            raise TemplateError("Enter a valid amount.") from None
+        except NonPositiveAmount:
+            raise TemplateError("Amount must be greater than zero.") from None
+
+    @classmethod
+    def _validate_effective_month(
+        cls, month: int | None, year: int | None
+    ) -> tuple[int, int]:
+        """Coerce and validate the month an amount change takes effect.
+
+        ``None``/``None`` means "next month" (the default). Both must be given
+        together, the month must be 1-12 and the year within range, and the
+        month may not be before the current month — past months are frozen
+        (FW-20).
+        """
+        if month is None and year is None:
+            return default_effective_month()
+        if month is None or year is None:
+            raise InvalidPeriod("Choose both the month and the year the change takes effect.")
         if not isinstance(month, int) or not 1 <= month <= 12:
             raise InvalidPeriod("Choose a month between 1 and 12.")
         if not isinstance(year, int) or not MIN_YEAR <= year <= MAX_YEAR:
             raise InvalidPeriod(f"Choose a year between {MIN_YEAR} and {MAX_YEAR}.")
+        today = date.today()
+        if (year, month) < (today.year, today.month):
+            raise InvalidPeriod(
+                "The effective month cannot be in the past — past months are already set."
+            )
         return month, year
 
-    @staticmethod
-    def _period_label(month: int, year: int) -> str:
-        return period_label(month, year)
-
-    @staticmethod
-    def _fee_items(session: Session, class_id: int) -> list[FeeItem]:
-        return (
-            session.query(FeeItem)
-            .filter(FeeItem.class_id == class_id)
-            .order_by(FeeItem.id)
-            .all()
-        )
-
-    def _active_students(self, session: Session, class_id: int) -> list[Student]:
-        return (
-            session.query(Student)
-            .filter(
-                Student.class_id == class_id,
-                Student.status == StudentStatus.ACTIVE,
-            )
-            .order_by(Student.id)
-            .all()
-        )
-
-    def _already_generated(self, session: Session, class_id: int, month: int, year: int) -> bool:
-        return (
-            session.query(GenerationRecord)
-            .filter(
-                GenerationRecord.class_id == class_id,
-                GenerationRecord.month == month,
-                GenerationRecord.year == year,
-            )
-            .first()
-            is not None
-        )
-
-    def _skip_reason(
-        self, session: Session, cls: Class, month: int, year: int, has_items: bool
-    ) -> str | None:
-        if cls.status != ClassStatus.ACTIVE:
-            return SKIP_NOT_ACTIVE
-        if not has_items:
-            return SKIP_NO_FEE_ITEMS
-        if self._already_generated(session, cls.id, month, year):
-            return SKIP_ALREADY_GENERATED
-        return None
-
-    def _scope(
-        self, session: Session, class_id: int | None, month: int, year: int
-    ) -> list[ClassGenerationLine]:
-        """One line per class in scope, with skip reasons filled in.
-
-        A specific class is always included (even when not active, so the
-        caller can be told why). "All classes" includes only Active classes.
-        """
-        if class_id is not None:
-            cls = session.get(Class, class_id)
-            if cls is None:
-                raise ClassNotFound(f"No class with id {class_id} exists.")
-            lines = [cls]
-        else:
-            lines = (
-                session.query(Class)
-                .filter(Class.status == ClassStatus.ACTIVE)
-                .order_by(Class.created_at, Class.id)
-                .all()
-            )
-
-        result: list[ClassGenerationLine] = []
-        for cls in lines:
-            items = self._fee_items(session, cls.id)
-            students = self._active_students(session, cls.id)
-            per_student = sum(item.amount_cents for item in items)
-            result.append(
-                ClassGenerationLine(
-                    class_id=cls.id,
-                    class_name=cls.name,
-                    student_count=len(students),
-                    per_student_cents=per_student,
-                    total_cents=per_student * len(students),
-                    skip_reason=self._skip_reason(
-                        session, cls, month, year, has_items=bool(items)
-                    ),
-                )
-            )
-        return result
-
-    @staticmethod
-    def _error_for_reason(reason: str, class_name: str, period: str) -> FeeError:
-        if reason == SKIP_ALREADY_GENERATED:
-            return AlreadyGenerated(
-                f"{class_name} has already been generated for {period}. "
-                "No duplicate charges will be created."
-            )
-        if reason == SKIP_NO_FEE_ITEMS:
-            return NoFeeItems(
-                f"{class_name} has no fee items set up. "
-                "Add its fee structure before generating."
-            )
-        return ClassNotActive(
-            f"{class_name} is not active. Only Active classes generate fees."
-        )
-
-    def preview(self, class_id: int | None, month: int, year: int) -> GenerationPreview:
-        """The per-class breakdown for the confirm dialog (non-destructive)."""
-        month, year = self._validate_period(month, year)
-        with self._session() as session:
-            lines = self._scope(session, class_id, month, year)
-        return GenerationPreview(
-            month=month,
-            year=year,
-            class_id=class_id,
-            class_name=lines[0].class_name if class_id is not None else None,
-            lines=lines,
-        )
-
-    def generate(
+    def create_template(
         self,
         *,
         user: User | None,
-        class_id: int | None,
-        month: int,
-        year: int,
-    ) -> GenerationResult:
-        """Generate one monthly charge per active student, duplicate-safe.
+        name: str,
+        amount: AmountInput,
+    ) -> FeeTemplate:
+        """Create a fee template with an initial monthly amount."""
+        name = self._validate_name(name)
+        amount_cents = self._validate_amount(amount)
 
-        A specific class is refused when it is not active, has no fee items, or
-        was already generated for the month (``AlreadyGenerated``). "All
-        classes" generates every eligible Active class and skips the rest —
-        already-generated or structure-less classes are reported, never doubled.
-        All charges and generation records land in one transaction, then one
-        audit entry records the run.
-        """
-        month, year = self._validate_period(month, year)
-        period = self._period_label(month, year)
-
-        generated: list[GeneratedClass] = []
-        skipped: list[str] = []
         with self._session() as session:
-            for line in self._scope(session, class_id, month, year):
-                if line.skip_reason is not None:
-                    if class_id is not None:
-                        raise self._error_for_reason(line.skip_reason, line.class_name, period)
-                    skipped.append(f"{line.class_name} — {line.skip_reason}")
-                    continue
-                items = self._fee_items(session, line.class_id)
-                item_snapshot = [
-                    {"name": item.name, "amount_cents": item.amount_cents} for item in items
-                ]
-                for student in self._active_students(session, line.class_id):
-                    session.add(
-                        Charge(
-                            student_id=student.id,
-                            month=month,
-                            year=year,
-                            amount_cents=line.per_student_cents,
-                            breakdown=item_snapshot,
-                        )
-                    )
-                session.add(
-                    GenerationRecord(
-                        class_id=line.class_id, month=month, year=year
-                    )
-                )
-                generated.append(
-                    GeneratedClass(
-                        class_id=line.class_id,
-                        class_name=line.class_name,
-                        charges_created=line.student_count,
-                        per_student_cents=line.per_student_cents,
-                        total_cents=line.total_cents,
-                    )
-                )
-            try:
-                session.commit()
-            except IntegrityError:
-                raise AlreadyGenerated(
-                    f"Charges already exist for {period}. No duplicate charges were created."
-                ) from None
-
-        if generated:
-            class_name = generated[0].class_name if len(generated) == 1 else None
-            self._log(user=user, action=AuditActions.FEE_GENERATE, summary=self._summary(
-                period=period,
-                class_name=class_name,
-                generated=generated,
-            ))
-        return GenerationResult(
-            month=month,
-            year=year,
-            class_id=class_id,
-            generated=generated,
-            skipped=skipped,
+            template = FeeTemplate(name=name, amount_cents=amount_cents)
+            session.add(template)
+            session.commit()
+            session.refresh(template)
+        self._log(
+            user=user,
+            action=AuditActions.TEMPLATE_CREATE,
+            summary=(
+                f"Created fee template {template.name} "
+                f"({format_cents(template.amount_cents)}/month)"
+            ),
         )
+        return template
+
+    def update_template(
+        self,
+        *,
+        user: User | None,
+        template_id: int,
+        name: str,
+        amount: AmountInput,
+        month: int | None = None,
+        year: int | None = None,
+    ) -> FeeTemplate:
+        """Rename and/or change the amount of a template in one unit of work.
+
+        A name change is a simple rename. An amount change is effective-dated:
+        it needs an effective month (default next month, never past) and
+        propagates to every linked student from that month. Each field that
+        actually changes is audited separately; unchanged fields produce no
+        noise.
+        """
+        name = self._validate_name(name)
+        amount_cents = self._validate_amount(amount)
+
+        renamed: tuple[str, str] | None = None
+        changed_month: tuple[int, int] | None = None
+        propagated = 0
+        with self._session() as session:
+            template = self._get_template(session, template_id)
+            if template.name != name:
+                renamed = (template.name, name)
+                template.name = name
+            if template.amount_cents != amount_cents:
+                changed_month = self._validate_effective_month(month, year)
+                template.amount_cents = amount_cents
+                propagated = self._propagate(
+                    session,
+                    template_id=template.id,
+                    amount_cents=amount_cents,
+                    month=changed_month[0],
+                    year=changed_month[1],
+                )
+            session.commit()
+            session.refresh(template)
+
+        if renamed is not None:
+            self._log(
+                user=user,
+                action=AuditActions.TEMPLATE_RENAME,
+                summary=f"Renamed fee template {renamed[0]} to {renamed[1]}",
+            )
+        if changed_month is not None:
+            summary = (
+                f"Changed fee template {template.name} to "
+                f"{format_cents(amount_cents)}/month effective "
+                f"{period_label(*changed_month)}"
+            )
+            if propagated:
+                summary += f" ({propagated} linked student(s) updated)"
+            self._log(
+                user=user,
+                action=AuditActions.TEMPLATE_AMOUNT_CHANGE,
+                summary=summary,
+            )
+        return template
 
     @staticmethod
-    def _summary(
+    def _propagate(
+        session: Session,
         *,
-        period: str,
-        class_name: str | None,
-        generated: list[GeneratedClass],
-    ) -> str:
-        total_cents = sum(line.total_cents for line in generated)
-        charges = sum(line.charges_created for line in generated)
-        if class_name is not None:
-            return (
-                f"Generated {period} fees for {class_name}: "
-                f"{charges} charge(s), {format_cents(total_cents)}"
-            )
-        classes_word = "class" if len(generated) == 1 else "classes"
-        return (
-            f"Generated {period} fees for all classes: {len(generated)} {classes_word}, "
-            f"{charges} charge(s), {format_cents(total_cents)}"
+        template_id: int,
+        amount_cents: int,
+        month: int,
+        year: int,
+    ) -> int:
+        """Write one effective-dated entry per linked student (FW-19/FW-20).
+
+        Each student linked to the template gets a ``StudentAmountChange`` at
+        ``month``/``year`` set to the new amount. A student who already has an
+        entry at exactly that month is updated in place, so a template never
+        stacks two entries on the same month. Returns how many linked students
+        were touched (0 when no student is linked yet).
+        """
+        students = (
+            session.query(Student).filter(Student.fee_template_id == template_id).all()
         )
+        if not students:
+            return 0
+        existing = {
+            (row.student_id, row.month, row.year): row
+            for row in session.query(StudentAmountChange)
+            .filter(
+                StudentAmountChange.student_id.in_([student.id for student in students]),
+                StudentAmountChange.month == month,
+                StudentAmountChange.year == year,
+            )
+            .all()
+        }
+        for student in students:
+            row = existing.get((student.id, month, year))
+            if row is None:
+                session.add(
+                    StudentAmountChange(
+                        student_id=student.id,
+                        amount_cents=amount_cents,
+                        month=month,
+                        year=year,
+                    )
+                )
+            else:
+                row.amount_cents = amount_cents
+        return len(students)
+
+    def archive_template(self, *, user: User | None, template_id: int) -> FeeTemplate:
+        """Archive a template: it stops appearing in pickers but keeps its history."""
+        with self._session() as session:
+            template = self._get_template(session, template_id)
+            if template.archived:
+                return template
+            template.archived = True
+            session.commit()
+            session.refresh(template)
+        self._log(
+            user=user,
+            action=AuditActions.TEMPLATE_ARCHIVE,
+            summary=f"Archived fee template {template.name}",
+        )
+        return template
+
+    def restore_template(self, *, user: User | None, template_id: int) -> FeeTemplate:
+        """Restore an archived template so it appears in pickers again."""
+        with self._session() as session:
+            template = self._get_template(session, template_id)
+            if not template.archived:
+                return template
+            template.archived = False
+            session.commit()
+            session.refresh(template)
+        self._log(
+            user=user,
+            action=AuditActions.TEMPLATE_RESTORE,
+            summary=f"Restored fee template {template.name}",
+        )
+        return template
+
+    def list_templates(self) -> list[FeeTemplate]:
+        """Every template, active ones first, then archived — both by name."""
+        with self._session() as session:
+            return (
+                session.query(FeeTemplate)
+                .order_by(FeeTemplate.archived, FeeTemplate.name, FeeTemplate.id)
+                .all()
+            )
+
+    def list_active_templates(self) -> list[FeeTemplate]:
+        """Only non-archived templates, for the class/student pickers."""
+        with self._session() as session:
+            return (
+                session.query(FeeTemplate)
+                .filter(FeeTemplate.archived.is_(False))
+                .order_by(FeeTemplate.name, FeeTemplate.id)
+                .all()
+            )
+
+    def get_template(self, template_id: int) -> FeeTemplate:
+        with self._session() as session:
+            return self._get_template(session, template_id)
+
+    def linked_student_counts(self) -> dict[int, int]:
+        """How many students are currently linked to each template id (FW-19)."""
+        with self._session() as session:
+            rows = (
+                session.query(Student.fee_template_id, func.count(Student.id))
+                .filter(Student.fee_template_id.isnot(None))
+                .group_by(Student.fee_template_id)
+                .all()
+            )
+        return {template_id: int(count) for template_id, count in rows}
 
 
-class AdjustmentError(Exception):
-    """Rejected input or state in a per-student month adjustment."""
+class WaiverError(Exception):
+    """Rejected input or state in a waiver operation."""
 
 
-class ChargeNotFound(AdjustmentError):
-    """No charge exists with the given id."""
+class WaiverService:
+    """Per-(student, month) charge forgiveness (FW-10/FW-11/FW-13).
 
-
-class WaiverExceedsBalance(AdjustmentError):
-    """A waiver would drive a charge's net amount below zero."""
-
-
-@dataclass
-class ChargeAccountLine:
-    """One monthly charge as shown on a student's account, with its adjustments.
-
-    ``net_cents`` is the live balance of the charge (base + extras - waivers)
-    and is what arrears and the account balance are computed from.
-    """
-
-    charge: Charge
-    base_cents: Money
-    extras_cents: Money
-    waivers_cents: Money
-    net_cents: Money
-    adjustments: list[Adjustment]
-    period_label: str
-
-    @property
-    def adjusted(self) -> bool:
-        return self.extras_cents != 0 or self.waivers_cents != 0
-
-
-def period_label(month: int, year: int) -> str:
-    """Human label for a charge period, e.g. ``April 2026``."""
-    return f"{MONTH_NAMES[month - 1]} {year}"
-
-
-def net_cents(charge: Charge, adjustments: list[Adjustment]) -> int:
-    """A charge's live amount: base + extras - waivers (never below zero in practice)."""
-    extras = sum(
-        a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.EXTRA
-    )
-    waivers = sum(
-        a.amount_cents for a in adjustments if a.kind == AdjustmentKinds.WAIVER
-    )
-    return charge.amount_cents + extras - waivers
-
-
-def to_charge_line(charge: Charge) -> ChargeAccountLine:
-    """The account-view row for one charge: base, extras, waivers, net, label."""
-    extras = sum(
-        a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.EXTRA
-    )
-    waivers = sum(
-        a.amount_cents for a in charge.adjustments if a.kind == AdjustmentKinds.WAIVER
-    )
-    return ChargeAccountLine(
-        charge=charge,
-        base_cents=charge.amount_cents,
-        extras_cents=extras,
-        waivers_cents=waivers,
-        net_cents=charge.amount_cents + extras - waivers,
-        adjustments=list(charge.adjustments),
-        period_label=period_label(charge.month, charge.year),
-    )
-
-
-class AdjustmentsService:
-    """Per-student month adjustments. Each public method is one unit of work.
-
-    An extra is an additional fee item on a charge (it increases the net);
-    a waiver is a discount (it decreases the net). Both are Admin-only at the
-    route layer. A waiver can only reduce a charge down to zero, never below.
+    A waiver reduces a month's expected amount by a given amount; multiple
+    waivers stack on the same month and the expected never goes below zero.
+    A reason/label is required, and creation is audited with the acting user
+    (who and why). Both Admin and Finance officer may waive.
     """
 
     def __init__(self, db: Database, audit: AuditService | None = None) -> None:
@@ -499,170 +380,167 @@ class AdjustmentsService:
     def _log(self, *, user: User | None, action: str, summary: str) -> None:
         if self._audit is not None:
             self._audit.log(user=user, action=action, summary=summary)
-
-    @staticmethod
-    def _period_label(month: int, year: int) -> str:
-        return f"{MONTH_NAMES[month - 1]} {year}"
-
-    def _get_charge(self, session: Session, charge_id: int) -> Charge:
-        charge = (
-            session.query(Charge)
-            .options(joinedload(Charge.student))
-            .filter(Charge.id == charge_id)
-            .one_or_none()
-        )
-        if charge is None:
-            raise ChargeNotFound(f"No charge with id {charge_id} exists.")
-        return charge
 
     @staticmethod
     def _validate_label(label: str) -> str:
         cleaned = (label or "").strip()
         if not cleaned:
-            raise AdjustmentError("A label is required.")
+            raise WaiverError("A reason is required.")
         return cleaned
 
     @staticmethod
-    def _validate_amount(amount: object) -> int:
+    def _validate_amount(amount: AmountInput) -> int:
         try:
-            return parse_positive_cents(amount)  # type: ignore[arg-type]
+            return parse_positive_cents(amount)
         except InvalidAmount:
-            raise AdjustmentError("Enter a valid amount.") from None
+            raise WaiverError("Enter a valid amount.") from None
         except NonPositiveAmount:
-            raise AdjustmentError("Amount must be greater than zero.") from None
+            raise WaiverError("Amount must be greater than zero.") from None
 
     @staticmethod
-    def _net_cents(charge: Charge, adjustments: list[Adjustment]) -> int:
-        return net_cents(charge, adjustments)
+    def _validate_period(month: int | None, year: int | None) -> tuple[int, int]:
+        if not isinstance(month, int) or not 1 <= month <= 12:
+            raise WaiverError("Choose a month between 1 and 12.")
+        if not isinstance(year, int) or not MIN_YEAR <= year <= MAX_YEAR:
+            raise WaiverError(f"Choose a year between {MIN_YEAR} and {MAX_YEAR}.")
+        return month, year
 
-    def _charge_net_cents(self, session: Session, charge: Charge) -> int:
-        adjustments = (
-            session.query(Adjustment).filter(Adjustment.charge_id == charge.id).all()
-        )
-        return self._net_cents(charge, adjustments)
-
-    @classmethod
-    def _to_line(cls, charge: Charge) -> ChargeAccountLine:
-        return to_charge_line(charge)
-
-    def add_extra(
+    def add_waiver(
         self,
         *,
         user: User | None,
-        charge_id: int,
+        student_id: int,
+        month: int | None,
+        year: int | None,
+        amount: AmountInput,
         label: str,
-        amount: object,
-    ) -> Adjustment:
-        """Add an extra fee item to a student's month (increases the charge)."""
-        label = self._validate_label(label)
+    ) -> Waiver:
+        """Apply one waiver to a (student, month)."""
+        month, year = self._validate_period(month, year)
         amount_cents = self._validate_amount(amount)
+        label = self._validate_label(label)
+
         with self._session() as session:
-            charge = self._get_charge(session, charge_id)
-            student_name = charge.student.full_name
-            period = self._period_label(charge.month, charge.year)
-            adjustment = Adjustment(
-                charge_id=charge.id,
-                kind=AdjustmentKinds.EXTRA,
-                label=label,
+            student = session.get(Student, student_id)
+            if student is None:
+                raise WaiverError("Choose a student.")
+            waiver = Waiver(
+                student_id=student_id,
+                month=month,
+                year=year,
                 amount_cents=amount_cents,
+                label=label,
+                created_by=user.id if user is not None else None,
             )
-            session.add(adjustment)
+            session.add(waiver)
             session.commit()
-            session.refresh(adjustment)
+            session.refresh(waiver)
         self._log(
             user=user,
-            action=AuditActions.ADJUSTMENT_ADD,
+            action=AuditActions.WAIVER_ADD,
             summary=(
-                f"Added extra {label} ({format_cents(amount_cents)}) "
-                f"to {student_name}'s {period} charge"
+                f"Waived {format_cents(amount_cents)} for {student.full_name} "
+                f"({period_label(month, year)}): {label}"
             ),
         )
-        return adjustment
+        return waiver
 
-    def apply_waiver(
-        self,
-        *,
-        user: User | None,
-        charge_id: int,
-        label: str,
-        amount: object,
-    ) -> Adjustment:
-        """Apply a waiver/discount to a student's month (decreases the charge).
 
-        The waiver is capped at the charge's current net balance so a charge
-        can be reduced to zero but never below.
-        """
-        label = self._validate_label(label)
-        amount_cents = self._validate_amount(amount)
+class ClosedMonthError(Exception):
+    """Rejected input or state in a closed-month operation."""
+
+
+class DuplicateClosedMonth(ClosedMonthError):
+    """The month is already on the closed list."""
+
+
+class ClosedMonthService:
+    """The school-wide closed-month list (FW-17).
+
+    A closed month is excluded from every student's owed months — it carries no
+    expected amount and never appears as unpaid. Maintained by the Admin; add
+    and remove are audited.
+    """
+
+    def __init__(self, db: Database, audit: AuditService | None = None) -> None:
+        self._db = db
+        self._audit = audit
+
+    def _session(self) -> Session:
+        return self._db.session()
+
+    def _log(self, *, user: User | None, action: str, summary: str) -> None:
+        if self._audit is not None:
+            self._audit.log(user=user, action=action, summary=summary)
+
+    @staticmethod
+    def _validate_period(month: int | None, year: int | None) -> tuple[int, int]:
+        if not isinstance(month, int) or not 1 <= month <= 12:
+            raise ClosedMonthError("Choose a month between 1 and 12.")
+        if not isinstance(year, int) or not MIN_YEAR <= year <= MAX_YEAR:
+            raise ClosedMonthError(f"Choose a year between {MIN_YEAR} and {MAX_YEAR}.")
+        return month, year
+
+    def add_closed_month(
+        self, *, user: User | None, month: int | None, year: int | None
+    ) -> ClosedMonth:
+        month, year = self._validate_period(month, year)
         with self._session() as session:
-            charge = self._get_charge(session, charge_id)
-            student_name = charge.student.full_name
-            period = self._period_label(charge.month, charge.year)
-            net = self._charge_net_cents(session, charge)
-            if amount_cents > net:
-                raise WaiverExceedsBalance(
-                    f"A waiver of {format_cents(amount_cents)} would take the "
-                    f"{period} charge below zero (remaining: {format_cents(net)})."
-                )
-            adjustment = Adjustment(
-                charge_id=charge.id,
-                kind=AdjustmentKinds.WAIVER,
-                label=label,
-                amount_cents=amount_cents,
-            )
-            session.add(adjustment)
-            session.commit()
-            session.refresh(adjustment)
-        self._log(
-            user=user,
-            action=AuditActions.ADJUSTMENT_ADD,
-            summary=(
-                f"Applied waiver {label} ({format_cents(amount_cents)}) "
-                f"to {student_name}'s {period} charge"
-            ),
-        )
-        return adjustment
-
-    def get_charge(self, charge_id: int) -> Charge:
-        with self._session() as session:
-            return self._get_charge(session, charge_id)
-
-    def get_charge_line(self, charge_id: int) -> ChargeAccountLine:
-        """One charge as shown on the account, net of its adjustments."""
-        with self._session() as session:
-            charge = (
-                session.query(Charge)
-                .options(joinedload(Charge.adjustments), joinedload(Charge.student))
-                .filter(Charge.id == charge_id)
+            exists = (
+                session.query(ClosedMonth)
+                .filter(ClosedMonth.month == month, ClosedMonth.year == year)
                 .one_or_none()
             )
-            if charge is None:
-                raise ChargeNotFound(f"No charge with id {charge_id} exists.")
-            return self._to_line(charge)
+            if exists is not None:
+                raise DuplicateClosedMonth(
+                    f"{period_label(month, year)} is already closed."
+                )
+            closed = ClosedMonth(month=month, year=year)
+            session.add(closed)
+            try:
+                session.commit()
+            except IntegrityError:
+                raise DuplicateClosedMonth(
+                    f"{period_label(month, year)} is already closed."
+                ) from None
+            session.refresh(closed)
+        self._log(
+            user=user,
+            action=AuditActions.CLOSED_MONTH_ADD,
+            summary=f"Closed {period_label(month, year)} (no fees due)",
+        )
+        return closed
 
-    def list_student_charges(self, student_id: int) -> list[ChargeAccountLine]:
-        """A student's monthly charges, most recent period first, net of adjustments."""
+    def remove_closed_month(self, *, user: User | None, month: int, year: int) -> None:
         with self._session() as session:
-            charges = (
-                session.query(Charge)
-                .options(joinedload(Charge.adjustments))
-                .filter(Charge.student_id == student_id)
-                .order_by(Charge.year.desc(), Charge.month.desc(), Charge.id.desc())
+            closed = (
+                session.query(ClosedMonth)
+                .filter(ClosedMonth.month == month, ClosedMonth.year == year)
+                .one_or_none()
+            )
+            if closed is None:
+                raise ClosedMonthError(
+                    f"{period_label(month, year)} is not on the closed list."
+                )
+            session.delete(closed)
+            session.commit()
+        self._log(
+            user=user,
+            action=AuditActions.CLOSED_MONTH_REMOVE,
+            summary=f"Reopened {period_label(month, year)} (fees due again)",
+        )
+
+    def list_closed_months(self) -> list[ClosedMonth]:
+        """Every closed month, newest first."""
+        with self._session() as session:
+            return (
+                session.query(ClosedMonth)
+                .order_by(ClosedMonth.year.desc(), ClosedMonth.month.desc(), ClosedMonth.id)
                 .all()
             )
-            return [self._to_line(charge) for charge in charges]
 
-    def student_balance(self, student_id: int) -> Money:
-        """Total outstanding on a student's account: the sum of net charge amounts.
-
-        Waivers never take a charge below zero, so the balance is never negative
-        from adjustments alone. Payments and credits are applied later (ticket 08).
-        """
+    def closed_month_set(self) -> set[tuple[int, int]]:
+        """The closed months as a lookup set of ``(month, year)`` pairs."""
         with self._session() as session:
-            charges = (
-                session.query(Charge)
-                .options(joinedload(Charge.adjustments))
-                .filter(Charge.student_id == student_id)
-                .all()
-            )
-        return sum(self._net_cents(charge, list(charge.adjustments)) for charge in charges)
+            rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+        return {(month, year) for month, year in rows}

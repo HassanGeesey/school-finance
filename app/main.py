@@ -3,125 +3,52 @@
 The single entry point: creates the engine/session wiring, mounts static assets,
 registers the base layout, and exposes the app. Feature routers are mounted here
 as they land.
+
+``include_billing=False`` builds a test mini-app that skips the not-yet-reworked
+billing modules (payments/arrears/reports still reference removed models until
+their own rework tickets land) — the owned fee/class tests run against this
+smaller surface.
 """
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from jinja2 import pass_context
-from jinja2.runtime import Context
 
 from .admin.routes import router as admin_router
-from .admin.service import AdminUserService, USER_ROLE_LABELS
+from .admin.service import AdminUserService
 from .audit.routes import router as audit_router
 from .audit.service import AuditService
-from .arrears.routes import router as arrears_router
-from .arrears.service import ArrearsService
 from .auth.deps import require_login
 from .auth.routes import router as auth_router
 from .auth.service import AuthService
 from .classes.routes import router as classes_router
-from .classes.service import CLASS_STATUS_LABELS, ClassService
+from .classes.service import ClassService
 from .config import settings
 from .db import Database, make_engine
 from .expenses.routes import router as expenses_router
 from .expenses.service import ExpenseService
-from .fees.account_routes import router as account_router
 from .fees.routes import router as fees_router
-from .fees.service import AdjustmentsService, FeeService
+from .fees.service import TemplateService
 from .models import User
-from .money import format_cents, format_input_cents
-from .payments.routes import router as payments_router
-from .payments.service import PaymentService
 from .profile.routes import router as profile_router
-from .profile.service import LogoStorage, ProfileService, logo_url_for
-from .reports.routes import dashboard_context, router as reports_router
-from .reports.service import ReportService
+from .profile.service import LogoStorage, ProfileService
 from .students.routes import router as students_router
 from .students.service import StudentService
 from .system.routes import router as system_router
 from .system.service import BackupService, SystemService, uvicorn_stop
-
-
-def _register_template_globals(templates: Jinja2Templates) -> None:
-    @pass_context
-    def current_user(context: Context) -> User | None:
-        request = context.get("request")
-        if request is None:
-            return None
-        return getattr(request.state, "user", None)
-
-    def role_label(role: str) -> str:
-        return USER_ROLE_LABELS.get(role, role)
-
-    def class_status_label(status: str) -> str:
-        return CLASS_STATUS_LABELS.get(status, status)
-
-    @pass_context
-    def school_name(context: Context) -> str:
-        """The school's name for the app shell, falling back to the product name.
-
-        Setup and login override their title/brand explicitly with ``app_name``;
-        everywhere else the school identity wins.
-        """
-        request = context.get("request")
-        profile = getattr(request.state, "school_profile", None) if request is not None else None
-        if profile is not None and profile.school_name:
-            return profile.school_name
-        return settings.APP_NAME
-
-    @pass_context
-    def logo_url(context: Context) -> str:
-        """The serving URL for the current school logo, or "" when unset."""
-        request = context.get("request")
-        profile = getattr(request.state, "school_profile", None) if request is not None else None
-        if profile is None:
-            return ""
-        return logo_url_for(profile)
-
-    @pass_context
-    def school_contact(context: Context) -> list[str]:
-        """The profile's non-empty contact fields, in display order.
-
-        Printed documents render only the fields that are actually set; blank
-        contact fields never print (decision S-3/S-4).
-        """
-        request = context.get("request")
-        profile = getattr(request.state, "school_profile", None) if request is not None else None
-        if profile is None:
-            return []
-        return [
-            value
-            for value in (profile.address, profile.phone, profile.email, profile.website)
-            if value
-        ]
-
-    templates.env.globals.update(
-        app_name=settings.APP_NAME,
-        app_version=settings.VERSION,
-        year=datetime.now(timezone.utc).year,
-        current_user=current_user,
-        role_label=role_label,
-        class_status_label=class_status_label,
-        school_name=school_name,
-        logo_url=logo_url,
-        school_contact=school_contact,
-        money=format_cents,
-        money_input=format_input_cents,
-    )
+from .templating import build_templates
 
 
 def create_app(
     database_url: str | None = None,
     *,
+    include_billing: bool = True,
     shutdown_stopper: Callable[[], None] | None = None,
     backup_source: Path | None = None,
     backup_dir: Path | None = None,
@@ -146,15 +73,10 @@ def create_app(
     auth = AuthService(db, audit=audit, profile=profile)
     classes = ClassService(db, audit=audit)
     students = StudentService(db, audit=audit)
-    fees = FeeService(db, audit=audit)
-    adjustments = AdjustmentsService(db, audit=audit)
-    payments = PaymentService(db, audit=audit)
+    fees = TemplateService(db, audit=audit)
     expenses = ExpenseService(db, audit=audit)
-    arrears = ArrearsService(db)
-    reports = ReportService(db, arrears=arrears)
     admin = AdminUserService(db, audit=audit)
-    templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
-    _register_template_globals(templates)
+    templates = build_templates(settings.TEMPLATES_DIR)
 
     # Backups only make sense against the real SQLite file. In-memory databases
     # (tests) skip the backup service entirely; tests can inject a temp source.
@@ -175,6 +97,23 @@ def create_app(
         stopper = uvicorn_stop
     system = SystemService(db, audit=audit, backups=backups, stopper=stopper)
 
+    # The billing features (payments/arrears/reports) are being reworked ticket
+    # by ticket; their old modules still import removed models, so the mini test
+    # app skips them until the rework lands.
+    dashboard_builder: Callable[[Request], dict[str, object]] | None = None
+    if include_billing:
+        from .arrears.routes import router as arrears_router
+        from .arrears.service import ArrearsService
+        from .payments.routes import router as payments_router
+        from .payments.service import PaymentService
+        from .reports.routes import dashboard_context, router as reports_router
+        from .reports.service import ReportService
+
+        payments = PaymentService(db, audit=audit)
+        arrears = ArrearsService(db)
+        reports = ReportService(db, arrears=arrears)
+        dashboard_builder = dashboard_context
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db.create_all()
@@ -188,15 +127,15 @@ def create_app(
     app.state.classes = classes
     app.state.students = students
     app.state.fees = fees
-    app.state.adjustments = adjustments
-    app.state.payments = payments
     app.state.expenses = expenses
-    app.state.arrears = arrears
-    app.state.reports = reports
     app.state.admin = admin
     app.state.profile = profile
     app.state.system = system
     app.state.templates = templates
+    if include_billing:
+        app.state.payments = payments
+        app.state.arrears = arrears
+        app.state.reports = reports
 
     @app.middleware("http")
     async def resolve_session(
@@ -216,17 +155,17 @@ def create_app(
     app.include_router(classes_router)
     app.include_router(students_router)
     app.include_router(fees_router)
-    app.include_router(account_router)
-    app.include_router(payments_router)
     app.include_router(expenses_router)
-    app.include_router(arrears_router)
-    app.include_router(reports_router)
     app.include_router(profile_router)
     app.include_router(system_router)
+    if include_billing:
+        app.include_router(payments_router)
+        app.include_router(arrears_router)
+        app.include_router(reports_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
-        context = dashboard_context(request)
+        context = dashboard_builder(request) if dashboard_builder is not None else {}
         context["database_url"] = url
         return templates.TemplateResponse(
             request=request,
@@ -237,4 +176,6 @@ def create_app(
     return app
 
 
-app = create_app()
+# No module-level ``app = create_app()``: the billing modules are still being
+# reworked ticket by ticket, so the full app cannot start yet (ticket 01). Start
+# it as a factory when the rework lands: ``uvicorn "app.main:create_app" --factory``.

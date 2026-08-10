@@ -10,7 +10,7 @@
 {% set user = current_user() %}
 {% set is_admin = user is not none and user.role == "admin" %}
 <div class="space-y-6">
-  {{ page_header("Classes", "Each class groups students and carries its own itemized fee structure.", actions=(btn(href="/classes/new", label="New class", icon="plus", variant="primary") if is_admin else "")) }}
+  {{ page_header("Classes", "Each class groups students and defaults to a fee template for its monthly fee.", actions=(btn(href="/classes/new", label="New class", icon="plus", variant="primary") if is_admin else "")) }}
 
   {% if msg %}
   <div>{{ alert("success", msg) }}</div>
@@ -43,7 +43,7 @@
         {% else %}
         <tr>
           <td colspan="5">
-            {{ empty_state("No classes yet" + (" — create the first one" if is_admin else ""), "A class groups students and carries its own itemized fee structure.", "rectangle-stack", "/classes/new", "New class" if is_admin else "") }}
+            {{ empty_state("No classes yet" + (" — create the first one" if is_admin else ""), "A class groups students and points at a fee template for its monthly fee.", "rectangle-stack", "/classes/new", "New class" if is_admin else "") }}
           </td>
         </tr>
         {% endfor %}

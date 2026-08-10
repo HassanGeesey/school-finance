@@ -1,31 +1,29 @@
-"""Fee generation service: monthly charges per student, duplicate-safe.
+"""Fee template service: Admin-managed named monthly amounts (FW-7, FW-19, FW-20).
 
-Business rules only — the single testing seam. A Finance officer (or Admin)
-picks a Class or All classes + Month + Year; each active student gets one
-monthly charge summing the class's fee items, with the item breakdown snapshotted
-so later structure edits never rewrite history. Re-generating the same
-class+month+year is refused. Completed/Inactive classes never generate. Every
-generation is audited. Route concerns live in ``test_fees_routes.py``.
+Business rules only — the single testing seam. Templates are created, renamed,
+and archived; an amount change is effective-dated (default next month, never
+past) and propagates to every linked student via one ``StudentAmountChange``
+row per student at the effective month. Every change is audited. Route concerns
+live in ``test_fees_routes.py``.
 """
+
+from datetime import date
 
 import pytest
 
 from app.audit.service import AuditActions, AuditService
-from app.classes.service import ClassNotFound, ClassService
+from app.classes.service import ClassService
 from app.fees.service import (
-    AlreadyGenerated,
-    ClassNotActive,
-    FeeService,
     InvalidPeriod,
-    NoFeeItems,
+    TemplateError,
+    TemplateNotFound,
+    TemplateService,
+    default_effective_month,
+    period_label,
 )
 from app.models import (
     AuditLogEntry,
-    Charge,
-    Class,
-    ClassStatus,
-    GenerationRecord,
-    StudentStatus,
+    StudentAmountChange,
     User,
     UserRoles,
 )
@@ -40,6 +38,11 @@ def audit(db) -> AuditService:
 
 
 @pytest.fixture()
+def templates(db, audit) -> TemplateService:
+    return TemplateService(db, audit=audit)
+
+
+@pytest.fixture()
 def classes(db, audit) -> ClassService:
     return ClassService(db, audit=audit)
 
@@ -47,11 +50,6 @@ def classes(db, audit) -> ClassService:
 @pytest.fixture()
 def students(db, audit) -> StudentService:
     return StudentService(db, audit=audit)
-
-
-@pytest.fixture()
-def fees(db, audit) -> FeeService:
-    return FeeService(db, audit=audit)
 
 
 @pytest.fixture()
@@ -67,385 +65,489 @@ def admin(db, session) -> User:
     return user
 
 
-def make_class(
-    classes: ClassService,
-    students: StudentService,
-    admin: User,
-    name: str = "Grade 1",
-    status: str = ClassStatus.ACTIVE,
-    items: tuple[tuple[str, str], ...] = (("Tuition", "50.00"), ("Boarding", "12.50")),
-    pupil_names: tuple[tuple[str, str], ...] = (("Ada", "Lovelace"), ("Grace", "Hopper")),
-) -> Class:
-    cls = classes.create_class(user=admin, name=name, status=status)
-    for item_name, amount in items:
-        classes.add_fee_item(user=admin, class_id=cls.id, name=item_name, amount=amount)
-    for first, last in pupil_names:
-        students.add_student(user=admin, class_id=cls.id, first_name=first, last_name=last)
-    return cls
+def make_template(templates, admin, name="Standard", amount="100.00"):
+    return templates.create_template(user=admin, name=name, amount=amount)
 
 
-# ---------------------------------------------------------------------------
-# Generate for one class
-# ---------------------------------------------------------------------------
-
-
-def test_generate_creates_one_charge_per_active_student(fees, classes, students, admin, session):
-    grade1 = make_class(classes, students, admin)
-
-    result = fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    assert result.charges_created == 2
-    charges = session.query(Charge).order_by(Charge.student_id).all()
-    assert len(charges) == 2
-    for charge in charges:
-        assert charge.month == 3
-        assert charge.year == 2026
-        assert charge.amount_cents == 6250  # 50.00 + 12.50
-        assert charge.breakdown == [
-            {"name": "Tuition", "amount_cents": 5000},
-            {"name": "Boarding", "amount_cents": 1250},
-        ]
-
-
-def test_generate_records_the_generation_for_duplicate_safety(
-    fees, classes, students, admin, session
-):
-    grade1 = make_class(classes, students, admin)
-
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    records = session.query(GenerationRecord).all()
-    assert len(records) == 1
-    assert records[0].class_id == grade1.id
-    assert records[0].month == 3
-    assert records[0].year == 2026
-
-
-def test_generate_result_reports_class_and_totals(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin)
-
-    result = fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    assert result.class_id == grade1.id
-    assert result.month == 3
-    assert result.year == 2026
-    (line,) = result.generated
-    assert line.class_name == "Grade 1"
-    assert line.charges_created == 2
-    assert line.per_student_cents == 6250
-    assert line.total_cents == 12500
-    assert result.total_cents == 12500
-
-
-def test_generate_skips_archived_students(fees, classes, students, admin, session):
-    grade1 = make_class(classes, students, admin)
-    archived = students.list_students(grade1.id)[0]
-    students.archive_student(user=admin, student_id=archived.id)
-
-    result = fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    assert result.charges_created == 1
-    assert session.query(Charge).count() == 1
-
-
-def test_generate_can_run_for_a_class_without_students(fees, classes, students, admin, session):
-    grade1 = make_class(classes, students, admin, pupil_names=())
-
-    result = fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    assert result.charges_created == 0
-    assert session.query(Charge).count() == 0
-    assert session.query(GenerationRecord).count() == 1
-
-
-def test_generate_snapshots_the_breakdown_at_generation_time(
-    fees, classes, students, admin, session
-):
-    grade1 = make_class(classes, students, admin)
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-    tuition = classes.class_summary(grade1.id).items[0].id
-    classes.update_fee_item(user=admin, class_id=grade1.id, item_id=tuition, name="Tuition", amount="99.00")
-
-    charges = session.query(Charge).order_by(Charge.id).all()
-    assert len(charges) == 2
-    charge = charges[0]
-    assert charge.amount_cents == 6250
-    assert charge.breakdown == [
-        {"name": "Tuition", "amount_cents": 5000},
-        {"name": "Boarding", "amount_cents": 1250},
-    ]
-
-
-def test_regenerating_the_same_class_and_month_is_refused(fees, classes, students, admin, session):
-    grade1 = make_class(classes, students, admin)
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    with pytest.raises(AlreadyGenerated):
-        fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    assert session.query(Charge).count() == 2  # never doubled
-
-
-def test_the_same_class_can_be_generated_for_a_different_month(
-    fees, classes, students, admin, session
-):
-    grade1 = make_class(classes, students, admin)
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    result = fees.generate(user=admin, class_id=grade1.id, month=4, year=2026)
-
-    assert result.charges_created == 2
-    assert session.query(Charge).count() == 4
-
-
-# ---------------------------------------------------------------------------
-# Generate for all classes
-# ---------------------------------------------------------------------------
-
-
-def test_generate_all_bills_every_active_class(fees, classes, students, admin, session):
-    make_class(classes, students, admin, name="Grade 1", items=(("Tuition", "50.00"),))
-    make_class(classes, students, admin, name="Grade 2", items=(("Tuition", "80.00"),))
-
-    result = fees.generate(user=admin, class_id=None, month=3, year=2026)
-
-    assert {line.class_name for line in result.generated} == {"Grade 1", "Grade 2"}
-    assert result.charges_created == 4
-    assert {r.class_id for r in session.query(GenerationRecord).all()} == {
-        line.class_id for line in result.generated
-    }
-    amounts = {charge.amount_cents for charge in session.query(Charge).all()}
-    assert amounts == {5000, 8000}
-
-
-def test_generate_all_excludes_completed_and_inactive_classes(
-    fees, classes, students, admin, session
-):
-    make_class(classes, students, admin, name="Grade 1", items=(("Tuition", "50.00"),))
-    make_class(
-        classes, students, admin, name="Grade 8", status=ClassStatus.COMPLETED, items=(("Tuition", "90.00"),)
-    )
-    make_class(
-        classes, students, admin, name="Paused", status=ClassStatus.INACTIVE, items=(("Tuition", "70.00"),)
+def linked_student(students, classes, admin, template_id, first="Ada", last="Lovelace"):
+    cls = classes.create_class(user=admin, name="Grade 1")
+    return students.add_student(
+        user=admin,
+        class_id=cls.id,
+        first_name=first,
+        last_name=last,
+        fee_template_id=template_id,
     )
 
-    result = fees.generate(user=admin, class_id=None, month=3, year=2026)
 
-    assert [line.class_name for line in result.generated] == ["Grade 1"]
-    assert session.query(Charge).count() == 2
-    assert session.query(GenerationRecord).count() == 1
-
-
-def test_generate_all_skips_active_classes_without_fee_items(
-    fees, classes, students, admin, session
-):
-    make_class(classes, students, admin, name="Grade 1", items=(("Tuition", "50.00"),))
-    make_class(classes, students, admin, name="Grade 2", items=())
-
-    result = fees.generate(user=admin, class_id=None, month=3, year=2026)
-
-    assert [line.class_name for line in result.generated] == ["Grade 1"]
-    assert session.query(GenerationRecord).count() == 1
-    assert any("Grade 2" in message and "fee items" in message for message in result.skipped)
-
-
-def test_generate_all_skips_classes_already_generated_for_the_month(
-    fees, classes, students, admin, session
-):
-    make_class(classes, students, admin, name="Grade 1", items=(("Tuition", "50.00"),))
-    grade2 = make_class(classes, students, admin, name="Grade 2", items=(("Tuition", "80.00"),))
-    fees.generate(user=admin, class_id=grade2.id, month=3, year=2026)
-
-    result = fees.generate(user=admin, class_id=None, month=3, year=2026)
-
-    assert [line.class_name for line in result.generated] == ["Grade 1"]
-    assert any("Grade 2" in message and "already generated" in message for message in result.skipped)
-    assert session.query(Charge).count() == 4  # 2 original + 2 new, nothing doubled
-
-
-def test_generate_all_with_everything_already_generated_is_a_no_op(
-    fees, classes, students, admin, session
-):
-    grade1 = make_class(classes, students, admin)
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    result = fees.generate(user=admin, class_id=None, month=3, year=2026)
-
-    assert result.generated == []
-    assert len(result.skipped) == 1
-    assert session.query(Charge).count() == 2
+def a_past_month() -> tuple[int, int]:
+    today = date.today()
+    if today.month == 1:
+        return 12, today.year - 1
+    return today.month - 1, today.year
 
 
 # ---------------------------------------------------------------------------
-# Audit
+# Create
 # ---------------------------------------------------------------------------
 
 
-def test_generation_is_audited(fees, classes, students, admin, session):
-    grade1 = make_class(classes, students, admin)
+def test_create_template_stores_name_and_integer_cents(templates, admin, session):
+    template = templates.create_template(user=admin, name="Standard", amount="50.00")
 
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
+    from app.models import FeeTemplate
 
-    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.FEE_GENERATE).one()
+    stored = session.query(FeeTemplate).one()
+    assert stored.id == template.id
+    assert stored.name == "Standard"
+    assert stored.amount_cents == 5000
+    assert isinstance(stored.amount_cents, int)
+    assert stored.archived is False
+
+
+def test_create_template_accepts_a_decimal_amount(templates, admin):
+    template = templates.create_template(user=admin, name="Boarding", amount=12.5)
+
+    assert template.amount_cents == 1250
+
+
+def test_create_template_requires_a_name(templates, admin):
+    with pytest.raises(TemplateError):
+        templates.create_template(user=admin, name="", amount="50.00")
+    with pytest.raises(TemplateError):
+        templates.create_template(user=admin, name="   ", amount="50.00")
+
+
+def test_create_template_requires_a_positive_amount(templates, admin):
+    with pytest.raises(TemplateError):
+        templates.create_template(user=admin, name="Standard", amount="0")
+    with pytest.raises(TemplateError):
+        templates.create_template(user=admin, name="Standard", amount="-5.00")
+    with pytest.raises(TemplateError):
+        templates.create_template(user=admin, name="Standard", amount="not-a-number")
+
+
+def test_create_template_translates_the_shared_amount_rule(templates, admin):
+    with pytest.raises(TemplateError, match="Enter a valid amount"):
+        templates.create_template(user=admin, name="Standard", amount="not-a-number")
+    with pytest.raises(TemplateError, match="greater than zero"):
+        templates.create_template(user=admin, name="Standard", amount="0")
+    with pytest.raises(TemplateError, match="greater than zero"):
+        templates.create_template(user=admin, name="Standard", amount="-5.00")
+
+
+def test_create_template_is_audited(templates, admin, session):
+    templates.create_template(user=admin, name="Standard", amount="100.00")
+
+    entry = session.query(AuditLogEntry).one()
+    assert entry.action == AuditActions.TEMPLATE_CREATE
     assert entry.user_id == admin.id
-    assert "March" in entry.summary
-    assert "2026" in entry.summary
-    assert "Grade 1" in entry.summary
-    assert "2" in entry.summary
-
-
-def test_generation_of_all_classes_is_audited_once(fees, classes, students, admin, session):
-    make_class(classes, students, admin, name="Grade 1")
-    make_class(classes, students, admin, name="Grade 2")
-
-    fees.generate(user=admin, class_id=None, month=3, year=2026)
-
-    entries = session.query(AuditLogEntry).filter_by(action=AuditActions.FEE_GENERATE).all()
-    assert len(entries) == 1
-    assert "2 classes" in entries[0].summary
-    assert "4 charge(s)" in entries[0].summary
-
-
-def test_a_no_op_generation_writes_no_audit_entry(fees, classes, students, admin, session):
-    grade1 = make_class(classes, students, admin)
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    fees.generate(user=admin, class_id=None, month=3, year=2026)
-
-    entries = session.query(AuditLogEntry).filter_by(action=AuditActions.FEE_GENERATE).all()
-    assert len(entries) == 1
+    assert "Standard" in entry.summary
+    assert "$100.00" in entry.summary
 
 
 # ---------------------------------------------------------------------------
-# Validation
+# Read
 # ---------------------------------------------------------------------------
 
 
-def test_generate_rejects_an_invalid_month(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin)
+def test_get_template_returns_the_matching_template(templates, admin):
+    template = make_template(templates, admin)
 
-    with pytest.raises(InvalidPeriod):
-        fees.generate(user=admin, class_id=grade1.id, month=0, year=2026)
-    with pytest.raises(InvalidPeriod):
-        fees.generate(user=admin, class_id=grade1.id, month=13, year=2026)
+    assert templates.get_template(template.id).name == "Standard"
 
 
-def test_generate_rejects_an_unreasonable_year(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin)
-
-    with pytest.raises(InvalidPeriod):
-        fees.generate(user=admin, class_id=grade1.id, month=3, year=1999)
-    with pytest.raises(InvalidPeriod):
-        fees.generate(user=admin, class_id=grade1.id, month=3, year=2200)
+def test_get_template_missing_raises(templates, admin):
+    with pytest.raises(TemplateNotFound):
+        templates.get_template(999)
 
 
-def test_generate_missing_class_raises(fees, admin):
-    with pytest.raises(ClassNotFound):
-        fees.generate(user=admin, class_id=999, month=3, year=2026)
+def test_list_templates_puts_active_first_then_archived_by_name(templates, admin, session):
+    zeta = templates.create_template(user=admin, name="Zeta", amount="10.00")
+    alpha = templates.create_template(user=admin, name="Alpha", amount="20.00")
+    templates.archive_template(user=admin, template_id=zeta.id)
+    archived = templates.create_template(user=admin, name="Old", amount="30.00")
+    templates.archive_template(user=admin, template_id=archived.id)
+
+    names = [template.name for template in templates.list_templates()]
+
+    assert names == ["Alpha", "Old", "Zeta"]
 
 
-def test_generate_refuses_a_completed_class(fees, classes, students, admin):
-    grade8 = make_class(classes, students, admin, name="Grade 8", status=ClassStatus.COMPLETED)
+def test_list_active_templates_excludes_archived(templates, admin):
+    keep = make_template(templates, admin, name="Keep")
+    drop = make_template(templates, admin, name="Drop")
+    templates.archive_template(user=admin, template_id=drop.id)
 
-    with pytest.raises(ClassNotActive):
-        fees.generate(user=admin, class_id=grade8.id, month=3, year=2026)
+    active = templates.list_active_templates()
 
-
-def test_generate_refuses_an_inactive_class(fees, classes, students, admin):
-    paused = make_class(classes, students, admin, name="Paused", status=ClassStatus.INACTIVE)
-
-    with pytest.raises(ClassNotActive):
-        fees.generate(user=admin, class_id=paused.id, month=3, year=2026)
+    assert [template.id for template in active] == [keep.id]
 
 
-def test_generate_refuses_a_class_without_fee_items(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin, items=())
+def test_linked_student_counts_groups_by_template(templates, classes, students, admin):
+    first = make_template(templates, admin, name="Standard")
+    second = make_template(templates, admin, name="Boarding")
+    linked_student(students, classes, admin, first.id, "Ada", "Lovelace")
+    linked_student(students, classes, admin, first.id, "Grace", "Hopper")
+    linked_student(students, classes, admin, second.id, "Alan", "Turing")
 
-    with pytest.raises(NoFeeItems):
-        fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
+    assert templates.linked_student_counts() == {first.id: 2, second.id: 1}
+
+
+def test_linked_student_counts_is_empty_with_no_links(templates, admin):
+    assert templates.linked_student_counts() == {}
 
 
 # ---------------------------------------------------------------------------
-# Preview (confirm-dialog breakdown)
+# Update (rename + effective-dated amount change, FW-19/FW-20)
 # ---------------------------------------------------------------------------
 
 
-def test_preview_shows_the_breakdown_for_a_single_class(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin)
+def test_update_template_renames_and_audits(templates, admin, session):
+    template = make_template(templates, admin, name="Standard")
 
-    preview = fees.preview(class_id=grade1.id, month=3, year=2026)
-
-    assert preview.class_id == grade1.id
-    assert preview.class_name == "Grade 1"
-    (line,) = preview.lines
-    assert line.class_name == "Grade 1"
-    assert line.student_count == 2
-    assert line.per_student_cents == 6250
-    assert line.total_cents == 12500
-    assert line.skip_reason is None
-    assert preview.total_cents == 12500
-
-
-def test_preview_for_all_lists_each_active_class(fees, classes, students, admin):
-    make_class(classes, students, admin, name="Grade 1", items=(("Tuition", "50.00"),))
-    make_class(classes, students, admin, name="Grade 2", items=(("Tuition", "80.00"),))
-
-    preview = fees.preview(class_id=None, month=3, year=2026)
-
-    assert {line.class_name for line in preview.lines} == {"Grade 1", "Grade 2"}
-    assert preview.class_name is None
-
-
-def test_preview_for_all_excludes_completed_and_inactive_classes(fees, classes, students, admin):
-    make_class(classes, students, admin, name="Grade 1", items=(("Tuition", "50.00"),))
-    make_class(
-        classes, students, admin, name="Grade 8", status=ClassStatus.COMPLETED, items=(("Tuition", "90.00"),)
-    )
-    make_class(
-        classes, students, admin, name="Paused", status=ClassStatus.INACTIVE, items=(("Tuition", "70.00"),)
+    templates.update_template(
+        user=admin, template_id=template.id, name="Standard Plus", amount="100.00"
     )
 
-    preview = fees.preview(class_id=None, month=3, year=2026)
-
-    assert [line.class_name for line in preview.lines] == ["Grade 1"]
-
-
-def test_preview_flags_a_class_already_generated(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin)
-    fees.generate(user=admin, class_id=grade1.id, month=3, year=2026)
-
-    preview = fees.preview(class_id=grade1.id, month=3, year=2026)
-
-    assert preview.lines[0].skip_reason is not None
-    assert "already generated" in preview.lines[0].skip_reason
+    template = templates.get_template(template.id)
+    assert template.name == "Standard Plus"
+    assert template.amount_cents == 10000  # untouched
+    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.TEMPLATE_RENAME).one()
+    assert entry.user_id == admin.id
+    assert "Standard" in entry.summary
+    assert "Standard Plus" in entry.summary
 
 
-def test_preview_flags_a_non_active_class(fees, classes, students, admin):
-    grade8 = make_class(classes, students, admin, name="Grade 8", status=ClassStatus.COMPLETED)
+def test_update_template_amount_change_updates_amount_and_audits(templates, admin, session):
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+    next_month, next_year = default_effective_month()
 
-    preview = fees.preview(class_id=grade8.id, month=3, year=2026)
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="120.00",
+        month=next_month,
+        year=next_year,
+    )
 
-    assert preview.lines[0].skip_reason is not None
+    template = templates.get_template(template.id)
+    assert template.amount_cents == 12000
+    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.TEMPLATE_AMOUNT_CHANGE).one()
+    assert entry.user_id == admin.id
+    assert "$120.00" in entry.summary
+    assert period_label(next_month, next_year) in entry.summary
 
 
-def test_preview_flags_a_class_without_fee_items(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin, items=())
+def test_update_template_amount_change_propagates_to_linked_students(
+    templates, classes, students, admin, session
+):
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+    ada = linked_student(students, classes, admin, template.id, "Ada", "Lovelace")
+    grace = linked_student(students, classes, admin, template.id, "Grace", "Hopper")
+    next_month, next_year = default_effective_month()
 
-    preview = fees.preview(class_id=grade1.id, month=3, year=2026)
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="120.00",
+        month=next_month,
+        year=next_year,
+    )
 
-    assert preview.lines[0].skip_reason is not None
-    assert "fee items" in preview.lines[0].skip_reason
+    rows = session.query(StudentAmountChange).all()
+    assert len(rows) == 4  # one enrollment baseline per student + one propagation
+    effective = [
+        row for row in rows if (row.month, row.year) == (next_month, next_year)
+    ]
+    assert {row.student_id for row in effective} == {ada.id, grace.id}
+    assert all(row.amount_cents == 12000 for row in effective)
 
 
-def test_preview_rejects_an_invalid_period(fees, classes, students, admin):
-    grade1 = make_class(classes, students, admin)
+def test_update_template_amount_change_skips_students_not_linked_to_it(
+    templates, classes, students, admin, session
+):
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+    other = make_template(templates, admin, name="Boarding", amount="200.00")
+    linked_student(students, classes, admin, other.id)
+    next_month, next_year = default_effective_month()
+
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="120.00",
+        month=next_month,
+        year=next_year,
+    )
+
+    effective = [
+        row
+        for row in session.query(StudentAmountChange).all()
+        if (row.month, row.year) == (next_month, next_year)
+    ]
+    assert len(effective) == 0  # the other template's students are untouched
+
+
+def test_update_template_amount_change_defaults_to_next_month(
+    templates, classes, students, admin, session
+):
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+    linked_student(students, classes, admin, template.id)
+    next_month, next_year = default_effective_month()
+
+    templates.update_template(
+        user=admin, template_id=template.id, name="Standard", amount="150.00"
+    )
+
+    effective = [
+        row
+        for row in session.query(StudentAmountChange).all()
+        if (row.month, row.year) == (next_month, next_year)
+    ]
+    assert len(effective) == 1
+    assert effective[0].amount_cents == 15000
+
+
+def test_update_template_amount_change_in_place_for_the_same_month(
+    templates, classes, students, admin, session
+):
+    """A second change for the same effective month updates, never stacks (FW-20)."""
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+    linked_student(students, classes, admin, template.id)
+    next_month, next_year = default_effective_month()
+
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="120.00",
+        month=next_month,
+        year=next_year,
+    )
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="130.00",
+        month=next_month,
+        year=next_year,
+    )
+
+    effective = [
+        row
+        for row in session.query(StudentAmountChange).all()
+        if (row.month, row.year) == (next_month, next_year)
+    ]
+    assert len(effective) == 1  # the same month was updated, never stacked
+    assert effective[0].amount_cents == 13000
+
+
+def test_update_template_amount_changes_stack_across_months(
+    templates, classes, students, admin, session
+):
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+    linked_student(students, classes, admin, template.id)
+    today = date.today()
+    first = (today.month, today.year)  # the current month is allowed
+    second = default_effective_month()  # the next calendar month — always distinct
+
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="120.00",
+        month=first[0],
+        year=first[1],
+    )
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="130.00",
+        month=second[0],
+        year=second[1],
+    )
+
+    rows = session.query(StudentAmountChange).all()
+    assert len(rows) == 2
+    assert {row.amount_cents for row in rows} == {12000, 13000}
+
+
+def test_update_template_without_any_change_writes_no_audit(templates, admin, session):
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+
+    templates.update_template(
+        user=admin, template_id=template.id, name="Standard", amount="100.00"
+    )
+
+    assert session.query(AuditLogEntry).count() == 1  # only the creation
+
+
+def test_update_template_renames_and_changes_amount_in_one_unit(
+    templates, admin, session
+):
+    template = make_template(templates, admin, name="Standard", amount="100.00")
+    next_month, next_year = default_effective_month()
+
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Premium",
+        amount="150.00",
+        month=next_month,
+        year=next_year,
+    )
+
+    actions = {
+        entry.action for entry in session.query(AuditLogEntry).all()
+    }
+    assert AuditActions.TEMPLATE_RENAME in actions
+    assert AuditActions.TEMPLATE_AMOUNT_CHANGE in actions
+
+
+# ---------------------------------------------------------------------------
+# Effective-month validation (FW-20: past months are frozen)
+# ---------------------------------------------------------------------------
+
+
+def test_update_template_rejects_an_invalid_month(templates, admin):
+    template = make_template(templates, admin)
 
     with pytest.raises(InvalidPeriod):
-        fees.preview(class_id=grade1.id, month=0, year=2026)
+        templates.update_template(
+            user=admin, template_id=template.id, name="Standard", amount="120.00", month=0, year=2030
+        )
     with pytest.raises(InvalidPeriod):
-        fees.preview(class_id=None, month=3, year=2101)
+        templates.update_template(
+            user=admin, template_id=template.id, name="Standard", amount="120.00", month=13, year=2030
+        )
 
 
-def test_preview_missing_class_raises(fees, admin):
-    with pytest.raises(ClassNotFound):
-        fees.preview(class_id=999, month=3, year=2026)
+def test_update_template_rejects_an_out_of_range_year(templates, admin):
+    template = make_template(templates, admin)
+
+    with pytest.raises(InvalidPeriod):
+        templates.update_template(
+            user=admin, template_id=template.id, name="Standard", amount="120.00", month=3, year=1999
+        )
+    with pytest.raises(InvalidPeriod):
+        templates.update_template(
+            user=admin, template_id=template.id, name="Standard", amount="120.00", month=3, year=2101
+        )
+
+
+def test_update_template_requires_both_month_and_year(templates, admin):
+    template = make_template(templates, admin)
+
+    with pytest.raises(InvalidPeriod):
+        templates.update_template(
+            user=admin, template_id=template.id, name="Standard", amount="120.00", month=3
+        )
+    with pytest.raises(InvalidPeriod):
+        templates.update_template(
+            user=admin, template_id=template.id, name="Standard", amount="120.00", year=2030
+        )
+
+
+def test_update_template_rejects_a_past_effective_month(templates, admin):
+    template = make_template(templates, admin)
+    past_month, past_year = a_past_month()
+
+    with pytest.raises(InvalidPeriod, match="past"):
+        templates.update_template(
+            user=admin,
+            template_id=template.id,
+            name="Standard",
+            amount="120.00",
+            month=past_month,
+            year=past_year,
+        )
+
+
+def test_update_template_allows_the_current_month(templates, admin, session):
+    template = make_template(templates, admin)
+    today = date.today()
+
+    templates.update_template(
+        user=admin,
+        template_id=template.id,
+        name="Standard",
+        amount="120.00",
+        month=today.month,
+        year=today.year,
+    )
+
+    assert templates.get_template(template.id).amount_cents == 12000
+    assert session.query(AuditLogEntry).filter_by(action=AuditActions.TEMPLATE_AMOUNT_CHANGE).count() == 1
+
+
+def test_update_template_missing_template_raises(templates, admin):
+    with pytest.raises(TemplateNotFound):
+        templates.update_template(
+            user=admin, template_id=999, name="Standard", amount="100.00"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Archive / restore (no hard deletes)
+# ---------------------------------------------------------------------------
+
+
+def test_archive_template_marks_it_and_audits(templates, admin, session):
+    template = make_template(templates, admin)
+
+    templates.archive_template(user=admin, template_id=template.id)
+
+    assert templates.get_template(template.id).archived is True
+    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.TEMPLATE_ARCHIVE).one()
+    assert entry.user_id == admin.id
+    assert "Standard" in entry.summary
+
+
+def test_archive_template_keeps_linkage_and_history(templates, classes, students, admin, session):
+    template = make_template(templates, admin)
+    student = linked_student(students, classes, admin, template.id)
+
+    templates.archive_template(user=admin, template_id=template.id)
+
+    student = students.get_student(student.id)
+    assert student.fee_template_id == template.id
+    assert templates.linked_student_counts() == {template.id: 1}
+
+
+def test_archiving_an_archived_template_is_a_no_op(templates, admin, session):
+    template = make_template(templates, admin)
+    templates.archive_template(user=admin, template_id=template.id)
+    before = session.query(AuditLogEntry).count()
+
+    templates.archive_template(user=admin, template_id=template.id)
+
+    assert session.query(AuditLogEntry).count() == before
+
+
+def test_restore_template_undoes_archival_and_audits(templates, admin, session):
+    template = make_template(templates, admin)
+    templates.archive_template(user=admin, template_id=template.id)
+
+    templates.restore_template(user=admin, template_id=template.id)
+
+    assert templates.get_template(template.id).archived is False
+    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.TEMPLATE_RESTORE).one()
+    assert "Standard" in entry.summary
+
+
+def test_restoring_a_live_template_is_a_no_op(templates, admin, session):
+    template = make_template(templates, admin)
+    before = session.query(AuditLogEntry).count()
+
+    templates.restore_template(user=admin, template_id=template.id)
+
+    assert session.query(AuditLogEntry).count() == before
+
+
+def test_archiving_a_missing_template_raises(templates, admin):
+    with pytest.raises(TemplateNotFound):
+        templates.archive_template(user=admin, template_id=999)

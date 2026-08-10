@@ -14,7 +14,7 @@
   <div>
     <a href="/classes" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All classes</a>
     <div class="mt-2">
-      {{ page_header(cls.name ~ " " ~ class_status_badge(cls.status), "Monthly fee per student: " ~ money(monthly_total_cents) ~ " (" ~ (items | length) ~ " item" ~ ("s" if items | length != 1 else "") ~ ")", actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
+      {{ page_header(cls.name ~ " " ~ class_status_badge(cls.status), "Monthly fee per student: " ~ money(monthly_total_cents) ~ ((" — default template \"" ~ cls.default_template.name ~ "\"") if cls.default_template else " — no default template"), actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
     </div>
   </div>
 
@@ -28,7 +28,7 @@
   {% if is_admin %}
   <form method="post" action="/classes/{{ cls.id }}/edit">
     {% call card(title="Class details", actions=btn(label="Save changes", icon="check", variant="primary", size="sm", type="submit")) %}
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="class-name" class="label"><span class="label-text">Name</span></label>
           <input id="class-name" name="name" type="text" required value="{{ class_name }}" class="input w-full">
@@ -45,6 +45,16 @@
           <p class="text-xs text-base-content/60">
             Completed/Inactive classes stop generating fees but keep their records; choose Active to reopen.
           </p>
+        </div>
+        <div>
+          <label for="class-template" class="label"><span class="label-text">Default fee template</span></label>
+          <select id="class-template" name="default_template_id" class="select w-full">
+            <option value="">— No default (students bill nothing) —</option>
+            {% for t in template_options %}
+            <option value="{{ t.id }}" {% if default_template_id == t.id|string %}selected{% endif %}>{{ t.name }}{% if t.archived %} (archived){% endif %} — {{ money(t.amount_cents) }}/month</option>
+            {% endfor %}
+          </select>
+          <p class="mt-1 text-xs text-base-content/60">Managed under <a href="/fees" class="link">Fee templates</a>.</p>
         </div>
       </div>
     {% endcall %}
@@ -98,70 +108,24 @@
     {% endcall %}
   {% endcall %}
 
-  {% call card(title="Fee structure", subtitle="Itemized monthly charges billed to each student when fees are generated. Editing the structure never rewrites already-generated bills.") %}
-    {% if is_admin %}
-    {% for item in items %}
-    <form id="fee-item-edit-{{ item.id }}" method="post" action="/classes/{{ cls.id }}/fee-items/{{ item.id }}/edit"></form>
-    {% endfor %}
-    {% endif %}
-
-    {% call table_scroll() %}
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Amount / month</th>
-            {% if is_admin %}<th class="w-40 text-right">Actions</th>{% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in items %}
-          <tr>
-            <td>
-              {% if is_admin %}
-              <input name="name" form="fee-item-edit-{{ item.id }}" type="text" required value="{{ item.name }}" class="input input-sm w-full max-w-xs">
-              {% else %}
-              {{ item.name }}
-              {% endif %}
-            </td>
-            <td>
-              {% if is_admin %}
-              <input name="amount" form="fee-item-edit-{{ item.id }}" type="text" required value="{{ money_input(item.amount_cents) }}" class="input input-sm w-full max-w-40">
-              {% else %}
-              {{ money(item.amount_cents) }}
-              {% endif %}
-            </td>
-            {% if is_admin %}
-            <td class="text-right">
-              <button type="submit" form="fee-item-edit-{{ item.id }}" class="btn btn-ghost btn-xs">{{ icon("check", "h-4 w-4") }} Save</button>
-              <button type="submit" form="fee-item-edit-{{ item.id }}" formaction="/classes/{{ cls.id }}/fee-items/{{ item.id }}/delete" formnovalidate
-                      data-confirm="Remove fee item {{ item.name }}? Already-generated bills are not affected."
-                      class="btn btn-ghost btn-xs text-error">{{ icon("trash", "h-4 w-4") }} Remove</button>
-            </td>
-            {% endif %}
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="{{ 3 if is_admin else 2 }}">
-              {{ empty_state("No fee items yet", "Add the monthly charges for this class.", "receipt-percent") }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endcall %}
-
-    {% if is_admin %}
-    <form method="post" action="/classes/{{ cls.id }}/fee-items" class="mt-6 rounded-box border border-dashed border-base-300 bg-base-200/50 p-4">
-      <h3 class="text-sm font-semibold text-base-content">Add fee item</h3>
-      <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {{ form_field("name", "Name", placeholder="e.g. Tuition", value=fee_name, required=true, id="item-name", input_class="input input-sm w-full") }}
-        {{ form_field("amount", "Amount / month (USD)", placeholder="50.00", value=fee_amount, required=true, id="item-amount", input_class="input input-sm w-full") }}
-        <div class="flex items-end">
-          {{ btn(label="Add item", icon="plus", variant="primary", size="sm", type="submit") }}
-        </div>
+  {% call card(title="Monthly fee", subtitle="Every student in this class is billed this amount each month through the default template, unless their own account points at a different template. Raising the template's amount takes effect from the chosen month and propagates to every linked student (FW-19).") %}
+    {% if cls.default_template %}
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <p class="text-3xl font-semibold">{{ money(monthly_total_cents) }}</p>
+        <p class="mt-1 text-sm text-base-content/60">per student / month</p>
       </div>
-    </form>
+      <div class="text-sm text-base-content/70">
+        Default template:
+        <a href="/fees" class="link">{{ cls.default_template.name }}</a>{% if cls.default_template.archived %} (archived){% endif %}
+        {% if is_admin %}
+        <a href="/classes/{{ cls.id }}/edit" class="btn btn-outline btn-xs ml-2">{{ icon("pencil-square", "h-4 w-4") }} Change</a>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <p class="text-base-content/70">No default template — students in this class bill nothing until one is set under
+      <a href="/fees" class="link">Fee templates</a>.</p>
     {% endif %}
   {% endcall %}
 
@@ -171,7 +135,7 @@
       <button type="button" class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close" onclick="this.closest('dialog').close()">{{ icon("x-mark", "h-4 w-4") }}</button>
     </form>
     <h3 class="text-lg font-semibold">Add student</h3>
-    <p class="mt-1 text-sm text-base-content/60">New students inherit this class's fee structure when monthly fees are generated.</p>
+    <p class="mt-1 text-sm text-base-content/60">New students inherit this class's default fee template.</p>
     <form method="post" action="/classes/{{ cls.id }}/students" class="mt-4">
       <div class="grid gap-4 sm:grid-cols-2">
         {{ form_field("first_name", "First name", placeholder="e.g. Ada", required=true, id="student-first") }}

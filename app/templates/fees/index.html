@@ -1,14 +1,47 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import page_header %}
+{% from "components/ui.html" import page_header, alert, btn %}
 
-{% block title %}Fee generation — {{ school_name() }}{% endblock %}
-{% block topbar_title %}Fee generation{% endblock %}
+{% block title %}Fee templates — {{ school_name() }}{% endblock %}
+{% block topbar_title %}Fee templates{% endblock %}
 
 {% block content %}
+{% set user = current_user() %}
+{% set is_admin = user is not none and user.role == "admin" %}
+{% set new_action = btn(label="New template", icon="plus", variant="primary", size="sm", type="button", attrs='hx-get="/fees/templates/new-form" hx-target="#template-modal-content" hx-swap="innerHTML" onclick="document.getElementById(\'template-modal\').showModal()"') if is_admin else "" %}
 <div class="space-y-6">
-  {{ page_header("Fee generation", "Pick a class (or All classes), a month and a year, review the per-class breakdown, then generate one monthly bill per active student. A class can only be generated once per month, so nothing is ever double-charged.") }}
-  <div id="fee-form-card">
-    {% include "fees/_generate_card.html" %}
+  {{ page_header("Fee templates", "A template is a named monthly amount. A class defaults to one and a student can be linked to it; raising a template's amount takes effect from a chosen month and propagates to every linked student.", actions=new_action) }}
+
+  {% if msg %}
+  <div>{{ alert("success", msg) }}</div>
+  {% endif %}
+  {% if err %}
+  <div>{{ alert("error", err) }}</div>
+  {% endif %}
+
+  <div id="templates-list"
+       hx-get="/fees/templates/list"
+       hx-trigger="templates-changed from:body"
+       hx-target="this"
+       hx-swap="outerHTML">
+    {% include "fees/_templates_list.html" %}
   </div>
+
+  {% if is_admin %}
+  <dialog id="template-modal" class="modal">
+    <div class="modal-box" id="template-modal-content">
+      {% include "fees/_template_form.html" %}
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+  {% endif %}
 </div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+  document.body.addEventListener('templates-changed', function () {
+    var dialog = document.getElementById('template-modal');
+    if (dialog && dialog.open) dialog.close();
+  });
+</script>
 {% endblock %}
