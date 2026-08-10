@@ -2,7 +2,7 @@
 <span class="muted">{{ error }}</span>
 {% elif not preview %}
 <span class="muted">Enter an amount to see what clears.</span>
-{% elif not preview.lines %}
+{% elif preview.credit_cents and not preview.applied_cents %}
 <span class="muted">Nothing to clear — {{ money(preview.credit_cents) }} becomes credit.</span>
 {% else %}
 <b class="num">{{ money(preview.applied_cents) }}</b>

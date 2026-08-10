@@ -1,12 +1,15 @@
 """Payments & receipts service layer.
 
-Business rules for recording money in: a payment (amount + method + date) is
-recorded against a student and, in one transaction, applied to the oldest unpaid
-charges first — partial application is supported. If the payment exceeds what is
-owed, the excess becomes a :class:`Credit` on the student's account (no refunds
-in v1). The student's account view — charges with their paid/remaining status,
-payments, credits, and the live balance — is assembled here, and every payment
-is recorded in the audit log.
+Business rules for recording money in: a payment carries a **month+year tag**
+(FW-16) and is recorded as ``(student, tagged month, amount, method, date)``.
+The tag is the clerk's entry — the record screen surfaces the student's oldest
+unpaid owed month first (FW-22-1) and warns, rather than blocks, when the tag
+falls outside the owed range (FW-22-2, e.g. a fat-fingered future month or a
+closed month). A payment first covers the tagged month's shortfall (its
+expected amount minus payments already tagged to it); any excess rolls forward
+as :class:`Credit` on the account (FW-15/FW-21), consumed by the oldest owed
+months' shortfalls in the derived account view
+(:func:`app.fees.account.student_account`).
 
 Routes are thin adapters over this module — it is the single testing seam.
 
@@ -14,14 +17,10 @@ Rules that live here:
 - Amounts are positive integer cents (``app.money``), never floats.
 - The method is one of cash/bank/other (``PaymentMethods``).
 - The payment date must parse and cannot be in the future.
-- A payment clears the oldest unpaid charges first (per student): charges are
-  taken in year/month/id order and each is reduced until it is settled before
-  the next is touched. Already-settled charges are skipped.
-- A charge's remaining amount is net of its adjustments (base + extras -
-  waivers) and of earlier allocations; waivers never push a charge below zero,
-  so a remaining amount is never negative.
-- Overpayment becomes a ``Credit`` row linked to the payment; the live balance
-  is outstanding minus credits and may therefore be negative (a credit balance).
+- The tagged month must be a valid month/year pair; any value is recordable
+  (warning is a UI concern, not a service rejection).
+- ``applied`` is the amount that settles the tagged month's shortfall;
+  ``credit`` is the excess — it becomes a ``Credit`` row linked to the payment.
 - Every recorded payment writes one audit entry; a rejected payment writes
   nothing.
 """
@@ -34,22 +33,10 @@ from datetime import date
 from sqlalchemy.orm import Session, joinedload
 
 from ..audit.service import AuditActions, AuditService
-from ..charge_status import classify_paid_status
 from ..db import Database
-from ..fees.service import (
-    ChargeAccountLine,
-    period_label,
-    to_charge_line,
-)
-from ..models import (
-    Charge,
-    Credit,
-    Payment,
-    PaymentAllocation,
-    PaymentMethods,
-    Student,
-    User,
-)
+from ..fees.account import AccountView, expected_cents, owed_months, student_account
+from ..fees.service import MIN_YEAR, MAX_YEAR, period_label
+from ..models import ClosedMonth, Credit, Payment, PaymentMethods, Student, User
 from ..money import (
     InvalidAmount,
     Money,
@@ -58,7 +45,6 @@ from ..money import (
     parse_positive_cents,
 )
 from ..students.service import StudentNotFound
-from .planner import paid_cents_by_charge, plan_application
 
 PAYMENT_METHOD_LABELS = {
     PaymentMethods.CASH: "Cash",
@@ -80,92 +66,42 @@ class InvalidDate(PaymentError):
     """The payment date is unparsable or lies in the future."""
 
 
+class InvalidPeriod(PaymentError):
+    """The tagged month/year falls outside the supported range."""
+
+
 class PaymentNotFound(PaymentError):
     """No payment exists with the given id."""
 
 
 @dataclass
-class AccountCharge:
-    """One monthly charge as shown on a student's account, with its payment state.
+class PaymentPreview:
+    """Where a payment tagged to one month would go, without writing anything.
 
-    ``remaining_cents`` is the live unpaid amount (net of adjustments and of
-    earlier allocations, floored at zero); ``status`` is paid/partial/unpaid.
-    The wrapped ``line`` mirrors the account view built by the adjustments
-    feature (base + extras - waivers, period label, adjustment rows).
+    ``applied_cents`` is what would settle the tagged month's remaining
+    shortfall and ``credit_cents`` what would roll forward as credit.
+    ``in_owed_range`` is ``False`` when the tag lies outside the student's owed
+    range (a closed month, a future month, or one before enrollment) — the
+    record screen warns but does not block (FW-22-2).
     """
 
-    line: ChargeAccountLine
+    month: int
+    year: int
+    period_label: str
+    expected_cents: Money
     paid_cents: Money
     remaining_cents: Money
-    status: str
-
-    @property
-    def charge(self) -> Charge:
-        return self.line.charge
-
-    @property
-    def period_label(self) -> str:
-        return self.line.period_label
-
-    @property
-    def base_cents(self) -> Money:
-        return self.line.base_cents
-
-    @property
-    def extras_cents(self) -> Money:
-        return self.line.extras_cents
-
-    @property
-    def waivers_cents(self) -> Money:
-        return self.line.waivers_cents
-
-    @property
-    def net_cents(self) -> Money:
-        return self.line.net_cents
-
-    @property
-    def adjusted(self) -> bool:
-        return self.line.adjusted
-
-    @property
-    def adjustments(self) -> list:
-        return self.line.adjustments
-
-
-@dataclass
-class StudentAccount:
-    """Everything a student's account page shows."""
-
-    student: Student
-    charges: list[AccountCharge]
-    payments: list[Payment]
-    credits: list[Credit]
-    outstanding_cents: Money
-    credits_cents: Money
-    balance_cents: Money
-    received_cents: Money
-
-
-@dataclass
-class PreviewLine:
-    """One charge a payment of a given amount would clear, as a preview."""
-
-    period_label: str
-    applied_cents: Money
-
-
-@dataclass
-class ApplicationPreview:
-    """Where a prospective payment would go, without writing anything.
-
-    ``lines`` lists each charge the payment would reduce (oldest first) and how
-    much it would clear; ``applied_cents`` is the total applied to charges and
-    ``credit_cents`` is what would become a credit on the account.
-    """
-
-    lines: list[PreviewLine]
     applied_cents: Money
     credit_cents: Money
+    in_owed_range: bool
+
+
+@dataclass
+class AccountSummary:
+    """A student's live account plus the record screen's default month tag."""
+
+    account: AccountView
+    oldest_unpaid: tuple[int, int] | None
 
 
 class PaymentService:
@@ -177,6 +113,11 @@ class PaymentService:
 
     def _session(self) -> Session:
         return self._db.session()
+
+    @staticmethod
+    def _closed_months(session: Session) -> set[tuple[int, int]]:
+        rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+        return {(month, year) for month, year in rows}
 
     @staticmethod
     def _validate_amount(amount: object) -> int:
@@ -212,6 +153,14 @@ class PaymentService:
         return paid_on
 
     @staticmethod
+    def _validate_period(month: int | None, year: int | None) -> tuple[int, int]:
+        if not isinstance(month, int) or not 1 <= month <= 12:
+            raise InvalidPeriod("Choose a month between 1 and 12.")
+        if not isinstance(year, int) or not MIN_YEAR <= year <= MAX_YEAR:
+            raise InvalidPeriod(f"Choose a year between {MIN_YEAR} and {MAX_YEAR}.")
+        return month, year
+
+    @staticmethod
     def _get_student(session: Session, student_id: int) -> Student:
         student = (
             session.query(Student)
@@ -223,6 +172,67 @@ class PaymentService:
             raise StudentNotFound(f"No student with id {student_id} exists.")
         return student
 
+    def account_summary(self, student_id: int) -> AccountSummary:
+        """A student's live account and the oldest still-unpaid owed month.
+
+        The latter is the record screen's default month tag (FW-22-1): ``None``
+        when nothing is unpaid.
+        """
+        with self._session() as session:
+            student = self._get_student(session, student_id)
+            closed = self._closed_months(session)
+            today = date.today()
+            account = student_account(session, student, today, closed)
+            oldest_unpaid = next(
+                (
+                    (line.year, line.month)
+                    for line in account.lines
+                    if line.remaining_cents > 0
+                ),
+                None,
+            )
+        return AccountSummary(account=account, oldest_unpaid=oldest_unpaid)
+
+    def preview_application(
+        self, student_id: int, month: int, year: int, amount: object
+    ) -> PaymentPreview:
+        """Show where a payment tagged to one month would go, nothing written."""
+        amount_cents = self._validate_amount(amount)
+        with self._session() as session:
+            student = self._get_student(session, student_id)
+            closed = self._closed_months(session)
+            today = date.today()
+            expected = expected_cents(session, student, month, year, closed, today)
+            paid = self._month_paid(session, student_id, month, year)
+            remaining = max(expected - paid, 0)
+            applied = min(amount_cents, remaining)
+            credit = amount_cents - applied
+        return PaymentPreview(
+            month=month,
+            year=year,
+            period_label=period_label(month, year),
+            expected_cents=expected,
+            paid_cents=paid,
+            remaining_cents=remaining,
+            applied_cents=applied,
+            credit_cents=credit,
+            in_owed_range=(month, year) in owed_months(student, closed, today),
+        )
+
+    @staticmethod
+    def _month_paid(session: Session, student_id: int, month: int, year: int) -> int:
+        """Total cents already tagged to one (student, month)."""
+        rows = (
+            session.query(Payment.amount_cents)
+            .filter(
+                Payment.student_id == student_id,
+                Payment.month == month,
+                Payment.year == year,
+            )
+            .all()
+        )
+        return sum(amount for (amount,) in rows)
+
     def record_payment(
         self,
         *,
@@ -231,50 +241,41 @@ class PaymentService:
         amount: object,
         method: str,
         paid_on: object,
+        month: int | None,
+        year: int | None,
     ) -> Payment:
-        """Record one payment, applied oldest-unpaid-first, in one transaction.
+        """Record one month-tagged payment, excess to credit, in one transaction.
 
-        Every unpaid charge is reduced in turn (year/month/id order) until the
-        payment is spent; whatever remains becomes a ``Credit`` on the account.
-        The payment, its allocations, any credit, and the audit entry land
-        atomically — a rejected payment writes nothing.
+        The payment is tagged to ``(month, year)``. It settles the tagged
+        month's shortfall (expected minus what is already tagged there); the
+        excess becomes a ``Credit`` on the account. The payment, any credit,
+        and the audit entry land atomically — a rejected payment writes nothing.
         """
         amount_cents = self._validate_amount(amount)
         method = self._validate_method(method)
         paid_on = self._validate_date(paid_on)
+        month, year = self._validate_period(month, year)
 
         with self._session() as session:
             student = self._get_student(session, student_id)
+            closed = self._closed_months(session)
+            today = date.today()
+            expected = expected_cents(session, student, month, year, closed, today)
+            already_paid = self._month_paid(session, student_id, month, year)
+            applied = min(amount_cents, max(expected - already_paid, 0))
+            credit = amount_cents - applied
+
             payment = Payment(
                 student_id=student_id,
                 amount_cents=amount_cents,
                 method=method,
                 paid_on=paid_on,
+                month=month,
+                year=year,
                 recorded_by=user.id if user is not None else None,
             )
             session.add(payment)
             session.flush()
-
-            charges = (
-                session.query(Charge)
-                .options(joinedload(Charge.adjustments))
-                .filter(Charge.student_id == student_id)
-                .order_by(Charge.year, Charge.month, Charge.id)
-                .all()
-            )
-            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
-            applied_by_charge, credit = plan_application(
-                charges, paid_by_charge, amount_cents
-            )
-            for charge_id, applied in applied_by_charge.items():
-                session.add(
-                    PaymentAllocation(
-                        payment_id=payment.id,
-                        charge_id=charge_id,
-                        amount_cents=applied,
-                    )
-                )
-
             if credit > 0:
                 session.add(
                     Credit(
@@ -286,11 +287,13 @@ class PaymentService:
 
             summary = (
                 f"Recorded payment of {format_cents(amount_cents)} from "
-                f"{student.full_name} via {PAYMENT_METHOD_LABELS[method]} "
-                f"on {paid_on.isoformat()}"
+                f"{student.full_name} via {PAYMENT_METHOD_LABELS[method]} on "
+                f"{paid_on.isoformat()} for {period_label(month, year)}"
             )
+            if applied:
+                summary += f" ({format_cents(applied)} applied)"
             if credit > 0:
-                summary += f" (credit of {format_cents(credit)})"
+                summary += f" — excess {format_cents(credit)} placed on account as credit"
             if self._audit is not None:
                 self._audit.add(
                     session,
@@ -302,117 +305,18 @@ class PaymentService:
             session.refresh(payment)
         return payment
 
-    def preview_application(self, student_id: int, amount: object) -> ApplicationPreview:
-        """Show where a payment of ``amount`` would go, without writing anything.
-
-        Mirrors :meth:`record_payment`'s oldest-unpaid-first allocation so the
-        record screen can confirm what will be cleared (and what would become a
-        credit) before the user saves.
-        """
-        amount_cents = self._validate_amount(amount)
-        with self._session() as session:
-            self._get_student(session, student_id)
-            charges = (
-                session.query(Charge)
-                .options(joinedload(Charge.adjustments))
-                .filter(Charge.student_id == student_id)
-                .order_by(Charge.year, Charge.month, Charge.id)
-                .all()
-            )
-            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
-            applied_by_charge, credit = plan_application(
-                charges, paid_by_charge, amount_cents
-            )
-            lines = [
-                PreviewLine(
-                    period_label=period_label(charge.month, charge.year),
-                    applied_cents=applied_by_charge[charge.id],
-                )
-                for charge in charges
-                if charge.id in applied_by_charge
-            ]
-        return ApplicationPreview(
-            lines=lines,
-            applied_cents=sum(applied_by_charge.values()),
-            credit_cents=credit,
-        )
-
     def get_payment(self, payment_id: int) -> Payment:
-        """One payment with its student, class, and charge allocations (for receipts)."""
+        """One payment with its student and class (for receipts)."""
         with self._session() as session:
             payment = (
                 session.query(Payment)
-                .options(
-                    joinedload(Payment.student).joinedload(Student.school_class),
-                    joinedload(Payment.allocations).joinedload(PaymentAllocation.charge),
-                )
+                .options(joinedload(Payment.student).joinedload(Student.school_class))
                 .filter(Payment.id == payment_id)
                 .one_or_none()
             )
         if payment is None:
             raise PaymentNotFound(f"No payment with id {payment_id} exists.")
         return payment
-
-    def student_account(self, student_id: int) -> StudentAccount:
-        """A student's full account: charges, payments, credits, and live balance.
-
-        Charges are listed most recent period first, each with its paid and
-        remaining amounts and a paid/partial/unpaid status. ``balance_cents`` is
-        the amount still owed — outstanding charges minus credits — and may be
-        negative when the student holds a credit.
-        """
-        with self._session() as session:
-            student = self._get_student(session, student_id)
-            charges = (
-                session.query(Charge)
-                .options(joinedload(Charge.adjustments))
-                .filter(Charge.student_id == student_id)
-                .order_by(Charge.year.desc(), Charge.month.desc(), Charge.id.desc())
-                .all()
-            )
-            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
-            account_charges: list[AccountCharge] = []
-            for charge in charges:
-                line = to_charge_line(charge)
-                paid = paid_by_charge.get(charge.id, 0)
-                status, remaining = classify_paid_status(line.net_cents, paid)
-                account_charges.append(
-                    AccountCharge(
-                        line=line,
-                        paid_cents=paid,
-                        remaining_cents=remaining,
-                        status=status,
-                    )
-                )
-            payments = (
-                session.query(Payment)
-                .filter(Payment.student_id == student_id)
-                .order_by(Payment.paid_on.desc(), Payment.id.desc())
-                .all()
-            )
-            credits = (
-                session.query(Credit)
-                .filter(Credit.student_id == student_id)
-                .order_by(Credit.id.desc())
-                .all()
-            )
-
-        outstanding = sum(c.remaining_cents for c in account_charges)
-        credits_cents = sum(c.amount_cents for c in credits)
-        return StudentAccount(
-            student=student,
-            charges=account_charges,
-            payments=payments,
-            credits=credits,
-            outstanding_cents=outstanding,
-            credits_cents=credits_cents,
-            balance_cents=outstanding - credits_cents,
-            received_cents=sum(p.amount_cents for p in payments),
-        )
-
-    def student_balance(self, student_id: int) -> Money:
-        """The live balance: what is still owed after payments and credits."""
-        return self.student_account(student_id).balance_cents
 
     def list_recent_payments(self, limit: int = 10) -> list[Payment]:
         """The most recent payments across all students, for the payments page."""

@@ -33,7 +33,8 @@ def test_startup_creates_schema():
         client.get("/")
         tables = set(inspect(app.state.db.engine).get_table_names())
     assert "users" in tables
-    assert "charges" in tables
+    assert "fee_templates" in tables
+    assert "closed_months" in tables
 
 
 def test_authenticated_pages_use_the_design_system_shell():
@@ -46,7 +47,6 @@ def test_authenticated_pages_use_the_design_system_shell():
     assert "app-sidebar" in html
     assert "School" in html
     assert "Finance" in html
-    assert "Fee generation" in html
     assert 'href="/classes"' in html
     assert 'href="/students"' in html
     assert 'href="/fees"' in html

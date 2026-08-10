@@ -1,13 +1,15 @@
 """Payments & receipts routes: record money in, view receipts.
 
 Thin adapters over :class:`app.payments.service.PaymentService`. Recording a
-payment for a student (amount + cash/bank/other method + date) is open to any
-logged-in user (the Finance officer role exists for exactly this), and the
-service applies it oldest-unpaid-first, credits any excess, and audits the
-whole payment. After a successful save the user lands on the printable
-receipt; viewing the receipt is open to any logged-in user too. Business
-rules live in the service — these routes only translate form data, errors, and
-templates.
+payment for a student (amount + cash/bank/other method + date + a month+year
+tag, FW-16) is open to any logged-in user (the Finance officer role exists for
+exactly this). The record screen surfaces the student's oldest unpaid owed
+month as the default tag (FW-22-1) and warns, rather than blocks, when the tag
+falls outside the owed range (FW-22-2); the service settles the tagged month's
+shortfall and credits any excess. After a successful save the user lands on the
+printable receipt; viewing the receipt is open to any logged-in user too.
+Business rules live in the service — these routes only translate form data,
+errors, and templates.
 """
 
 from __future__ import annotations
@@ -20,8 +22,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..auth.deps import require_login
-from ..fees.service import period_label
-from ..models import User
+from ..db import Database
+from ..fees.service import MIN_YEAR, MAX_YEAR, MONTH_NAMES, InvalidPeriod, period_label
+from ..models import Credit, User
 from ..money import format_cents
 from ..students.service import StudentNotFound, StudentService
 from .service import (
@@ -64,7 +67,7 @@ MAX_PICKER_RESULTS = 8
 
 def _student_summary(request: Request, student) -> dict[str, object]:
     """A student with their live balance/credit, ready to render."""
-    account = _service(request).student_account(student.id)
+    account = _service(request).account_summary(student.id).account
     return {
         "student": student,
         "balance_cents": account.balance_cents,
@@ -81,25 +84,81 @@ def _picker_rows(request: Request, q: str) -> list[dict[str, object]]:
     return [_student_summary(request, student) for student in students]
 
 
+def _coerce_month(raw: str) -> int | None:
+    raw = (raw or "").strip()
+    if raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise InvalidPeriod("Choose a valid month.") from None
+
+
+def _coerce_year(raw: str) -> int | None:
+    raw = (raw or "").strip()
+    if raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise InvalidPeriod("Choose a valid year.") from None
+
+
+def _default_tag(request: Request, student_id: int) -> tuple[int, int]:
+    """The record screen's default month tag: the oldest unpaid owed month, or
+    the current month when nothing is unpaid (FW-22-1)."""
+    summary = _service(request).account_summary(student_id)
+    if summary.oldest_unpaid is not None:
+        year, month = summary.oldest_unpaid
+        return month, year
+    today = date.today()
+    return today.month, today.year
+
+
+def _period_context(request: Request, student_id: int, month: str, year: str) -> tuple[int, int]:
+    """Coerce posted month/year, falling back to the record screen's default."""
+    coerced_month = _coerce_month(month)
+    coerced_year = _coerce_year(year)
+    if coerced_month is None or coerced_year is None:
+        default_month, default_year = _default_tag(request, student_id)
+        coerced_month = coerced_month or default_month
+        coerced_year = coerced_year or default_year
+    return coerced_month, coerced_year
+
+
+def _month_year_options(month: int | None, year: int | None) -> dict[str, object]:
+    today = date.today()
+    return {
+        "month": str(month) if month is not None else "",
+        "year": str(year) if year is not None else "",
+        "months": [(i, MONTH_NAMES[i - 1]) for i in range(1, 13)],
+        "years": list(range(today.year, today.year + 2)),
+    }
+
+
 def _record_context(
     request: Request,
     student_id: int,
     *,
     amount: str = "",
     method: str = "",
+    month: str = "",
+    year: str = "",
     paid_on: str = "",
     error: str = "",
 ) -> dict[str, object]:
     student = _student(request, student_id)
-    account = _service(request).student_account(student_id)
+    summary = _service(request).account_summary(student_id)
+    selected_month, selected_year = _period_context(request, student_id, month, year)
     return {
         "student": student,
-        "account": account,
+        "account": summary.account,
         "methods": PAYMENT_METHOD_LABELS,
         "amount": amount,
         "method": method,
         "paid_on": paid_on or date.today().isoformat(),
         "error": error,
+        **_month_year_options(selected_month, selected_year),
     }
 
 
@@ -112,8 +171,8 @@ def payments_page(
     """Payments page: prototype-style record screen.
 
     A search box drops down the matching students; picking one swaps in its
-    live balance and credit alongside the amount/method form and a receipt
-    preview. Nothing is selected until the user chooses.
+    live balance and credit alongside the amount/method/month form and a
+    receipt preview. Nothing is selected until the user chooses.
     """
     return _templates(request).TemplateResponse(
         request=request,
@@ -123,6 +182,7 @@ def payments_page(
             "q": q,
             "methods": PAYMENT_METHOD_LABELS,
             "today": date.today().isoformat(),
+            **_month_year_options(None, None),
         },
     )
 
@@ -145,19 +205,26 @@ def payment_preview(
     request: Request,
     student_id: int = Query(...),
     amount: str = Query(""),
+    month: str = Query(""),
+    year: str = Query(""),
     part: str = Query("list"),
     _user: User = Depends(require_login),
 ) -> HTMLResponse:
     """Live confirmation line for the record screen (htmx fragment).
 
-    Shows which charges a payment of ``amount`` would clear (oldest unpaid
-    first) and how much would become a credit — nothing is written. With
+    Shows what a payment of ``amount`` tagged to ``month``/``year`` would
+    settle and how much would become credit — nothing is written. With
     ``part=clears`` it renders just the one-line strip total instead of the
     full breakdown.
     """
     service = _service(request)
     try:
-        preview = service.preview_application(student_id, amount) if amount else None
+        selected_month, selected_year = _period_context(request, student_id, month, year)
+        preview = (
+            service.preview_application(student_id, selected_month, selected_year, amount)
+            if amount
+            else None
+        )
     except StudentNotFound:
         raise HTTPException(status_code=404, detail="Student not found.") from None
     except PaymentError as exc:
@@ -216,6 +283,8 @@ def payment_receipt_preview(
     student_id: int = Query(0),
     amount: str = Query(""),
     method: str = Query("cash"),
+    month: str = Query(""),
+    year: str = Query(""),
     _user: User = Depends(require_login),
 ) -> HTMLResponse:
     """Live receipt preview for the record screen (htmx fragment).
@@ -235,6 +304,11 @@ def payment_receipt_preview(
         amount_cents = round(float(amount or "0") * 100)
     except ValueError:
         amount_cents = 0
+    try:
+        selected_month, selected_year = _period_context(request, student_id, month, year)
+        period = period_label(selected_month, selected_year)
+    except InvalidPeriod:
+        period = ""
     return _templates(request).TemplateResponse(
         request=request,
         name="payments/_receipt_preview.html",
@@ -243,6 +317,7 @@ def payment_receipt_preview(
             "amount_cents": amount_cents,
             "method_label": PAYMENT_METHOD_LABELS[method],
             "paid_on": date.today().isoformat(),
+            "period": period,
         },
     )
 
@@ -254,15 +329,20 @@ def record_payment(
     amount: str = Form(""),
     method: str = Form(""),
     paid_on: str = Form(""),
+    month: str = Form(""),
+    year: str = Form(""),
     user: User = Depends(require_login),
 ) -> Response:
     try:
+        selected_month, selected_year = _period_context(request, student_id, month, year)
         payment = _service(request).record_payment(
             user=user,
             student_id=student_id,
             amount=amount,
             method=method,
             paid_on=paid_on,
+            month=selected_month,
+            year=selected_year,
         )
     except StudentNotFound:
         raise HTTPException(status_code=404, detail="Student not found.") from None
@@ -275,6 +355,8 @@ def record_payment(
                 student_id,
                 amount=amount,
                 method=method,
+                month=str(selected_month),
+                year=str(selected_year),
                 paid_on=paid_on,
                 error=str(exc),
             ),
@@ -296,7 +378,8 @@ def payment_receipt(
         payment = _service(request).get_payment(payment_id)
     except PaymentNotFound:
         raise HTTPException(status_code=404, detail="Payment not found.")
-    applied_cents = sum(a.amount_cents for a in payment.allocations)
+    applied_cents = _applied_cents(request, payment)
+    credit_cents = payment.amount_cents - applied_cents
     return _templates(request).TemplateResponse(
         request=request,
         name="payments/receipt.html",
@@ -304,13 +387,25 @@ def payment_receipt(
             "payment": payment,
             "allocation_rows": [
                 {
-                    "period_label": period_label(a.charge.month, a.charge.year),
-                    "amount_cents": a.amount_cents,
+                    "period_label": period_label(payment.month, payment.year),
+                    "amount_cents": applied_cents,
                 }
-                for a in payment.allocations
             ],
             "applied_cents": applied_cents,
-            "credit_cents": max(payment.amount_cents - applied_cents, 0),
+            "credit_cents": credit_cents,
             "msg": request.query_params.get("msg", ""),
         },
     )
+
+
+def _applied_cents(request: Request, payment) -> int:
+    """The part of a payment that settled its tagged month (excess became credit)."""
+    db: Database = request.app.state.db
+    with db.session() as session:
+        credit_cents = sum(
+            row.amount_cents
+            for row in session.query(Credit.amount_cents)
+            .filter(Credit.payment_id == payment.id)
+            .all()
+        )
+    return max(payment.amount_cents - credit_cents, 0)

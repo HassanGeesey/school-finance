@@ -6,6 +6,7 @@
   <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)">Receipt #R-{{ today_compact }}</div>
   <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:12px"><span class="muted">Student</span><b>{{ student.full_name if student else "—" }}</b></div>
   <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px"><span class="muted">Amount</span><b class="num" style="font-size:18px">{{ money(amount_cents) if amount_cents else "—" }}</b></div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px"><span class="muted">For</span><b>{{ period or "—" }}</b></div>
   <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px"><span class="muted">Method</span><b>{{ method_label }}</b></div>
   <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px"><span class="muted">Date</span><b>{{ paid_on }}</b></div>
   <div style="border-top:1px solid var(--rule);margin:16px 0 6px"></div>

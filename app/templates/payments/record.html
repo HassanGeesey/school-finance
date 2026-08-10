@@ -11,7 +11,7 @@
   <div>
     <a href="/students/{{ student.id }}/account" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} {{ student.full_name }} · account</a>
     <div class="mt-2">
-      {{ page_header("Record payment", "Enter the amount and method. Partial payments clear the oldest unpaid charges first.") }}
+      {{ page_header("Record payment", "Tag the payment to a month, then enter the amount and method. It settles that month's shortfall; any excess becomes credit on the account.") }}
     </div>
   </div>
 
@@ -48,10 +48,28 @@
             <input id="payment-amount" name="amount" type="number" step="0.01" min="0.01" required
                    value="{{ amount }}" placeholder="0.00" class="input num"
                    hx-get="/payments/preview"
-                   hx-trigger="input changed delay:400ms, load"
+                   hx-trigger="input changed delay:400ms, load, change from:#payment-month, change from:#payment-year"
                    hx-target="#payment-preview"
                    hx-swap="innerHTML"
-                   hx-vals="js:{student_id: document.querySelector('input[name=student_id]').value, amount: document.getElementById('payment-amount').value}">
+                   hx-vals="js:{student_id: document.querySelector('input[name=student_id]').value, amount: document.getElementById('payment-amount').value, month: document.getElementById('payment-month').value, year: document.getElementById('payment-year').value}">
+          </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="field">
+              <label for="payment-month" class="block text-[12.5px] font-semibold mb-1.5">For month</label>
+              <select id="payment-month" name="month" class="select w-full">
+                {% for value, label in months %}
+                <option value="{{ value }}" {% if month|string == value|string %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="payment-year" class="block text-[12.5px] font-semibold mb-1.5">Year</label>
+              <select id="payment-year" name="year" class="select w-full">
+                {% for value in years %}
+                <option value="{{ value }}" {% if year|string == value|string %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
           <div class="field">
             <span class="block text-[12.5px] font-semibold mb-1.5">Method</span>
@@ -79,7 +97,7 @@
     <div class="board">
       <div class="board-head"><div class="board-title-wrap"><span class="pin"></span><div class="board-title">What this payment clears</div></div></div>
       <div class="board-body">
-        <p class="mb-4 text-sm muted">The amount applies to the oldest unpaid charges first; any excess becomes credit on the account. Every payment is written to the audit log.</p>
+        <p class="mb-4 text-sm muted">The amount settles the tagged month's remaining shortfall; any excess becomes credit on the account. Every payment is written to the audit log.</p>
         <div id="payment-preview">
           <p class="text-sm text-base-content/50">Enter an amount to see what this payment clears.</p>
         </div>

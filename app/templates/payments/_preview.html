@@ -1,17 +1,30 @@
 {% if error %}
 <p class="text-sm text-base-content/60">{{ error }}</p>
 {% elif not preview %}
-<p class="text-sm text-base-content/50">Enter an amount to see what this payment clears.</p>
-{% elif not preview.lines %}
-<p class="text-sm text-base-content/60">Nothing to clear — {{ money(preview.credit_cents) }} would be placed on the account as credit.</p>
+<p class="text-sm text-base-content/50">Enter an amount to see what this payment settles.</p>
 {% else %}
+{% if not preview.in_owed_range %}
+<p class="mb-2 text-xs text-warning">{{ preview.period_label }} is outside this student's owed months — the full amount becomes credit. Record anyway if intended.</p>
+{% endif %}
 <ul class="space-y-1 text-sm">
-  {% for line in preview.lines %}
   <li class="flex items-center justify-between gap-6">
-    <span class="text-base-content/70">{{ line.period_label }}</span>
-    <span class="font-medium text-base-content">{{ money(line.applied_cents) }}</span>
+    <span class="text-base-content/70">{{ preview.period_label }} — expected</span>
+    <span class="font-medium text-base-content">{{ money(preview.expected_cents) }}</span>
   </li>
-  {% endfor %}
+  <li class="flex items-center justify-between gap-6">
+    <span class="text-base-content/70">Already paid for this month</span>
+    <span class="font-medium text-base-content">{{ money(preview.paid_cents) }}</span>
+  </li>
+  {% if preview.remaining_cents %}
+  <li class="flex items-center justify-between gap-6">
+    <span class="text-base-content/70">Remaining</span>
+    <span class="font-medium text-base-content">{{ money(preview.remaining_cents) }}</span>
+  </li>
+  {% endif %}
+  <li class="flex items-center justify-between gap-6 border-t border-base-300 pt-1">
+    <span class="text-base-content/70">This payment settles</span>
+    <span class="font-medium text-base-content">{{ money(preview.applied_cents) }}</span>
+  </li>
   {% if preview.credit_cents %}
   <li class="flex items-center justify-between gap-6">
     <span class="text-success">Credit on account (excess paid)</span>

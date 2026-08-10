@@ -6,13 +6,15 @@ Route-level smoke tests of the thin adapters + templates. Business rules
 may view and record payments; role gating is asserted here.
 """
 
+from datetime import date
 from typing import cast
 from urllib.parse import urlparse
 
 from fastapi import FastAPI
 
 from app.audit.service import AuditActions
-from app.models import AuditLogEntry, Credit, Payment
+from app.fees.service import period_label
+from app.models import AuditLogEntry, Credit, FeeTemplate, Payment, Student
 
 from tests.helpers import (
     add_finance_user,
@@ -22,23 +24,32 @@ from tests.helpers import (
 )
 
 
-def create_class(client, name="Grade 1", status="active"):
-    response = client.post(
-        "/classes",
-        data={"name": name, "status": status},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    return int(urlparse(response.headers["location"]).path.split("/")[-1])
+def _db(client):
+    return cast(FastAPI, client.app).state.db
 
 
-def add_fee_item(client, class_id, name="Tuition", amount="50.00"):
+def add_fee_template(client, name="Tuition", amount="50.00"):
     response = client.post(
-        f"/classes/{class_id}/fee-items",
+        "/fees/templates",
         data={"name": name, "amount": amount},
         follow_redirects=False,
     )
     assert response.status_code == 303
+    with _db(client).session() as session:
+        return session.query(FeeTemplate).filter_by(name=name).one().id
+
+
+def create_class(client, name="Grade 1", status="active", template_id=None):
+    data = {"name": name, "status": status}
+    if template_id is not None:
+        data["default_template_id"] = str(template_id)
+    response = client.post(
+        "/classes",
+        data=data,
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    return int(urlparse(response.headers["location"]).path.split("/")[-1])
 
 
 def add_student(client, class_id, first_name="Ada", last_name="Lovelace"):
@@ -50,31 +61,16 @@ def add_student(client, class_id, first_name="Ada", last_name="Lovelace"):
     assert response.status_code == 303
 
 
-def generate_fees(client, class_id):
-    response = client.post(
-        "/fees/generate",
-        data={"class_id": str(class_id), "month": "3", "year": "2026"},
-        headers={"HX-Request": "true"},
-    )
-    assert response.status_code == 200
-
-
-def _db(client):
-    return cast(FastAPI, client.app).state.db
-
-
 def student_id(client):
     with _db(client).session() as session:
-        from app.models import Student
-
         return session.query(Student).one().id
 
 
-def make_billed_student(client):
-    class_id = create_class(client)
-    add_fee_item(client, class_id)
+def make_billed_student(client, amount="50.00"):
+    """A student who owes the current month's fee (enrolled today)."""
+    template_id = add_fee_template(client, amount=amount)
+    class_id = create_class(client, template_id=template_id)
     add_student(client, class_id)
-    generate_fees(client, class_id)
     return student_id(client)
 
 
@@ -188,7 +184,7 @@ def test_payment_preview_shows_the_allocation_without_writing(client):
     response = client.get(f"/payments/preview?student_id={sid}&amount=60.00")
 
     assert response.status_code == 200
-    assert "March 2026" in response.text
+    assert period_label(date.today().month, date.today().year) in response.text
     assert "$50.00" in response.text
     assert "Credit on account" in response.text
     assert "$10.00" in response.text
@@ -230,7 +226,7 @@ def test_admin_can_record_a_payment_and_land_on_the_receipt(client):
     assert "Receipt #1" in receipt.text
     assert "Ada Lovelace" in receipt.text
     assert "$30.00" in receipt.text
-    assert "March 2026" in receipt.text
+    assert period_label(date.today().month, date.today().year) in receipt.text
     assert "Print" in receipt.text
 
     (payment,) = payments(client)

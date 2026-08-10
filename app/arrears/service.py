@@ -1,28 +1,26 @@
 """Arrears service layer: the outstanding-money report.
 
-Business rules for the report the office uses to chase unpaid fees. A student
-is in arrears when their unpaid charge balances exceed their credits; the
-report lists every such student with how much they owe and how old the debt is.
-Routes are thin adapters over this module — it is the single testing seam.
+Arrears are **derived** from the expected-vs-paid comparison (ticket 08): for
+each student the account assembly (:func:`app.fees.account.student_account`)
+computes the expected amount, payments, and carried credit per owed month. A
+student is in arrears when their balance — expected minus paid minus credit —
+is positive. Routes are thin adapters over this module — it is the single
+testing seam.
 
 Rules that live here:
-- Arrears = unpaid charge balances minus credits. A charge's unpaid balance is
-  its live net amount (base + extras - waivers) minus what payments have
-  cleared, floored at zero. ``owed_cents`` is ``max(outstanding - credits, 0)``
-  so a student who has paid exactly what they owe — or holds a credit — owes
-  nothing and is excluded.
-- Debt age is measured from the oldest *unpaid* charge's period start (the
-  first day of the month the charge covers). This is stable regardless of when
-  fees were generated and matches how the office thinks of a month's fees
-  going unpaid. ``age_days`` is the days since that date (floored at zero for
-  charges that have not become due yet) and ``age_band`` classifies it:
-  current (<= 30 days), late (31-60 days, amber in the UI), or overdue (> 60
-  days, red in the UI).
-- Archived students (``StudentStatus.INACTIVE``) and students in
-  Completed/Inactive classes keep their arrears and still appear — they are
-  never excluded by status.
+- Arrears = accumulated monthly shortfalls across owed months. The balance
+  ``max(expected - paid - credits, 0)`` equals that sum once credit has been
+  applied oldest-owed-month-first, so a student who has paid exactly what they
+  owe — or holds enough credit — owes nothing and is excluded.
+- Debt age is measured from the **oldest owed month still carrying a shortfall**
+  (its period start, the first day of that month). ``age_days`` is the days
+  since that date (floored at zero) and ``age_band`` classifies it: current
+  (<= 30 days), late (31-60 days, amber in the UI), or overdue (> 60 days, red
+  in the UI).
+- Archived students and students in Completed/Inactive classes keep their
+  arrears and still appear — they are never excluded by status.
 - Students with no outstanding balance — fully paid, holding enough credit, or
-  never billed — are excluded from the report.
+  never owed — are excluded from the report.
 - The report is ordered by oldest debt first (then amount owed, largest
   first), so the most urgent debt is on top.
 """
@@ -32,14 +30,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..db import Database
-from ..fees.service import net_cents, period_label
-from ..models import Charge, Credit, Student
+from ..fees.account import student_account
+from ..fees.service import period_label
+from ..models import ClosedMonth, Student
 from ..money import Money
-from ..payments.planner import paid_cents_by_charge
 
 LATE_THRESHOLD_DAYS = 30
 OVERDUE_THRESHOLD_DAYS = 60
@@ -72,9 +69,9 @@ def debt_age_band(age_days: int) -> str:
 class ArrearsLine:
     """One owing student's row in the arrears report.
 
-    ``owed_cents`` is what they still owe (unpaid charge balances minus
-    credits); ``oldest_period_label`` names the month of their oldest unpaid
-    charge, and ``age_days``/``age_band`` describe how old that debt is.
+    ``owed_cents`` is what they still owe (expected minus paid minus credit);
+    ``oldest_period_label`` names the month of their oldest unpaid shortfall,
+    and ``age_days``/``age_band`` describe how old that debt is.
     """
 
     student: Student
@@ -98,63 +95,40 @@ class ArrearsService:
         return self._db.session()
 
     @staticmethod
-    def _credits_by_student(session: Session) -> dict[int, int]:
-        """Total credit held per student."""
-        rows = (
-            session.query(Credit.student_id, func.sum(Credit.amount_cents))
-            .group_by(Credit.student_id)
-            .all()
-        )
-        return {student_id: int(total) for student_id, total in rows}
+    def _closed_months(session: Session) -> set[tuple[int, int]]:
+        rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+        return {(month, year) for month, year in rows}
 
     def arrears_report(self, *, today: date | None = None) -> list[ArrearsLine]:
         """Every student with outstanding arrears, oldest debt first.
 
-        A single pass over all charges builds each student's outstanding amount
-        (net of adjustments and payments) and their oldest unpaid charge
-        period; credits are then subtracted and any student whose resulting
-        arrears are not positive is dropped. ``today`` is injectable so tests
-        can pin the debt ages; it defaults to the real date.
+        A single pass over all students builds each one's derived account; a
+        student whose balance (expected - paid - credit) is not positive is
+        dropped. ``today`` is injectable so tests can pin the debt ages; it
+        defaults to the real date.
         """
         today = today or date.today()
         with self._session() as session:
-            charges = (
-                session.query(Charge)
-                .options(
-                    joinedload(Charge.adjustments),
-                    joinedload(Charge.student).joinedload(Student.school_class),
-                )
+            students = (
+                session.query(Student)
+                .options(joinedload(Student.school_class))
+                .order_by(Student.last_name, Student.first_name, Student.id)
                 .all()
             )
-            paid_by_charge = paid_cents_by_charge(session)
-            credits_by_student = self._credits_by_student(session)
-
-        by_student: dict[int, tuple[Student, int, tuple[int, int]]] = {}
-        for charge in charges:
-            unpaid = max(
-                net_cents(charge, list(charge.adjustments))
-                - paid_by_charge.get(charge.id, 0),
-                0,
-            )
-            if unpaid <= 0:
-                continue
-            student = charge.student
-            student_entry, outstanding, oldest = by_student.get(
-                student.id, (student, 0, (9999, 13))
-            )
-            period = (charge.year, charge.month)
-            by_student[student.id] = (
-                student_entry,
-                outstanding + unpaid,
-                min(oldest, period),
-            )
+            closed = self._closed_months(session)
 
         lines: list[ArrearsLine] = []
-        for student, outstanding, (year, month) in by_student.values():
-            owed = max(outstanding - credits_by_student.get(student.id, 0), 0)
+        for student in students:
+            account = student_account(session, student, today, closed)
+            owed = account.owed_cents
             if owed <= 0:
                 continue
-            oldest_start = date(year, month, 1)
+            oldest = min(
+                (line.year, line.month)
+                for line in account.lines
+                if line.remaining_cents > 0
+            )
+            oldest_start = date(oldest[0], oldest[1], 1)
             age_days = max((today - oldest_start).days, 0)
             lines.append(
                 ArrearsLine(
@@ -163,7 +137,7 @@ class ArrearsService:
                     class_status=student.school_class.status,
                     student_status=student.status,
                     owed_cents=owed,
-                    oldest_period_label=period_label(month, year),
+                    oldest_period_label=period_label(oldest[1], oldest[0]),
                     oldest_period_start=oldest_start,
                     age_days=age_days,
                     age_band=debt_age_band(age_days),

@@ -318,23 +318,30 @@ def test_login_page_keeps_the_product_name(client):
 # ---------------------------------------------------------------------------
 
 
-def create_class(client, name="Grade 1"):
+def add_fee_template(client, name="Tuition", amount="50.00"):
+    response = client.post(
+        "/fees/templates",
+        data={"name": name, "amount": amount},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    with cast(FastAPI, client.app).state.db.session() as session:
+        from app.models import FeeTemplate
+
+        return session.query(FeeTemplate).order_by(FeeTemplate.id.desc()).first().id
+
+
+def create_class(client, name="Grade 1", template_id=None):
+    data = {"name": name, "status": "active"}
+    if template_id is not None:
+        data["default_template_id"] = str(template_id)
     response = client.post(
         "/classes",
-        data={"name": name, "status": "active"},
+        data=data,
         follow_redirects=False,
     )
     assert response.status_code == 303
     return int(urlparse(response.headers["location"]).path.split("/")[-1])
-
-
-def add_fee_item(client, class_id):
-    response = client.post(
-        f"/classes/{class_id}/fee-items",
-        data={"name": "Tuition", "amount": "50.00"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
 
 
 def add_student(client, class_id):
@@ -346,20 +353,10 @@ def add_student(client, class_id):
     assert response.status_code == 303
 
 
-def generate_fees(client, class_id):
-    response = client.post(
-        "/fees/generate",
-        data={"class_id": str(class_id), "month": "3", "year": "2026"},
-        headers={"HX-Request": "true"},
-    )
-    assert response.status_code == 200
-
-
 def make_billed_student(client):
-    class_id = create_class(client)
-    add_fee_item(client, class_id)
+    template_id = add_fee_template(client)
+    class_id = create_class(client, template_id=template_id)
     add_student(client, class_id)
-    generate_fees(client, class_id)
     with cast(FastAPI, client.app).state.db.session() as session:
         from app.models import Student
 

@@ -6,7 +6,14 @@ counts as arrears, debt-age bands, who is included) live in
 may view the report; role gating is asserted here.
 """
 
+from datetime import date
+from typing import cast
 from urllib.parse import urlparse
+
+from fastapi import FastAPI
+
+from app.fees.service import period_label
+from app.models import FeeTemplate
 
 from tests.helpers import (
     add_finance_user,
@@ -16,23 +23,38 @@ from tests.helpers import (
 )
 
 
-def create_class(client, name="Grade 1", status="active"):
-    response = client.post(
-        "/classes",
-        data={"name": name, "status": status},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    return int(urlparse(response.headers["location"]).path.split("/")[-1])
+def _db(client):
+    return cast(FastAPI, client.app).state.db
 
 
-def add_fee_item(client, class_id, name="Tuition", amount="50.00"):
+def add_fee_template(client, name="Tuition", amount="50.00"):
     response = client.post(
-        f"/classes/{class_id}/fee-items",
+        "/fees/templates",
         data={"name": name, "amount": amount},
         follow_redirects=False,
     )
     assert response.status_code == 303
+    with _db(client).session() as session:
+        return (
+            session.query(FeeTemplate)
+            .filter_by(name=name)
+            .order_by(FeeTemplate.id.desc())
+            .first()
+            .id
+        )
+
+
+def create_class(client, name="Grade 1", status="active", template_id=None):
+    data = {"name": name, "status": status}
+    if template_id is not None:
+        data["default_template_id"] = str(template_id)
+    response = client.post(
+        "/classes",
+        data=data,
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    return int(urlparse(response.headers["location"]).path.split("/")[-1])
 
 
 def add_student(client, class_id, first_name="Ada", last_name="Lovelace"):
@@ -44,36 +66,31 @@ def add_student(client, class_id, first_name="Ada", last_name="Lovelace"):
     assert response.status_code == 303
 
 
-def generate_fees(client, class_id, month="3", year="2026"):
-    response = client.post(
-        "/fees/generate",
-        data={"class_id": str(class_id), "month": month, "year": year},
-        headers={"HX-Request": "true"},
-    )
-    assert response.status_code == 200
-
-
 def record_payment(client, student_id, amount):
     response = client.post(
         "/payments/record",
-        data={"student_id": str(student_id), "amount": amount, "method": "cash", "paid_on": "2026-08-06"},
+        data={
+            "student_id": str(student_id),
+            "amount": amount,
+            "method": "cash",
+            "paid_on": date.today().isoformat(),
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303
 
 
 def make_billed_student(client, name="Grade 1", first_name="Ada", last_name="Lovelace", status="active"):
-    class_id = create_class(client, name=name, status=status)
-    add_fee_item(client, class_id)
+    template_id = add_fee_template(client)
+    class_id = create_class(client, name=name, status=status, template_id=template_id)
     add_student(client, class_id, first_name=first_name, last_name=last_name)
-    generate_fees(client, class_id)
     return class_id
 
 
 def student_ids(client):
     from app.models import Student
 
-    with client.app.state.db.session() as session:
+    with _db(client).session() as session:
         return {student.full_name: student.id for student in session.query(Student).all()}
 
 
@@ -117,9 +134,9 @@ def test_report_lists_owing_students_with_amount_and_age(client):
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
     assert "Grace Hopper" in response.text
-    assert "$50.00" in response.text  # each owes 50.00
-    assert "March 2026" in response.text  # oldest unpaid charge
-    assert "Over 60 days" in response.text  # >60 days old as of today
+    assert "$50.00" in response.text  # each owes the current month's fee
+    assert period_label(date.today().month, date.today().year) in response.text  # oldest unpaid month
+    assert "0-30 days" in response.text  # current-month debt
     assert "2" in response.text  # owing-students stat
 
 
@@ -161,14 +178,8 @@ def test_a_partial_payment_reduces_the_reported_amount(client):
 
 def test_archived_students_and_completed_classes_still_appear(client):
     authenticated_admin(client)
-    class_id = make_billed_student(client, name="Grade 8")
-    # Bill the class first, then complete it — the charges stay and remain owing.
-    response = client.post(
-        f"/classes/{class_id}/edit",
-        data={"name": "Grade 8", "status": "completed"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
+    # A student in a completed class still owes their billed months.
+    make_billed_student(client, name="Grade 8", status="completed")
 
     response = client.get("/arrears")
 
@@ -179,8 +190,8 @@ def test_archived_students_and_completed_classes_still_appear(client):
 
 def test_empty_state_when_nobody_owes(client):
     authenticated_admin(client)
-    class_id = create_class(client)
-    add_student(client, class_id)
+    make_billed_student(client)
+    record_payment(client, student_ids(client)["Ada Lovelace"], "50.00")
 
     response = client.get("/arrears")
 

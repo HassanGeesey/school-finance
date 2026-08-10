@@ -79,7 +79,7 @@ source .venv/bin/activate     # macOS / Linux
 pip install -r requirements.txt
 
 # 3. Run the app
-uvicorn app.main:app --reload
+uvicorn "app.main:create_app" --factory --reload
 ```
 
 Open <http://127.0.0.1:8000>. On first run you'll be taken through the
@@ -87,7 +87,7 @@ Open <http://127.0.0.1:8000>. On first run you'll be taken through the
 created automatically at `data/school_finance.db`.
 
 > Tip: set `SCHOOL_FINANCE_DATA` to a directory of your choice to store data
-> elsewhere, e.g. `SCHOOL_FINANCE_DATA=D:\school_data uvicorn app.main:app`.
+> elsewhere, e.g. `SCHOOL_FINANCE_DATA=D:\school_data uvicorn "app.main:create_app" --factory`.
 
 ## Project structure
 

@@ -17,8 +17,31 @@
   {% endif %}
 
   <form method="post" action="/classes/{{ class_id }}/students/import" enctype="multipart/form-data" class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
-    <label for="file" class="label"><span class="label-text">CSV file</span></label>
-    <input id="file" name="file" type="file" accept=".csv,text/csv" required class="file-input file-input-bordered w-full">
+    <div class="grid gap-4 sm:grid-cols-3">
+      <div class="sm:col-span-2">
+        <label for="file" class="label"><span class="label-text">CSV file</span></label>
+        <input id="file" name="file" type="file" accept=".csv,text/csv" required class="file-input file-input-bordered w-full">
+      </div>
+      <div>
+        <label for="import-enrolled" class="label"><span class="label-text">Enrolled on (default today)</span></label>
+        <input id="import-enrolled" name="enrolled_on" type="date" class="input w-full">
+      </div>
+    </div>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="import-template" class="label"><span class="label-text">Fee template (default: this class's)</span></label>
+        <select id="import-template" name="fee_template_id" class="select w-full">
+          <option value="">— Class default —</option>
+          {% for template_id, label in template_options %}
+          <option value="{{ template_id }}" {% if default_template_id == template_id|string %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="import-amount" class="label"><span class="label-text">Custom monthly amount (overrides the template)</span></label>
+        <input id="import-amount" name="custom_amount" type="text" inputmode="decimal" placeholder="e.g. 50.00" class="input w-full">
+      </div>
+    </div>
     <div class="mt-6 flex items-center gap-3">
       {{ btn(label="Import", icon="arrow-up-tray", variant="primary", type="submit") }}
       {{ btn(href="/classes/" ~ class_id, label="Cancel", variant="ghost") }}

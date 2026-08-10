@@ -190,3 +190,9 @@ Grilling session log. Updated as decisions are made.
 - Domain `ict.hgeesey.store` → port 8000, HTTPS + Let's Encrypt (DNS validated); Traefik route live.
 - Setup wizard confirmed at `/setup` (fresh install, volume empty).
 - Not yet verified post-setup: admin account creation, `Secure` cookie on login, shutdown card hidden, volume backup schedule.
+
+## Cloud DB / multi-school grilling session
+
+| # | Question | Answer |
+|---|----------|--------|
+| C-1 | What drives moving the DB to the cloud? | **Reliability + centralization.** Two delivery paths: the .exe keeps SQLite (offline); the online path moves to a centralized cloud DB. Wants to **manage all schools from one DB**, with each school effectively a "user"/tenant. (Per-school managed DBs — original reading of the compose-per-school plan — rejected; wants **one** central database.) |

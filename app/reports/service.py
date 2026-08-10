@@ -1,28 +1,29 @@
 """Reports service layer: report aggregations and the dashboard.
 
 The reporting surface. This module is read-only — it aggregates payments,
-expenses, charges, and arrears into the report surfaces and the dashboard
-KPIs/charts. Routes are thin adapters over this module — it is the single
-testing seam.
+expenses, and the derived owed-month comparison into the report surfaces and
+the dashboard KPIs/charts. Routes are thin adapters over this module — it is
+the single testing seam.
 
-Rules that live here:
+Rules that live here (fee-billing rework — ticket 08):
 - Amounts stay in integer cents (``app.money``) throughout.
 - Income for a month = all payments dated within it; expenses for a month =
   all expenses dated within it; net = income - expenses.
 - Expense-by-category groups all expenses (or one month's) by category,
   largest total first; archived categories keep their historical rows.
-- The paid-students report lists every student billed for the month (optionally
-  one class): their live net charge (base + extras - waivers), what payments
-  have cleared, and a paid/partial/unpaid status. Never-billed students do not
-  appear; archived students keep their charges and do appear.
+- The paid-students report lists every student with an **owed month** in the
+  selected period (closed months excluded), showing expected, paid, credit
+  consumed, remaining, and a paid/partial/unpaid status — all from the derived
+  comparison (:func:`app.fees.account.student_account`).
 - The summarized finance report rolls up one month's income and expenses, the
   net, and the live totals for outstanding arrears and credit balances.
 - The student list is the register: every student (optionally one class) with
-  their class, status, and the class's current monthly fee.
+  their class, status, and the amount in force for the current month.
+- Month dropdowns come from owed months + payment months + expense months
+  (no ``Charge`` periods).
 - The dashboard is the current month's KPIs (collections, expenses, arrears,
   active students), a six-month income/expense series, the arrears debt-age
-  band counts, and the all-time expense-by-category lines — the Chart.js
-  payloads are assembled in the routes.
+  band counts, and the all-time expense-by-category lines.
 """
 
 from __future__ import annotations
@@ -38,19 +39,18 @@ from ..arrears.service import ArrearsService
 from ..charge_status import ChargeStatus, classify_paid_status
 from ..classes.service import ClassNotFound
 from ..db import Database
-from ..fees.service import net_cents, period_label
+from ..fees.account import amount_in_force, owed_months, student_account
+from ..fees.service import period_label
 from ..models import (
-    Charge,
+    ClosedMonth,
     Class,
     Credit,
     Expense,
-    FeeItem,
     Payment,
     Student,
     StudentStatus,
 )
 from ..money import Money
-from ..payments.planner import paid_cents_by_charge
 from ..payments.service import PAYMENT_METHOD_LABELS
 
 
@@ -116,21 +116,27 @@ class ExpenseCategoryReport:
 
 @dataclass
 class PaidStudentLine:
-    """One billed student's row in the paid-students report."""
+    """One billed student's row in the paid-students report.
+
+    ``expected_cents`` is the month's amount in force minus waivers,
+    ``credit_cents`` is the carried credit the account applied to this month,
+    and ``remaining_cents`` is what is still owed after payments and credit.
+    """
 
     student: Student
     class_name: str
     class_status: str
     student_status: str
-    charge_cents: Money
+    expected_cents: Money
     paid_cents: Money
+    credit_cents: Money
     remaining_cents: Money
     status: str
 
 
 @dataclass
 class PaidStudentsReport:
-    """Who was billed for a month and whether they have paid."""
+    """Who owed a month and whether they have paid."""
 
     month: int
     year: int
@@ -141,8 +147,9 @@ class PaidStudentsReport:
     paid_count: int
     partial_count: int
     unpaid_count: int
-    charged_cents: Money
+    expected_cents: Money
     collected_cents: Money
+    credited_cents: Money
     outstanding_cents: Money
     lines: list[PaidStudentLine]
 
@@ -186,7 +193,7 @@ class StudentStatusRow:
     """One student on the school-wide search page, with their month's paid status.
 
     ``paid_status`` is one of :class:`~app.charge_status.ChargeStatus` when the
-    student was billed that month, else ``None`` (never billed — rendered as a
+    student owes that month, else ``None`` (not owed that month — rendered as a
     dash). The rest of the paid column renders from the shared
     ``CHARGE_STATUS_LABELS`` / tones.
     """
@@ -245,6 +252,11 @@ class ReportService:
 
     def _session(self) -> Session:
         return self._db.session()
+
+    @staticmethod
+    def _closed_months(session: Session) -> set[tuple[int, int]]:
+        rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+        return {(month, year) for month, year in rows}
 
     @staticmethod
     def _by_method(rows: list) -> list[MethodLine]:
@@ -330,24 +342,59 @@ class ReportService:
     def _arrears_lines(self, today: date) -> list:
         return self._arrears.arrears_report(today=today)
 
-    def list_periods(self) -> list[tuple[int, int]]:
-        """Every (year, month) with charges, payments, or expenses, newest first.
+    # -- Owed-month helpers ---------------------------------------------------
 
-        Feeds the report month dropdowns. Charges are included so a month that
-        was billed but collected nothing can still be selected — that is exactly
-        what the paid-students report is for.
-        """
-        with self._session() as session:
-            charge_rows = session.query(Charge.year, Charge.month).distinct().all()
-            payment_rows = session.query(
-                func.strftime("%Y", Payment.paid_on), func.strftime("%m", Payment.paid_on)
-            ).distinct().all()
-            expense_rows = session.query(
-                func.strftime("%Y", Expense.occurred_on), func.strftime("%m", Expense.occurred_on)
-            ).distinct().all()
+    def _owed_months_across_school(
+        self, session: Session, closed: set[tuple[int, int]], today: date
+    ) -> set[tuple[int, int]]:
+        """Every month any student is currently owed, for the period dropdowns."""
         periods: set[tuple[int, int]] = set()
-        for row in [*charge_rows, *payment_rows, *expense_rows]:
-            periods.add((int(row[0]), int(row[1])))
+        for student in session.query(Student).all():
+            periods.update(owed_months(student, closed, today))
+        return periods
+
+    def _students_owed_month(
+        self,
+        session: Session,
+        month: int,
+        year: int,
+        closed: set[tuple[int, int]],
+        today: date,
+        class_id: int | None = None,
+    ) -> list[Student]:
+        query = session.query(Student).options(joinedload(Student.school_class))
+        if class_id is not None:
+            query = query.filter(Student.class_id == class_id)
+        return [
+            student
+            for student in query.all()
+            if (month, year) in owed_months(student, closed, today)
+        ]
+
+    def list_periods(self) -> list[tuple[int, int]]:
+        """Every (month, year) with owed months, payments, or expenses, newest first.
+
+        Feeds the report month dropdowns. Owed months are included so a month
+        that was billed but collected nothing can still be selected — that is
+        exactly what the paid-students report is for.
+        """
+        today = date.today()
+        with self._session() as session:
+            closed = self._closed_months(session)
+            periods = self._owed_months_across_school(session, closed, today)
+            periods.update(
+                (month, year)
+                for month, year in session.query(Payment.month, Payment.year).distinct().all()
+            )
+            periods.update(
+                (int(month), int(year))
+                for month, year in session.query(
+                    func.strftime("%m", Expense.occurred_on),
+                    func.strftime("%Y", Expense.occurred_on),
+                )
+                .distinct()
+                .all()
+            )
         return sorted(periods, reverse=True)
 
     @staticmethod
@@ -449,52 +496,52 @@ class ReportService:
         year: int,
         class_id: int | None = None,
     ) -> PaidStudentsReport:
-        """Every student billed for the month, with their payment status.
+        """Every student with an owed month in the period, with their payment status.
 
-        Students are included only when they hold a charge for that month;
-        archived students keep theirs and still appear. Order is by class then
-        student name.
+        Students are included only when ``(month, year)`` is one of their owed
+        months (closed months excluded); archived students keep theirs and still
+        appear. Order is by class then student name.
         """
+        today = date.today()
         with self._session() as session:
             class_name = (
                 self._class_name(session, class_id) if class_id is not None else None
             )
-            query = (
-                session.query(Charge)
-                .options(
-                    joinedload(Charge.student).joinedload(Student.school_class),
-                    joinedload(Charge.adjustments),
-                )
-                .filter(Charge.month == month, Charge.year == year)
-            )
-            if class_id is not None:
-                query = query.filter(Charge.student.has(Student.class_id == class_id))
-            charges = query.all()
-            paid_by_charge = paid_cents_by_charge(
-                session, [charge.id for charge in charges]
+            closed = self._closed_months(session)
+            students = self._students_owed_month(
+                session, month, year, closed, today, class_id=class_id
             )
 
         lines: list[PaidStudentLine] = []
-        for charge in charges:
-            student = charge.student
-            net = net_cents(charge, list(charge.adjustments))
-            paid = paid_by_charge.get(charge.id, 0)
-            status, remaining = classify_paid_status(net, paid)
+        for student in students:
+            account = student_account(session, student, today, closed)
+            line = next(
+                (
+                    line
+                    for line in account.lines
+                    if line.month == month and line.year == year
+                ),
+                None,
+            )
+            if line is None:
+                continue
             lines.append(
                 PaidStudentLine(
                     student=student,
                     class_name=student.school_class.name,
                     class_status=student.school_class.status,
                     student_status=student.status,
-                    charge_cents=net,
-                    paid_cents=paid,
-                    remaining_cents=remaining,
-                    status=status,
+                    expected_cents=line.expected_cents,
+                    paid_cents=line.paid_cents,
+                    credit_cents=line.credit_consumed_cents,
+                    remaining_cents=line.remaining_cents,
+                    status=line.status,
                 )
             )
         lines.sort(key=self._student_sort_key)
-        charged_cents = sum(line.charge_cents for line in lines)
+        expected_cents = sum(line.expected_cents for line in lines)
         collected_cents = sum(line.paid_cents for line in lines)
+        credited_cents = sum(line.credit_cents for line in lines)
         return PaidStudentsReport(
             month=month,
             year=year,
@@ -505,23 +552,30 @@ class ReportService:
             paid_count=sum(1 for line in lines if line.status == ChargeStatus.PAID),
             partial_count=sum(1 for line in lines if line.status == ChargeStatus.PARTIAL),
             unpaid_count=sum(1 for line in lines if line.status == ChargeStatus.UNPAID),
-            charged_cents=charged_cents,
+            expected_cents=expected_cents,
             collected_cents=collected_cents,
-            outstanding_cents=charged_cents - collected_cents,
+            credited_cents=credited_cents,
+            outstanding_cents=max(expected_cents - collected_cents - credited_cents, 0),
             lines=lines,
         )
 
     # -- Student status rows (the /students page paid column) -----------------
 
     def billed_periods(self) -> list[tuple[int, int]]:
-        """Every (year, month) with at least one charge, newest first.
+        """Every (month, year) with an owed month or a payment, newest first.
 
-        Only charged months are listed — the paid column and status filter mean
-        nothing until a month has been billed.
+        The paid column and status filter mean nothing until a month has been
+        owed or paid into.
         """
+        today = date.today()
         with self._session() as session:
-            rows = session.query(Charge.year, Charge.month).distinct().all()
-        return sorted({(int(year), int(month)) for year, month in rows}, reverse=True)
+            closed = self._closed_months(session)
+            periods = self._owed_months_across_school(session, closed, today)
+            periods.update(
+                (month, year)
+                for month, year in session.query(Payment.month, Payment.year).distinct().all()
+            )
+        return sorted(periods, reverse=True)
 
     def student_status_rows(
         self,
@@ -532,32 +586,35 @@ class ReportService:
     ) -> list[StudentStatusRow]:
         """The given students with their paid status for one month.
 
-        A student carries a status only when they hold a charge for that month;
-        never-billed students come back with ``paid_status=None``. When a
-        ``status`` filter is active, never-billed students are dropped from the
-        result — only students billed that month can match a status.
+        A student carries a status only when ``(month, year)`` is one of their
+        owed months; students not owed that month come back with
+        ``paid_status=None``. When a ``status`` filter is active, those students
+        are dropped from the result.
         """
-        ids = [student.id for student in students]
-        rows = [StudentStatusRow(student=student, paid_status=None, remaining_cents=0) for student in students]
-        if not ids:
+        rows = [
+            StudentStatusRow(student=student, paid_status=None, remaining_cents=0)
+            for student in students
+        ]
+        if not rows:
             return rows
+        today = date.today()
         with self._session() as session:
-            charges = (
-                session.query(Charge)
-                .options(joinedload(Charge.adjustments))
-                .filter(
-                    Charge.month == month,
-                    Charge.year == year,
-                    Charge.student_id.in_(ids),
+            closed = self._closed_months(session)
+            paid_map: dict[int, tuple[str, int]] = {}
+            for row in rows:
+                if (month, year) not in owed_months(row.student, closed, today):
+                    continue
+                account = student_account(session, row.student, today, closed)
+                line = next(
+                    (
+                        line
+                        for line in account.lines
+                        if line.month == month and line.year == year
+                    ),
+                    None,
                 )
-                .all()
-            )
-            paid_by_charge = paid_cents_by_charge(session, [c.id for c in charges])
-        paid_map: dict[int, tuple[str, int]] = {}
-        for charge in charges:
-            net = net_cents(charge, list(charge.adjustments))
-            paid = paid_by_charge.get(charge.id, 0)
-            paid_map[charge.student_id] = classify_paid_status(net, paid)
+                if line is not None:
+                    paid_map[row.student.id] = (line.status, line.remaining_cents)
         for row in rows:
             paid_state = paid_map.get(row.student.id)
             if paid_state is not None:
@@ -598,7 +655,8 @@ class ReportService:
     # -- Student list --------------------------------------------------------
 
     def student_list(self, class_id: int | None = None) -> StudentListReport:
-        """The register: every student (or one class) with class and fee."""
+        """The register: every student (or one class) with class and current fee."""
+        today = date.today()
         with self._session() as session:
             class_name = (
                 self._class_name(session, class_id) if class_id is not None else None
@@ -607,11 +665,10 @@ class ReportService:
             if class_id is not None:
                 query = query.filter(Student.class_id == class_id)
             students = query.all()
-            fee_items = session.query(FeeItem).all()
-
-        fee_by_class: dict[int, int] = {}
-        for item in fee_items:
-            fee_by_class[item.class_id] = fee_by_class.get(item.class_id, 0) + item.amount_cents
+            fee_by_student = {
+                student.id: amount_in_force(session, student, today.month, today.year)
+                for student in students
+            }
 
         lines = [
             StudentListLine(
@@ -619,7 +676,7 @@ class ReportService:
                 class_name=student.school_class.name,
                 class_status=student.school_class.status,
                 student_status=student.status,
-                monthly_fee_cents=fee_by_class.get(student.class_id, 0),
+                monthly_fee_cents=fee_by_student.get(student.id, 0),
             )
             for student in students
         ]

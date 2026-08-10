@@ -18,8 +18,10 @@ from fastapi.templating import Jinja2Templates
 from ..auth.deps import require_admin, require_login
 from ..charge_status import CHARGE_STATUS_LABELS, CHARGE_STATUS_TONES
 from ..classes.service import ClassNotFound, ClassService
-from ..fees.service import period_label
+from ..fees.service import MONTH_NAMES, TemplateService, period_label
 from ..models import User
+from ..money import format_cents
+from ..payments.service import PaymentService
 from ..reports.service import ReportService, StudentStatusRow
 from .service import StudentError, StudentImportError, StudentNotFound, StudentService
 
@@ -69,6 +71,50 @@ def _coerce_class_id(raw: str) -> int | None:
         raise ClassNotFound("Choose a class.") from None
 
 
+def _coerce_template_id(raw: str) -> int | None:
+    """A posted template picker value, or ``None`` when nothing was chosen."""
+    raw = (raw or "").strip()
+    if raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise StudentError("Choose a valid fee template.") from None
+
+
+def _class_default_template_id(request: Request, class_id: int) -> int | None:
+    """The class's default template, which pre-fills and applies to new students."""
+    classes = request.app.state.classes
+    assert isinstance(classes, ClassService)
+    summary = classes.class_summary(class_id)
+    template = summary.cls.default_template
+    return template.id if template is not None else None
+
+
+def _resolve_billing_source(
+    request: Request, class_id: int, fee_template_id: str, custom_amount: str
+) -> tuple[int | None, str | None]:
+    """Turn posted billing fields into a template id / custom amount.
+
+    When neither is given, the class's default template applies (the form
+    pre-fills with it). An unknown template id is rejected.
+    """
+    template_id = _coerce_template_id(fee_template_id)
+    amount = (custom_amount or "").strip() or None
+    if template_id is None and amount is None:
+        template_id = _class_default_template_id(request, class_id)
+    return template_id, amount
+
+
+def _template_options(request: Request) -> list[tuple[int, str]]:
+    service = request.app.state.fees
+    assert isinstance(service, TemplateService)
+    return [
+        (template.id, f"{template.name} ({format_cents(template.amount_cents)}/month)")
+        for template in service.list_active_templates()
+    ]
+
+
 @router.get("/students", response_class=HTMLResponse)
 def search_page(
     request: Request,
@@ -91,7 +137,7 @@ def search_page(
     billed_periods = _reports(request).billed_periods()
     period_options = [
         (f"{year:04d}-{month:02d}", period_label(month, year))
-        for year, month in billed_periods
+        for month, year in billed_periods
     ]
     period_values = {value for value, _ in period_options}
     selected_period = (
@@ -200,17 +246,66 @@ def restore_student(
     return _redirect_class(student.class_id, "Student restored.")
 
 
+@router.get("/students/{student_id}/account", response_class=HTMLResponse)
+def student_account_page(
+    request: Request,
+    student_id: int,
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    """The student's account: the derived per-month comparison (ticket 07).
+
+    Open to any logged-in user (the Finance officer chases balances too). The
+    per-month rows (expected, waivers, paid, credit consumed, status), the
+    running totals, the payments list, and the credit line all come from
+    ``PaymentService.account_summary``; the print block on the page doubles as
+    the statement.
+    """
+    try:
+        student = _service(request).get_student(student_id)
+    except StudentNotFound:
+        raise HTTPException(status_code=404, detail="Student not found.")
+    payments = request.app.state.payments
+    assert isinstance(payments, PaymentService)
+    summary = payments.account_summary(student_id)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="students/account.html",
+        context={
+            "student": student,
+            "account": summary.account,
+            "oldest_unpaid": summary.oldest_unpaid,
+            "period_label": period_label,
+            "msg": request.query_params.get("msg", ""),
+            "err": request.query_params.get("err", ""),
+            "charge_status_labels": CHARGE_STATUS_LABELS,
+            "charge_status_tones": CHARGE_STATUS_TONES,
+        },
+    )
+
+
 @router.post("/classes/{class_id}/students", response_class=HTMLResponse)
 def add_student(
     request: Request,
     class_id: int,
     first_name: str = Form(""),
     last_name: str = Form(""),
+    enrolled_on: str = Form(""),
+    fee_template_id: str = Form(""),
+    custom_amount: str = Form(""),
     user: User = Depends(require_admin),
 ) -> Response:
     try:
+        template_id, amount = _resolve_billing_source(
+            request, class_id, fee_template_id, custom_amount
+        )
         _service(request).add_student(
-            user=user, class_id=class_id, first_name=first_name, last_name=last_name
+            user=user,
+            class_id=class_id,
+            first_name=first_name,
+            last_name=last_name,
+            enrolled_on=enrolled_on,
+            fee_template_id=template_id,
+            custom_amount=amount,
         )
     except ClassNotFound:
         raise HTTPException(status_code=404, detail="Class not found.")
@@ -234,7 +329,7 @@ def import_form(
     return _templates(request).TemplateResponse(
         request=request,
         name="students/import.html",
-        context={"class_id": class_id, "class_name": class_name, "error": ""},
+        context=_import_form_context(request, class_id, class_name),
     )
 
 
@@ -243,6 +338,9 @@ def import_students(
     request: Request,
     class_id: int,
     file: UploadFile = File(...),
+    enrolled_on: str = Form(""),
+    fee_template_id: str = Form(""),
+    custom_amount: str = Form(""),
     user: User = Depends(require_admin),
 ) -> HTMLResponse:
     try:
@@ -250,8 +348,17 @@ def import_students(
     except UnicodeDecodeError:
         return _import_form_response(request, class_id, error="The CSV file must be UTF-8 encoded.")
     try:
+        template_id, amount = _resolve_billing_source(
+            request, class_id, fee_template_id, custom_amount
+        )
         result = _service(request).import_students_csv(
-            user=user, class_id=class_id, content=content, filename=file.filename or "students.csv"
+            user=user,
+            class_id=class_id,
+            content=content,
+            filename=file.filename or "students.csv",
+            enrolled_on=enrolled_on,
+            fee_template_id=template_id,
+            custom_amount=amount,
         )
     except ClassNotFound:
         raise HTTPException(status_code=404, detail="Class not found.")
@@ -264,6 +371,23 @@ def import_students(
     )
 
 
+def _import_form_context(
+    request: Request, class_id: int, class_name: str, error: str = ""
+) -> dict[str, object]:
+    try:
+        default_template_id = _class_default_template_id(request, class_id)
+    except ClassNotFound:
+        default_template_id = None
+    return {
+        "class_id": class_id,
+        "class_name": class_name,
+        "error": error,
+        "template_options": _template_options(request),
+        "default_template_id": str(default_template_id) if default_template_id is not None else "",
+        "months": [(i, MONTH_NAMES[i - 1]) for i in range(1, 13)],
+    }
+
+
 def _import_form_response(request: Request, class_id: int, *, error: str) -> HTMLResponse:
     try:
         class_name = _service(request).class_name(class_id)
@@ -272,6 +396,6 @@ def _import_form_response(request: Request, class_id: int, *, error: str) -> HTM
     return _templates(request).TemplateResponse(
         request=request,
         name="students/import.html",
-        context={"class_id": class_id, "class_name": class_name, "error": error},
+        context=_import_form_context(request, class_id, class_name, error=error),
         status_code=400,
     )

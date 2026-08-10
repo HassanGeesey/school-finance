@@ -1,11 +1,18 @@
 """Student routes end-to-end: admin mutations, finance read-only, audit trail.
 
 Route-level smoke tests of the thin adapters + templates. Business rules
-(validation, archiving, CSV parsing/skip reporting, audit content) live in
-``test_students_service.py``.
+(validation, archiving, CSV parsing/skip reporting, audit content, the
+effective-dated amount schedule) live in ``test_students_service.py``.
+
+Billing is derived from enrollment (there is no fee-generation step): a student
+enrolled ``2026-03-01`` owes from March 2026 through the current month, which is
+what makes the /students month dropdown and paid column appear.
 """
 
+from datetime import date
 from urllib.parse import urlparse
+
+from app.fees.service import period_label
 
 from tests.helpers import (
     add_finance_user,
@@ -15,10 +22,13 @@ from tests.helpers import (
 )
 
 
-def create_class(client, name="Grade 1", status="active"):
+def create_class(client, name="Grade 1", status="active", template_id=None):
+    data = {"name": name, "status": status}
+    if template_id is not None:
+        data["default_template_id"] = str(template_id)
     return client.post(
         "/classes",
-        data={"name": name, "status": status},
+        data=data,
         follow_redirects=False,
     )
 
@@ -29,38 +39,55 @@ def create_class_id(client, name="Grade 1", status="active"):
     return int(urlparse(response.headers["location"]).path.split("/")[-1])
 
 
-def add_fee_item(client, class_id, name="Tuition", amount="50.00"):
-    response = client.post(
-        f"/classes/{class_id}/fee-items",
-        data={"name": name, "amount": amount},
+def create_template(client, name="Standard", amount="50.00"):
+    return client.app.state.fees.create_template(user=None, name=name, amount=amount)
+
+
+def add_student(
+    client,
+    class_id=1,
+    first_name="Ada",
+    last_name="Lovelace",
+    enrolled_on="",
+    fee_template_id="",
+    custom_amount="50.00",
+):
+    """Add a student through the route. A custom monthly amount is the default
+    billing source so most tests need no fee template setup."""
+    return client.post(
+        f"/classes/{class_id}/students",
+        data={
+            "first_name": first_name,
+            "last_name": last_name,
+            "enrolled_on": enrolled_on,
+            "fee_template_id": fee_template_id,
+            "custom_amount": custom_amount,
+        },
         follow_redirects=False,
     )
-    assert response.status_code == 303
 
 
-def generate_fees(client, class_id, month="3", year="2026"):
-    response = client.post(
-        "/fees/generate",
-        data={"class_id": str(class_id), "month": month, "year": year},
-        headers={"HX-Request": "true"},
-    )
-    assert response.status_code == 200
-
-
-def record_payment(client, student_id, amount, paid_on="2026-03-10"):
+def record_payment(client, student_id, amount, month="3", year="2026", paid_on="2026-03-10"):
+    """Record a payment tagged to one month through the route."""
     response = client.post(
         "/payments/record",
-        data={"student_id": str(student_id), "amount": amount, "method": "cash", "paid_on": paid_on},
+        data={
+            "student_id": str(student_id),
+            "amount": amount,
+            "method": "cash",
+            "paid_on": paid_on,
+            "month": month,
+            "year": year,
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303
 
 
 def make_billed_student(client, name="Grade 1", first_name="Ada", last_name="Lovelace"):
+    """A class with one student billed from March 2026 (back-dated enrollment)."""
     class_id = create_class_id(client, name=name)
-    add_fee_item(client, class_id)
-    add_student(client, class_id, first_name=first_name, last_name=last_name)
-    generate_fees(client, class_id)
+    add_student(client, class_id, first_name=first_name, last_name=last_name, enrolled_on="2026-03-01")
     return class_id
 
 
@@ -69,14 +96,6 @@ def student_ids(client):
 
     with client.app.state.db.session() as session:
         return {student.full_name: student.id for student in session.query(Student).all()}
-
-
-def add_student(client, class_id=1, first_name="Ada", last_name="Lovelace"):
-    return client.post(
-        f"/classes/{class_id}/students",
-        data={"first_name": first_name, "last_name": last_name},
-        follow_redirects=False,
-    )
 
 
 def test_search_page_requires_login(client):
@@ -187,21 +206,23 @@ def test_billed_months_show_the_month_and_status_filters(client):
     response = client.get("/students")
 
     assert response.status_code == 200
-    assert "March 2026" in response.text  # month dropdown, most recent billed
+    assert "March 2026" in response.text  # month dropdown, from back-dated enrollment
     assert "Paid" in response.text  # paid column header
     assert "All statuses" in response.text  # status dropdown
 
 
 def test_month_dropdown_defaults_to_the_most_recent_billed_month(client):
     authenticated_admin(client)
-    grade_1 = make_billed_student(client, name="Grade 1")
-    make_billed_student(client, name="Grade 2", first_name="Grace", last_name="Hopper")
-    generate_fees(client, grade_1, month="5", year="2026")
+    make_billed_student(client, name="Grade 1")
+    today = date.today()
+    current_period = f"{today.year:04d}-{today.month:02d}"
 
     response = client.get("/students")
 
+    # An active student is owed through the current month, which is therefore
+    # the most recent billed month and the dropdown default.
     assert response.status_code == 200
-    assert 'value="2026-05" selected' in response.text
+    assert f'value="{current_period}" selected' in response.text
 
 
 def test_paid_column_shows_badges_and_remaining_amounts(client):
@@ -280,6 +301,54 @@ def test_admin_can_add_a_student_and_the_class_page_lists_it(client):
     assert "1 student" in detail.text
 
 
+def test_add_student_requires_a_billing_source(client):
+    authenticated_admin(client)
+    create_class(client)
+
+    response = add_student(client, custom_amount="", fee_template_id="")
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/classes/1?err=")
+
+    detail = client.get(response.headers["location"])
+    assert "Choose a fee template or enter a monthly amount" in detail.text
+
+
+def test_add_student_with_an_invalid_custom_amount_is_refused(client):
+    authenticated_admin(client)
+    create_class(client)
+
+    response = add_student(client, custom_amount="0")
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/classes/1?err=")
+
+    detail = client.get(response.headers["location"])
+    assert "Monthly amount must be greater than zero" in detail.text
+
+
+def test_add_student_accepts_a_linked_template(client):
+    authenticated_admin(client)
+    create_class(client)
+    template = create_template(client, name="Standard", amount="80.00")
+
+    response = add_student(client, fee_template_id=str(template.id), custom_amount="")
+    assert response.status_code == 303
+
+    detail = client.get("/classes/1")
+    assert "Ada Lovelace" in detail.text
+
+
+def test_add_student_accepts_a_back_dated_enrolled_on(client):
+    authenticated_admin(client)
+    create_class(client)
+
+    response = add_student(client, enrolled_on="2026-01-15")
+    assert response.status_code == 303
+
+    # The owed months run from the enrollment month, so January appears.
+    search = client.get("/students")
+    assert "January 2026" in search.text
+
+
 def test_add_student_requires_both_names(client):
     authenticated_admin(client)
     create_class(client)
@@ -328,6 +397,7 @@ def test_admin_can_import_students_and_sees_a_report(client):
     response = client.post(
         "/classes/1/students/import",
         files={"file": ("students.csv", b"first_name,last_name\nAda,Lovelace\nGrace,Hopper\n", "text/csv")},
+        data={"enrolled_on": "", "fee_template_id": "", "custom_amount": "50.00"},
     )
 
     assert response.status_code == 200
@@ -348,6 +418,7 @@ def test_import_reports_skipped_rows(client):
     response = client.post(
         "/classes/1/students/import",
         files={"file": ("students.csv", b"Ada,Lovelace\n,Lovelace\nGrace,Hopper\n", "text/csv")},
+        data={"enrolled_on": "", "fee_template_id": "", "custom_amount": "50.00"},
     )
 
     assert response.status_code == 200
@@ -374,6 +445,7 @@ def test_import_is_visible_in_the_audit_log(client):
     client.post(
         "/classes/1/students/import",
         files={"file": ("students.csv", b"Ada,Lovelace\n", "text/csv")},
+        data={"enrolled_on": "", "fee_template_id": "", "custom_amount": "50.00"},
     )
 
     response = client.get("/audit")

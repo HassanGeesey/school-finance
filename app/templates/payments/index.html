@@ -35,9 +35,28 @@
             <label for="payment-amount">Amount (USD)</label>
             <input id="payment-amount" name="amount" type="number" step="0.01" min="0.01" placeholder="0.00" class="input num"
                    hx-get="/payments/preview?part=clears"
-                   hx-trigger="input changed delay:400ms, load, htmx:afterSwap from:#payment-student"
+                   hx-trigger="input changed delay:400ms, load, change from:#payment-month, change from:#payment-year, htmx:afterSwap from:#payment-student"
                    hx-target="#payment-clears" hx-swap="innerHTML"
-                   hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value}">
+                   hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value, month: document.getElementById('payment-month').value, year: document.getElementById('payment-year').value}">
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="field">
+              <label for="payment-month" class="block text-[12.5px] font-semibold mb-1.5">For month</label>
+              <select id="payment-month" name="month" class="select w-full">
+                {% for value, label in months %}
+                <option value="{{ value }}" {% if month|string == value|string %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="payment-year" class="block text-[12.5px] font-semibold mb-1.5">Year</label>
+              <select id="payment-year" name="year" class="select w-full">
+                {% for value in years %}
+                <option value="{{ value }}" {% if year|string == value|string %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
 
           <div class="field">
@@ -79,9 +98,9 @@
       <div class="board-body">
         <div id="receipt-preview"
              hx-get="/payments/receipt-preview"
-             hx-trigger="input changed delay:400ms from:#payment-amount, change from:#payment-method, load, htmx:afterSwap from:#payment-student"
-             hx-swap="innerHTML"
-             hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value, method: document.getElementById('payment-method').value}">
+              hx-trigger="input changed delay:400ms from:#payment-amount, change from:#payment-method, change from:#payment-month, change from:#payment-year, load, htmx:afterSwap from:#payment-student"
+              hx-swap="innerHTML"
+              hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value, method: document.getElementById('payment-method').value, month: document.getElementById('payment-month').value, year: document.getElementById('payment-year').value}">
           <p class="text-sm text-base-content/50">Pick a student, then fill in the amount and method to preview the receipt.</p>
         </div>
       </div>

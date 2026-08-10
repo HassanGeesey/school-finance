@@ -1,0 +1,107 @@
+{# The student account's finance body (ticket 07): the derived per-month
+   comparison, the running totals, and the payments/credit lists. Included by
+   ``students/account.html``; the route supplies ``account`` (an
+   ``AccountView``), ``charge_status_labels``/``charge_status_tones``, and
+   ``period_label``. #}
+{% from "components/ui.html" import card, table_scroll, badge, empty_state %}
+{% from "components/icons.html" import icon %}
+{% from "payments/_badges.html" import payment_method_badge %}
+
+<div class="space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm">
+      <span class="muted">Balance to date:</span>
+      <b class="num {{ 'text-error' if account.balance_cents > 0 else '' }}">{{ money(account.balance_cents) }}</b>
+      <span class="muted ml-3">Credit held:</span>
+      <b class="num">{{ money(account.credits_cents) }}</b>
+    </p>
+    {% if account.balance_cents > 0 %}
+    <span class="badge badge-error">Owes {{ money(account.balance_cents) }}</span>
+    {% elif account.balance_cents < 0 %}
+    <span class="badge badge-success">Credit {{ money(account.credits_cents) }}</span>
+    {% else %}
+    <span class="badge badge-neutral">Up to date</span>
+    {% endif %}
+  </div>
+
+  {% call card(title="Monthly comparison", subtitle="Expected vs paid per owed month; carried credit covers the oldest shortfalls first (FW-21).") %}
+    {% call table_scroll() %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th class="text-right">Expected</th>
+            <th class="text-right">Waivers</th>
+            <th class="text-right">Paid</th>
+            <th class="text-right">Credit</th>
+            <th class="text-right">Remaining</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in account.lines %}
+          <tr>
+            <td class="font-medium text-base-content">{{ line.period_label }}</td>
+            <td class="text-right num">{{ money(line.expected_cents) }}</td>
+            <td class="text-right num">{{ money(line.waivers_cents) }}</td>
+            <td class="text-right num">{{ money(line.paid_cents) }}</td>
+            <td class="text-right num">{{ money(line.credit_consumed_cents) }}</td>
+            <td class="text-right num {{ 'text-error' if line.remaining_cents > 0 else '' }}">{{ money(line.remaining_cents) }}</td>
+            <td>{{ badge(charge_status_labels[line.status], charge_status_tones[line.status]) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7">
+              {{ empty_state("Nothing billed yet", "This student has no owed months — there is nothing to pay.", "check-circle") }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-base-300">
+            <td class="font-semibold text-base-content">Total</td>
+            <td class="text-right num font-semibold text-base-content">{{ money(account.expected_cents) }}</td>
+            <td></td>
+            <td class="text-right num font-semibold text-base-content">{{ money(account.paid_cents) }}</td>
+            <td class="text-right num font-semibold text-base-content">{{ money(account.credits_cents) }}</td>
+            <td class="text-right num font-bold {{ 'text-error' if account.balance_cents > 0 else '' }}">{{ money(account.balance_cents) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    {% endcall %}
+  {% endcall %}
+
+  {% call card(title="Payments", subtitle="Every payment recorded against this account, with the month it was tagged to.") %}
+    {% call table_scroll() %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>For</th>
+            <th>Method</th>
+            <th class="text-right">Amount</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for payment in account.payments %}
+          <tr>
+            <td>{{ payment.paid_on.isoformat() }}</td>
+            <td>{{ period_label(payment.month, payment.year) }}</td>
+            <td>{{ payment_method_badge(payment.method) }}</td>
+            <td class="text-right font-semibold text-base-content">{{ money(payment.amount_cents) }}</td>
+            <td class="text-right"><a href="/payments/{{ payment.id }}/receipt" class="link link-neutral text-sm">Receipt</a></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5">
+              {{ empty_state("No payments yet", "Recorded payments will appear here.", "banknotes") }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endcall %}
+  {% endcall %}
+</div>

@@ -248,6 +248,7 @@ def class_detail(
         request,
         class_id,
         msg=request.query_params.get("msg", ""),
+        error=request.query_params.get("err", ""),
     )
 
 

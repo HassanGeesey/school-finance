@@ -7,7 +7,14 @@ logged-in user — including a Finance officer — may view them; role gating is
 asserted here.
 """
 
+from datetime import date, timedelta
+from typing import cast
 from urllib.parse import urlparse
+
+from fastapi import FastAPI
+
+from app.fees.service import period_label
+from app.models import FeeTemplate
 
 from tests.helpers import (
     add_finance_user,
@@ -17,23 +24,38 @@ from tests.helpers import (
 )
 
 
-def create_class(client, name="Grade 1", status="active"):
-    response = client.post(
-        "/classes",
-        data={"name": name, "status": status},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    return int(urlparse(response.headers["location"]).path.split("/")[-1])
+def _db(client):
+    return cast(FastAPI, client.app).state.db
 
 
-def add_fee_item(client, class_id, name="Tuition", amount="50.00"):
+def add_fee_template(client, name="Tuition", amount="50.00"):
     response = client.post(
-        f"/classes/{class_id}/fee-items",
+        "/fees/templates",
         data={"name": name, "amount": amount},
         follow_redirects=False,
     )
     assert response.status_code == 303
+    with _db(client).session() as session:
+        return (
+            session.query(FeeTemplate)
+            .filter_by(name=name)
+            .order_by(FeeTemplate.id.desc())
+            .first()
+            .id
+        )
+
+
+def create_class(client, name="Grade 1", status="active", template_id=None):
+    data = {"name": name, "status": status}
+    if template_id is not None:
+        data["default_template_id"] = str(template_id)
+    response = client.post(
+        "/classes",
+        data=data,
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    return int(urlparse(response.headers["location"]).path.split("/")[-1])
 
 
 def add_student(client, class_id, first_name="Ada", last_name="Lovelace"):
@@ -45,19 +67,15 @@ def add_student(client, class_id, first_name="Ada", last_name="Lovelace"):
     assert response.status_code == 303
 
 
-def generate_fees(client, class_id, month="3", year="2026"):
-    response = client.post(
-        "/fees/generate",
-        data={"class_id": str(class_id), "month": month, "year": year},
-        headers={"HX-Request": "true"},
-    )
-    assert response.status_code == 200
-
-
-def record_payment(client, student_id, amount, paid_on="2026-03-10"):
+def record_payment(client, student_id, amount, paid_on=None):
     response = client.post(
         "/payments/record",
-        data={"student_id": str(student_id), "amount": amount, "method": "cash", "paid_on": paid_on},
+        data={
+            "student_id": str(student_id),
+            "amount": amount,
+            "method": "cash",
+            "paid_on": paid_on or date.today().isoformat(),
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303
@@ -72,7 +90,7 @@ def add_category(client, name="Utilities"):
     assert response.status_code == 200
 
 
-def record_expense(client, category_id, amount="20.00", occurred_on="2026-03-15"):
+def record_expense(client, category_id, amount="20.00", occurred_on=None):
     response = client.post(
         "/expenses",
         data={
@@ -80,7 +98,7 @@ def record_expense(client, category_id, amount="20.00", occurred_on="2026-03-15"
             "description": "Bus fuel",
             "amount": amount,
             "method": "cash",
-            "occurred_on": occurred_on,
+            "occurred_on": occurred_on or date.today().isoformat(),
         },
         headers={"HX-Request": "true"},
     )
@@ -90,23 +108,28 @@ def record_expense(client, category_id, amount="20.00", occurred_on="2026-03-15"
 def category_ids(client):
     from app.models import ExpenseCategory
 
-    with client.app.state.db.session() as session:
+    with _db(client).session() as session:
         return {category.name: category.id for category in session.query(ExpenseCategory).all()}
 
 
 def student_ids(client):
     from app.models import Student
 
-    with client.app.state.db.session() as session:
+    with _db(client).session() as session:
         return {student.full_name: student.id for student in session.query(Student).all()}
 
 
 def make_billed_student(client, name="Grade 1", first_name="Ada", last_name="Lovelace"):
-    class_id = create_class(client, name=name)
-    add_fee_item(client, class_id)
+    """A student who owes the current month's fee (enrolled today)."""
+    template_id = add_fee_template(client)
+    class_id = create_class(client, name=name, template_id=template_id)
     add_student(client, class_id, first_name=first_name, last_name=last_name)
-    generate_fees(client, class_id)
     return class_id
+
+
+def prev_month():
+    """A date inside the previous month (for out-of-period expenses)."""
+    return date.today().replace(day=1) - timedelta(days=1)
 
 
 def assert_csv(response):
@@ -151,9 +174,9 @@ def test_dashboard_shows_kpis_charts_and_recent_activity(client):
     authenticated_admin(client)
     make_billed_student(client, name="Grade 1")
     student_id = student_ids(client)["Ada Lovelace"]
-    record_payment(client, student_id, "30.00", paid_on="2026-08-06")
+    record_payment(client, student_id, "30.00")
     add_category(client, "Utilities")
-    record_expense(client, category_ids(client)["Utilities"], amount="20.00", occurred_on="2026-08-06")
+    record_expense(client, category_ids(client)["Utilities"], amount="20.00")
 
     response = client.get("/")
 
@@ -178,10 +201,11 @@ def test_income_vs_expense_page_renders_month_totals(client):
     add_category(client, "Utilities")
     record_expense(client, category_ids(client)["Utilities"])
 
-    response = client.get("/reports/income-expense?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/income-expense?month={today.month}&year={today.year}")
 
     assert response.status_code == 200
-    assert "March 2026" in response.text
+    assert period_label(today.month, today.year) in response.text
     assert "$40.00" in response.text  # income
     assert "$20.00" in response.text  # expenses
     assert "$20.00" in response.text  # net
@@ -194,10 +218,11 @@ def test_income_vs_expense_csv_export(client):
     student_id = student_ids(client)["Ada Lovelace"]
     record_payment(client, student_id, "40.00")
 
-    response = client.get("/reports/income-expense.csv?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/income-expense.csv?month={today.month}&year={today.year}")
 
     assert_csv(response)
-    assert "March 2026" in response.text
+    assert period_label(today.month, today.year) in response.text
     assert "40.00" in response.text
     assert "20.00" not in response.text
 
@@ -215,7 +240,7 @@ def test_expense_by_category_page_groups_and_orders(client):
     transport = category_ids(client)["Transport"]
     record_expense(client, utilities, amount="30.00")
     record_expense(client, transport, amount="20.00")
-    record_expense(client, utilities, amount="10.00", occurred_on="2026-02-05")
+    record_expense(client, utilities, amount="10.00", occurred_on=prev_month().isoformat())
 
     response = client.get("/reports/expense-category")
 
@@ -229,12 +254,13 @@ def test_expense_by_category_page_filters_to_one_month(client):
     authenticated_admin(client)
     add_category(client, "Utilities")
     record_expense(client, category_ids(client)["Utilities"], amount="30.00")
-    record_expense(client, category_ids(client)["Utilities"], amount="10.00", occurred_on="2026-02-05")
+    record_expense(client, category_ids(client)["Utilities"], amount="10.00", occurred_on=prev_month().isoformat())
 
-    response = client.get("/reports/expense-category?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/expense-category?month={today.month}&year={today.year}")
 
     assert response.status_code == 200
-    assert "$30.00" in response.text  # March only
+    assert "$30.00" in response.text  # current month only
     assert "$10.00" not in response.text
 
 
@@ -243,7 +269,8 @@ def test_expense_by_category_csv_export(client):
     add_category(client, "Utilities")
     record_expense(client, category_ids(client)["Utilities"])
 
-    response = client.get("/reports/expense-category.csv?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/expense-category.csv?month={today.month}&year={today.year}")
 
     assert_csv(response)
     assert "Utilities" in response.text
@@ -261,7 +288,8 @@ def test_paid_students_page_lists_statuses(client):
     make_billed_student(client, name="Grade 2", first_name="Grace", last_name="Hopper")
     record_payment(client, student_ids(client)["Ada Lovelace"], "30.00")
 
-    response = client.get("/reports/paid-students?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/paid-students?month={today.month}&year={today.year}")
 
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
@@ -275,7 +303,10 @@ def test_paid_students_page_filters_by_class(client):
     grade_1 = make_billed_student(client, name="Grade 1")
     make_billed_student(client, name="Grade 2", first_name="Grace", last_name="Hopper")
 
-    response = client.get(f"/reports/paid-students?month=3&year=2026&class_id={grade_1}")
+    today = date.today()
+    response = client.get(
+        f"/reports/paid-students?month={today.month}&year={today.year}&class_id={grade_1}"
+    )
 
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
@@ -287,7 +318,8 @@ def test_paid_students_csv_export(client):
     make_billed_student(client)
     record_payment(client, student_ids(client)["Ada Lovelace"], "50.00")
 
-    response = client.get("/reports/paid-students.csv?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/paid-students.csv?month={today.month}&year={today.year}")
 
     assert_csv(response)
     assert "Ada Lovelace" in response.text
@@ -306,7 +338,8 @@ def test_summary_page_rolls_up_totals(client):
     add_category(client, "Utilities")
     record_expense(client, category_ids(client)["Utilities"])
 
-    response = client.get("/reports/summary?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/summary?month={today.month}&year={today.year}")
 
     assert response.status_code == 200
     assert "$40.00" in response.text  # income
@@ -321,7 +354,8 @@ def test_summary_csv_export(client):
     make_billed_student(client)
     record_payment(client, student_ids(client)["Ada Lovelace"], "40.00")
 
-    response = client.get("/reports/summary.csv?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/summary.csv?month={today.month}&year={today.year}")
 
     assert_csv(response)
     assert "40.00" in response.text
@@ -390,7 +424,8 @@ def test_income_vs_expense_filters_by_period_param(client):
     student_id = student_ids(client)["Ada Lovelace"]
     record_payment(client, student_id, "40.00")
 
-    response = client.get("/reports/income-expense?period=2026-03")
+    today = date.today()
+    response = client.get(f"/reports/income-expense?period={today.year}-{today.month:02d}")
 
     assert response.status_code == 200
     assert "$40.00" in response.text
@@ -402,7 +437,8 @@ def test_income_vs_expense_csv_filters_by_period_param(client):
     student_id = student_ids(client)["Ada Lovelace"]
     record_payment(client, student_id, "40.00")
 
-    response = client.get("/reports/income-expense.csv?period=2026-03")
+    today = date.today()
+    response = client.get(f"/reports/income-expense.csv?period={today.year}-{today.month:02d}")
 
     assert_csv(response)
     assert "40.00" in response.text
@@ -412,9 +448,10 @@ def test_expense_by_category_filters_by_period_param(client):
     authenticated_admin(client)
     add_category(client, "Utilities")
     record_expense(client, category_ids(client)["Utilities"], amount="30.00")
-    record_expense(client, category_ids(client)["Utilities"], amount="10.00", occurred_on="2026-02-05")
+    record_expense(client, category_ids(client)["Utilities"], amount="10.00", occurred_on=prev_month().isoformat())
 
-    response = client.get("/reports/expense-category?period=2026-03")
+    today = date.today()
+    response = client.get(f"/reports/expense-category?period={today.year}-{today.month:02d}")
 
     assert response.status_code == 200
     assert "$30.00" in response.text
@@ -426,7 +463,10 @@ def test_paid_students_filters_by_period_and_class_params(client):
     grade_1 = make_billed_student(client, name="Grade 1")
     make_billed_student(client, name="Grade 2", first_name="Grace", last_name="Hopper")
 
-    response = client.get(f"/reports/paid-students?period=2026-03&class_id={grade_1}")
+    today = date.today()
+    response = client.get(
+        f"/reports/paid-students?period={today.year}-{today.month:02d}&class_id={grade_1}"
+    )
 
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
@@ -442,11 +482,12 @@ def test_income_vs_expense_offers_billed_but_unpaid_months(client):
     authenticated_admin(client)
     make_billed_student(client)
 
+    today = date.today()
     response = client.get("/reports/income-expense")
 
     assert response.status_code == 200
-    assert "2026-03" in response.text  # billed month is selectable
-    assert "March 2026" in response.text
+    assert f"{today.year}-{today.month:02d}" in response.text  # billed month is selectable
+    assert period_label(today.month, today.year) in response.text
 
 
 def test_expense_by_category_month_title_shows_period_label(client):
@@ -454,10 +495,11 @@ def test_expense_by_category_month_title_shows_period_label(client):
     add_category(client, "Utilities")
     record_expense(client, category_ids(client)["Utilities"], amount="30.00")
 
-    response = client.get("/reports/expense-category?period=2026-03")
+    today = date.today()
+    response = client.get(f"/reports/expense-category?period={today.year}-{today.month:02d}")
 
     assert response.status_code == 200
-    assert "Expenses by category, March 2026" in response.text
+    assert f"Expenses by category, {period_label(today.month, today.year)}" in response.text
 
 
 def test_reports_reject_an_invalid_month(client):
@@ -497,7 +539,8 @@ def test_csv_export_has_bom_and_a_meaningful_filename(client):
     authenticated_admin(client)
     make_billed_student(client)
 
-    response = client.get("/reports/paid-students.csv?month=3&year=2026")
+    today = date.today()
+    response = client.get(f"/reports/paid-students.csv?month={today.month}&year={today.year}")
 
     assert_csv(response)
     assert response.text.startswith("\ufeff")

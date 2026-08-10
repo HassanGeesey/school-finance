@@ -95,7 +95,7 @@ def _period_options(periods: list[tuple[int, int]]) -> list[tuple[str, str]]:
     """(value, label) pairs for the month dropdown, newest first."""
     return [
         (f"{year:04d}-{month:02d}", period_label(month, year))
-        for year, month in periods
+        for month, year in periods
     ]
 
 
@@ -422,7 +422,7 @@ def paid_students_csv(
             line.class_name,
             line.student.full_name,
             line.status,
-            _amount(line.charge_cents),
+            _amount(line.expected_cents),
             _amount(line.paid_cents),
             _amount(line.remaining_cents),
         ]
