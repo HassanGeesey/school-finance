@@ -535,6 +535,138 @@ def test_editing_a_student_requires_a_name(client):
     assert "First name is required" in response.text
 
 
+def test_edit_student_form_shows_the_current_amount(client):
+    authenticated_admin(client)
+    create_class(client)
+    add_student(client)
+
+    form = client.get("/students/1/edit")
+    assert form.status_code == 200
+    assert "Currently" in form.text
+    assert "50.00" in form.text
+    assert "Effective from" in form.text
+
+
+def test_edit_student_changes_the_monthly_amount_from_an_effective_month(client):
+    authenticated_admin(client)
+    create_class(client)
+    add_student(client, enrolled_on="2026-03-01")
+
+    response = client.post(
+        "/students/1/edit",
+        data={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "custom_amount": "75.00",
+            "effective_month": "2026-06",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    account = client.get("/students/1/account")
+    assert "June 2026" in account.text
+    assert "75.00" in account.text
+    assert "50.00" in account.text
+
+
+def test_edit_student_links_a_template_from_an_effective_month(client):
+    authenticated_admin(client)
+    create_class(client)
+    add_student(client, enrolled_on="2026-03-01")
+    template = create_template(client, name="Standard", amount="80.00")
+
+    response = client.post(
+        "/students/1/edit",
+        data={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "fee_template_id": str(template.id),
+            "effective_month": "2026-07",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    account = client.get("/students/1/account")
+    assert "July 2026" in account.text
+    assert "80.00" in account.text
+
+
+def test_names_only_edit_leaves_the_amount_untouched(client):
+    authenticated_admin(client)
+    create_class(client)
+    add_student(client)
+
+    client.post(
+        "/students/1/edit",
+        data={"first_name": "Ada", "last_name": "King"},
+        follow_redirects=False,
+    )
+
+    audit = client.get("/audit")
+    assert "monthly amount" not in audit.text
+    assert "Updated student Ada Lovelace to Ada King" in audit.text
+
+
+def test_edit_student_amount_change_is_audited(client):
+    authenticated_admin(client)
+    create_class(client)
+    add_student(client, enrolled_on="2026-03-01")
+
+    client.post(
+        "/students/1/edit",
+        data={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "custom_amount": "75.00",
+            "effective_month": "2026-06",
+        },
+        follow_redirects=False,
+    )
+
+    response = client.get("/audit")
+    assert "Changed Ada Lovelace" in response.text
+    assert "$75.00" in response.text
+    assert "effective June 2026" in response.text
+
+
+def test_edit_student_rejects_an_invalid_effective_month(client):
+    authenticated_admin(client)
+    create_class(client)
+    add_student(client)
+
+    response = client.post(
+        "/students/1/edit",
+        data={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "custom_amount": "75.00",
+            "effective_month": "2026-13",
+        },
+    )
+    assert response.status_code == 400
+    assert "Choose a valid effective month" in response.text
+
+
+def test_edit_student_rejects_an_invalid_custom_amount(client):
+    authenticated_admin(client)
+    create_class(client)
+    add_student(client)
+
+    response = client.post(
+        "/students/1/edit",
+        data={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "custom_amount": "0",
+            "effective_month": "2026-06",
+        },
+    )
+    assert response.status_code == 400
+    assert "Monthly amount must be greater than zero" in response.text
+
+
 def test_student_update_is_visible_in_the_audit_log(client):
     authenticated_admin(client)
     create_class(client)

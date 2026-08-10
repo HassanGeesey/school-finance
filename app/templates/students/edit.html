@@ -9,7 +9,7 @@
 <div class="mx-auto max-w-2xl space-y-6">
   <div>
     <a href="/classes/{{ student.class_id }}" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} {{ student.school_class.name }}</a>
-    <div class="mt-2">{{ page_header("Edit student", "Change the student's name. History and charges are untouched.") }}</div>
+    <div class="mt-2">{{ page_header("Edit student", "Change the student's name or monthly amount. History and past months are untouched.") }}</div>
   </div>
 
   {% if error %}
@@ -21,6 +21,38 @@
       {{ form_field("first_name", "First name", value=first_name, required=true, id="edit-first") }}
       {{ form_field("last_name", "Last name", value=last_name, required=true, id="edit-last") }}
     </div>
+
+    <div class="divider"></div>
+
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-semibold">Monthly amount</h3>
+      <span class="text-sm text-base-content/60">Currently <span class="font-semibold">{{ current_amount }}</span>/month</span>
+    </div>
+    <p class="mt-1 text-sm text-base-content/60">Leave both fields empty to keep the current amount. A custom amount overrides a picked template.</p>
+    <div class="grid gap-4 sm:grid-cols-2 mt-4">
+      <div>
+        <label for="edit-template" class="label"><span class="label-text">Fee template</span></label>
+        <select id="edit-template" name="fee_template_id" class="select w-full">
+          <option value="">— Keep current —</option>
+          {% for id, label in template_options %}
+          <option value="{{ id }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="edit-amount" class="label"><span class="label-text">Custom monthly amount</span></label>
+        <input id="edit-amount" name="custom_amount" type="text" inputmode="decimal" placeholder="e.g. 50.00" class="input w-full">
+      </div>
+    </div>
+    <div class="mt-4">
+      <label for="edit-month" class="label"><span class="label-text">Effective from</span></label>
+      <select id="edit-month" name="effective_month" class="select w-full">
+        {% for month, year, label in month_options %}
+        <option value="{{ year }}-{{ '%02d'|format(month) }}" {% if loop.first %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
     <div class="mt-6 flex items-center gap-3">
       {{ btn(label="Save changes", icon="check", variant="primary", type="submit") }}
       {{ btn(href="/classes/" ~ student.class_id, label="Cancel", variant="ghost") }}

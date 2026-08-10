@@ -9,6 +9,7 @@ imported and which rows were skipped.
 
 from __future__ import annotations
 
+from datetime import date
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, UploadFile, File
@@ -18,7 +19,13 @@ from fastapi.templating import Jinja2Templates
 from ..auth.deps import require_admin, require_login
 from ..charge_status import CHARGE_STATUS_LABELS, CHARGE_STATUS_TONES
 from ..classes.service import ClassNotFound, ClassService
-from ..fees.service import MONTH_NAMES, TemplateService, period_label
+from ..fees.account import amount_in_force
+from ..fees.service import (
+    MONTH_NAMES,
+    TemplateService,
+    default_effective_month,
+    period_label,
+)
 from ..models import User
 from ..money import format_cents
 from ..payments.service import PaymentService
@@ -115,6 +122,83 @@ def _template_options(request: Request) -> list[tuple[int, str]]:
     ]
 
 
+def _edit_context(
+    request: Request,
+    student,
+    first_name: str,
+    last_name: str,
+    *,
+    error: str = "",
+) -> dict[str, object]:
+    """Context for the student edit page, including the amount-change block."""
+    today = date.today()
+    with request.app.state.db.session() as session:
+        current_amount = amount_in_force(session, student, today.month, today.year)
+    return {
+        "student": student,
+        "first_name": first_name,
+        "last_name": last_name,
+        "error": error,
+        "current_amount": format_cents(current_amount),
+        "template_options": _template_options(request),
+        "month_options": _month_options(),
+    }
+
+
+def _month_options() -> list[tuple[int, int, str]]:
+    """The next six calendar months (default effective month first)."""
+    month, year = default_effective_month()
+    options: list[tuple[int, int, str]] = []
+    for _ in range(6):
+        options.append((month, year, period_label(month, year)))
+        month += 1
+        if month == 13:
+            month, year = 1, year + 1
+    return options
+
+
+def _coerce_effective_month(raw: str) -> tuple[int, int]:
+    """A posted ``YYYY-MM`` effective month, defaulting to next month."""
+    raw = (raw or "").strip()
+    if raw == "":
+        return default_effective_month()
+    try:
+        year, month = (int(part) for part in raw.split("-"))
+    except (TypeError, ValueError):
+        raise StudentError("Choose a valid effective month.") from None
+    if not 1 <= month <= 12:
+        raise StudentError("Choose a valid effective month.")
+    return month, year
+
+
+def _apply_billing_change(
+    request: Request,
+    user: User,
+    student,
+    fee_template_id: str,
+    custom_amount: str,
+    effective_month: str,
+):
+    """Apply an optional amount change from the edit form.
+
+    An empty template picker and an empty custom amount mean "no billing
+    change" (names-only edit). When a custom amount is given it wins over a
+    picked template, matching the add-student form.
+    """
+    template_id = _coerce_template_id(fee_template_id)
+    amount = (custom_amount or "").strip() or None
+    if template_id is None and amount is None:
+        return student
+    month, year = _coerce_effective_month(effective_month)
+    if amount is not None:
+        return _service(request).change_amount(
+            user=user, student_id=student.id, amount=amount, month=month, year=year
+        )
+    return _service(request).set_template(
+        user=user, student_id=student.id, fee_template_id=template_id, month=month, year=year
+    )
+
+
 @router.get("/students", response_class=HTMLResponse)
 def search_page(
     request: Request,
@@ -187,7 +271,9 @@ def edit_student_form(
     return _templates(request).TemplateResponse(
         request=request,
         name="students/edit.html",
-        context={"student": student, "first_name": student.first_name, "last_name": student.last_name, "error": ""},
+        context=_edit_context(
+            request, student, student.first_name, student.last_name
+        ),
     )
 
 
@@ -197,24 +283,29 @@ def edit_student(
     student_id: int,
     first_name: str = Form(""),
     last_name: str = Form(""),
+    fee_template_id: str = Form(""),
+    custom_amount: str = Form(""),
+    effective_month: str = Form(""),
     user: User = Depends(require_admin),
 ) -> Response:
     try:
         student = _service(request).update_student(
             user=user, student_id=student_id, first_name=first_name, last_name=last_name
         )
+        student = _apply_billing_change(
+            request, user, student, fee_template_id, custom_amount, effective_month
+        )
     except StudentNotFound:
         raise HTTPException(status_code=404, detail="Student not found.")
     except StudentError as exc:
+        try:
+            current = _service(request).get_student(student_id)
+        except StudentNotFound:
+            raise HTTPException(status_code=404, detail="Student not found.")
         return _templates(request).TemplateResponse(
             request=request,
             name="students/edit.html",
-            context={
-                "student": _service(request).get_student(student_id),
-                "first_name": first_name,
-                "last_name": last_name,
-                "error": str(exc),
-            },
+            context=_edit_context(request, current, first_name, last_name, error=str(exc)),
             status_code=400,
         )
     return _redirect_class(student.class_id, "Student updated.")
