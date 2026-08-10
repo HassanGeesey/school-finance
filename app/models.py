@@ -3,12 +3,19 @@
 Schema is created via ``Base.metadata.create_all`` on startup (migrations are out
 of scope for v1). All amounts are integer cents — never floats (see ``app.money``).
 There are no hard deletes: everything destructive-looking is a status transition.
+
+Fee billing is **derived from enrollment** (see ``CONTEXT.md`` — "Fee billing"):
+a student owes from their ``enrolled_on`` month through their ``archived_on``
+month (service-through-period-end), excluding ``ClosedMonth`` rows, while active.
+The monthly obligation is a ``FeeTemplate`` amount (linked or custom) minus any
+stacked ``Waiver`` rows for that month, and ``Payment`` rows carry a month+year
+tag for the expected-vs-paid comparison. There are no charge rows and no
+generation step.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -56,11 +63,6 @@ class PaymentMethods:
     CASH = "cash"
     BANK = "bank"
     OTHER = "other"
-
-
-class AdjustmentKinds:
-    EXTRA = "extra"
-    WAIVER = "waiver"
 
 
 class SchoolProfile(Base):
@@ -116,23 +118,7 @@ class Class(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ClassStatus.ACTIVE)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
-    fee_items: Mapped[list[FeeItem]] = relationship(
-        back_populates="school_class", cascade="all, delete-orphan"
-    )
     students: Mapped[list[Student]] = relationship(back_populates="school_class")
-
-
-class FeeItem(Base):
-    __tablename__ = "fee_items"
-    __table_args__ = (UniqueConstraint("class_id", "name", name="uq_fee_item_class_name"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-
-    school_class: Mapped[Class] = relationship(back_populates="fee_items")
 
 
 class Student(Base):
@@ -143,6 +129,11 @@ class Student(Base):
     first_name: Mapped[str] = mapped_column(String(120), nullable=False)
     last_name: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=StudentStatus.ACTIVE)
+    # The first owed month is the month of ``enrolled_on`` (default today,
+    # back-datable); ``archived_on`` marks the last owed month
+    # (service-through-period-end, FW-14) and is captured when archiving.
+    enrolled_on: Mapped[date] = mapped_column(Date, nullable=False, default=today)
+    archived_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     school_class: Mapped[Class] = relationship(back_populates="students")
@@ -152,10 +143,30 @@ class Student(Base):
         return f"{self.first_name} {self.last_name}".strip()
 
 
-class Charge(Base):
-    __tablename__ = "charges"
+class FeeTemplate(Base):
+    """A named monthly amount (e.g. "Standard — $100") a class defaults to and a
+    student can be linked to. Defines what a linked student is expected to pay
+    each month (``CONTEXT.md`` — "Fee Template")."""
+
+    __tablename__ = "fee_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class Waiver(Base):
+    """Per-(student, month) forgiveness reducing that month's expected amount.
+
+    Multiple waivers stack on the same month; a month's expected is
+    ``amount in force - total waivers``, never below zero. The acting user is
+    recorded (``created_by``) and the reason is required (``label``).
+    """
+
+    __tablename__ = "waivers"
     __table_args__ = (
-        UniqueConstraint("student_id", "month", "year", name="uq_charge_student_month_year"),
+        UniqueConstraint("student_id", "month", "year", name="uq_waiver_student_month_year"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -163,31 +174,36 @@ class Charge(Base):
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Item breakdown snapshotted at generation time so later fee-structure edits
-    # never rewrite history. e.g. [{"name": "Tuition", "amount_cents": 50000}]
-    breakdown: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
-    adjustments: Mapped[list[Adjustment]] = relationship(
-        back_populates="charge", cascade="all, delete-orphan"
+
+
+class ClosedMonth(Base):
+    """A month the whole school is closed: excluded from every student's owed
+    months, so it never appears as unpaid (FW-17)."""
+
+    __tablename__ = "closed_months"
+    __table_args__ = (
+        UniqueConstraint("month", "year", name="uq_closed_month_year"),
     )
 
-
-class Adjustment(Base):
-    __tablename__ = "adjustments"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    charge_id: Mapped[int] = mapped_column(ForeignKey("charges.id"), nullable=False, index=True)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # extra | waiver
-    label: Mapped[str] = mapped_column(String(200), nullable=False)
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-
-    charge: Mapped[Charge] = relationship(back_populates="adjustments")
 
 
 class Payment(Base):
+    """A month-tagged payment (FW-16): recorded against a specific month+year.
+
+    Any month may be tagged — not limited to the student's owed range — and the
+    expected-vs-paid comparison happens per month. Excess over a month's expected
+    rolls forward as ``Credit`` (FW-15/FW-21).
+    """
+
     __tablename__ = "payments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -195,27 +211,13 @@ class Payment(Base):
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     method: Mapped[str] = mapped_column(String(20), nullable=False, default=PaymentMethods.CASH)
     paid_on: Mapped[date] = mapped_column(Date, nullable=False)
+    # The month tag — the clerk's entry on the record screen.
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
     recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
-    allocations: Mapped[list[PaymentAllocation]] = relationship(
-        back_populates="payment", cascade="all, delete-orphan"
-    )
-
-
-class PaymentAllocation(Base):
-    """How a payment was split across the student's unpaid charges."""
-
-    __tablename__ = "payment_allocations"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    payment_id: Mapped[int] = mapped_column(ForeignKey("payments.id"), nullable=False, index=True)
-    charge_id: Mapped[int] = mapped_column(ForeignKey("charges.id"), nullable=False, index=True)
-    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    payment: Mapped[Payment] = relationship(back_populates="allocations")
-    charge: Mapped[Charge] = relationship()
 
 
 class Credit(Base):
@@ -268,18 +270,3 @@ class AuditLogEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     user: Mapped[User | None] = relationship()
-
-
-class GenerationRecord(Base):
-    """Marks a class+month+year as already generated (duplicate-safety)."""
-
-    __tablename__ = "generation_records"
-    __table_args__ = (
-        UniqueConstraint("class_id", "month", "year", name="uq_generation_class_month_year"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False, index=True)
-    month: Mapped[int] = mapped_column(Integer, nullable=False)
-    year: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
