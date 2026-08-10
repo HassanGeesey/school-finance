@@ -16,7 +16,7 @@
 
 ## Comments
 
-**Built (commit `…`):** fee templates and class defaults on the derived schema.
+**Built (commit `8f744a6`):** fee templates and class defaults on the derived schema.
 `app/models.py` adds `Class.default_template_id` (+ `default_template`
 relationship), `Student.fee_template_id` (indexed, + `fee_template`
 relationship), `FeeTemplate.archived` (soft delete), and the effective-dated
