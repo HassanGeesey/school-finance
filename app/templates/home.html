@@ -8,25 +8,38 @@
 {% block content %}
 {% set user = current_user() %}
 <div class="space-y-6">
-  {{ page_header("Welcome back" + (", " ~ user.name if user else ""), "School fee collection, expenses, and arrears at a glance.") }}
+  {{ page_header("Welcome back" + (", " ~ user.name if user else ""), "School fee collection, expenses, and unpaid fees at a glance.") }}
+
+  <div class="board">
+    <div class="board-body">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="mr-1 font-semibold text-[13px]">Quick actions</span>
+        {{ btn(href="/payments", label="Record payment", icon="banknotes", variant="primary", size="sm") }}
+        {{ btn(href="/expenses", label="Record expense", icon="arrow-up-tray", variant="outline", size="sm") }}
+        {{ btn(href="/fees", label="Generate fees", icon="academic-cap", variant="outline", size="sm") }}
+        {{ btn(href="/reports", label="All reports", icon="chart-bar", variant="outline", size="sm") }}
+        {{ btn(href="/classes", label="Manage classes", icon="rectangle-stack", variant="outline", size="sm") }}
+      </div>
+    </div>
+  </div>
 
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
     {{ stat_card("Collected this month", money(dashboard.collected_cents), "banknotes", "success", hint="Payments recorded this month") }}
-    {{ stat_card("Outstanding arrears", money(dashboard.arrears_cents), "exclamation-triangle", "error" if dashboard.arrears_cents > 0 else "neutral", hint="Across all students") }}
+    {{ stat_card("Outstanding unpaid fees", money(dashboard.arrears_cents), "exclamation-triangle", "error" if dashboard.arrears_cents > 0 else "neutral", hint="Across all students") }}
     {{ stat_card("Active students", dashboard.active_student_count, "user-group", "neutral", hint="Enrolled in a class") }}
     {{ stat_card("Expenses this month", money(dashboard.expenses_cents), "arrow-up-tray", "error", hint="Recorded this month") }}
   </div>
 
-  <div class="grid gap-6 lg:grid-cols-2">
-    {% call card(title="Income vs expenses — last 6 months") %}
+  <div class="grid items-start gap-6 lg:grid-cols-3">
+    {% call card(title="Income vs expenses — last 6 months", class="lg:col-span-2") %}
       <div class="relative h-64"><canvas id="chart-monthly"></canvas></div>
     {% endcall %}
-    {% call card(title="Outstanding arrears by age") %}
+    {% call card(title="Unpaid fees by age") %}
       <div class="relative h-64"><canvas id="chart-bands"></canvas></div>
     {% endcall %}
   </div>
 
-  <div class="grid gap-6 lg:grid-cols-2">
+  <div class="grid items-start gap-6 lg:grid-cols-2">
     {% call card(title="Expenses by category", actions=btn(href="/reports/expense-category", label="View report", icon="arrow-right", variant="outline", size="sm")) %}
       <div class="relative h-64"><canvas id="chart-categories"></canvas></div>
     {% endcall %}
@@ -52,7 +65,7 @@
     {% endcall %}
   </div>
 
-  <div class="grid gap-6 lg:grid-cols-2">
+  <div class="grid items-start gap-6">
     {% call card(title="Recent expenses", actions=btn(href="/expenses", label="Expenses", icon="arrow-right", variant="outline", size="sm")) %}
       <div class="overflow-x-auto">
         <table class="table">
@@ -72,15 +85,6 @@
         </table>
       </div>
     {% endcall %}
-
-    {% call card(title="Quick actions") %}
-      <div class="grid gap-2 sm:grid-cols-2">
-        {{ btn(href="/payments", label="Record a payment", icon="banknotes", variant="primary") }}
-        {{ btn(href="/expenses", label="Record an expense", icon="arrow-up-tray", variant="outline") }}
-        {{ btn(href="/reports", label="All reports", icon="chart-bar", variant="outline") }}
-        {{ btn(href="/classes", label="Manage classes", icon="rectangle-stack", variant="outline") }}
-      </div>
-    {% endcall %}
   </div>
 </div>
 {% endblock %}
@@ -94,17 +98,18 @@
     };
 
     new Chart(document.getElementById("chart-monthly"), {
-      type: "bar",
+      type: "line",
       data: {
         labels: {{ chart_labels | tojson }},
         datasets: [
-          { label: "Income", data: {{ chart_income | tojson }}, backgroundColor: "#1e7d4b", borderRadius: 5, barPercentage: 0.55 },
-          { label: "Expenses", data: {{ chart_expenses | tojson }}, type: "line", borderColor: "#b23a2e", backgroundColor: "#b23a2e", borderWidth: 2.2, pointRadius: 3, tension: 0.32 }
+          { label: "Income", data: {{ chart_income | tojson }}, borderColor: "#1e7d4b", backgroundColor: "#1e7d4b", fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 },
+          { label: "Expenses", data: {{ chart_expenses | tojson }}, borderColor: "#b23a2e", backgroundColor: "#b23a2e", fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
         scales: { y: { ticks: { callback: moneyTick } } },
         plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 8 } } }
       }
@@ -125,16 +130,16 @@
     });
 
     new Chart(document.getElementById("chart-categories"), {
-      type: "bar",
+      type: "line",
       data: {
         labels: {{ chart_category_labels | tojson }},
-        datasets: [{ label: "Total spent", data: {{ chart_category_values | tojson }}, backgroundColor: "#2b5f8a", borderRadius: 5, barPercentage: 0.58 }]
+        datasets: [{ label: "Total spent", data: {{ chart_category_values | tojson }}, borderColor: "#2b5f8a", backgroundColor: "#2b5f8a", fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 }]
       },
       options: {
-        indexAxis: "y",
         responsive: true,
         maintainAspectRatio: false,
-        scales: { x: { ticks: { callback: moneyTick } } },
+        interaction: { mode: "index", intersect: false },
+        scales: { y: { beginAtZero: true, ticks: { callback: moneyTick } } },
         plugins: { legend: { display: false } }
       }
     });

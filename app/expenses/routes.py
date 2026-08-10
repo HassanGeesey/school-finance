@@ -4,12 +4,14 @@ Thin adapters over :class:`app.expenses.service.ExpenseService`. Recording an
 expense (date + category + description + amount + cash/bank/other method) is
 open to any logged-in user (the Finance officer role exists for exactly this);
 managing the category list (add/rename/remove) is Admin-only. The record form
-lives in a card on the expenses page and posts over htmx — a save re-renders
-the card + list and raises a toast, with a plain-redirect fallback when htmx
-isn't present. Category management happens in a modal whose forms also post over
-htmx; after a successful category change the whole record card + list re-renders
-so a just-added first category reveals the form. Business rules live in the
-service — these routes only translate form data, errors, and templates.
+lives in a modal opened by the "Record expense" page action and posts over
+htmx — a save returns a fresh form and raises a toast + ``expense-recorded``
+event (which closes the modal and refreshes the list), with a plain-redirect
+fallback when htmx isn't present. Category management happens in a modal whose
+forms also post over htmx; after a successful category change both the list and
+the record form re-render so a just-added first category reveals the form.
+Business rules live in the service — these routes only translate form data,
+errors, and templates.
 """
 
 from __future__ import annotations
@@ -75,10 +77,6 @@ def _period_options(periods: list[tuple[int, int]]) -> list[tuple[str, str]]:
     ]
 
 
-def _toast_headers(message: str, tone: str) -> dict[str, str]:
-    return {"HX-Trigger": json.dumps({"toast": {"message": message, "tone": tone}})}
-
-
 def _category_toast_headers(message: str) -> dict[str, str]:
     """Toast + tell the record card's category dropdown to refresh."""
     return {
@@ -91,14 +89,24 @@ def _category_toast_headers(message: str) -> dict[str, str]:
     }
 
 
+def _record_success_headers(message: str) -> dict[str, str]:
+    """Toast + tell the page an expense was saved (closes the modal, refreshes)."""
+    return {
+        "HX-Trigger": json.dumps(
+            {
+                "toast": {"message": message, "tone": "success"},
+                "expense-recorded": True,
+            }
+        )
+    }
+
+
 def _dashboard_context(
     request: Request,
     user: User,
     *,
     filter_category: str = "",
     filter_period: str = "",
-    error: str = "",
-    record: dict[str, str] | None = None,
 ) -> dict[str, object]:
     service = _service(request)
     year, month = _period_parts(filter_period)
@@ -113,10 +121,17 @@ def _dashboard_context(
         "filter_period": filter_period,
         "expenses": expenses,
         "total_cents": sum(e.amount_cents for e in expenses),
+    }
+
+
+def _record_form_context(request: Request) -> dict[str, object]:
+    service = _service(request)
+    return {
+        "categories": service.list_categories(),
         "methods": EXPENSE_METHOD_LABELS,
         "today": date.today().isoformat(),
-        "error": error,
-        "record": record or {},
+        "error": "",
+        "record": {},
     }
 
 
@@ -126,8 +141,6 @@ def _dashboard_response(
     *,
     filter_category: str = "",
     filter_period: str = "",
-    error: str = "",
-    record: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
 ) -> Response:
     return _templates(request).TemplateResponse(
@@ -138,9 +151,24 @@ def _dashboard_response(
             user,
             filter_category=filter_category,
             filter_period=filter_period,
-            error=error,
-            record=record,
         ),
+        headers=headers,
+    )
+
+
+def _record_form_response(
+    request: Request,
+    *,
+    error: str = "",
+    record: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> Response:
+    context = _record_form_context(request)
+    context.update({"error": error, "record": record or {}})
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="expenses/_record_form.html",
+        context=context,
         headers=headers,
     )
 
@@ -157,13 +185,14 @@ def expenses_page(
         user,
         filter_category=category,
         filter_period=period,
-        error=request.query_params.get("err", ""),
     )
+    context.update(_record_form_context(request))
     context.update(
         {
             "is_admin": _is_admin(user),
             "categories_all": _service(request).list_categories(include_archived=True),
             "msg": request.query_params.get("msg", ""),
+            "err": request.query_params.get("err", ""),
         }
     )
     return _templates(request).TemplateResponse(
@@ -180,13 +209,22 @@ def expense_dashboard(
     period: str = "",
     user: User = Depends(require_login),
 ) -> Response:
-    """The record card + list, so the page can re-render after category changes."""
+    """The filter row + list, so the page can re-render after category changes."""
     return _dashboard_response(
         request,
         user,
         filter_category=category,
         filter_period=period,
     )
+
+
+@router.get("/expenses/record-form", response_class=HTMLResponse)
+def record_expense_form(
+    request: Request,
+    user: User = Depends(require_login),
+) -> Response:
+    """The record form alone, so the modal can refresh after category changes."""
+    return _record_form_response(request)
 
 
 @router.post("/expenses", response_class=HTMLResponse)
@@ -197,8 +235,6 @@ def record_expense(
     amount: str = Form(""),
     method: str = Form(""),
     occurred_on: str = Form(""),
-    category: str = Form(""),
-    period: str = Form(""),
     user: User = Depends(require_login),
 ) -> Response:
     record = {
@@ -222,11 +258,8 @@ def record_expense(
             return RedirectResponse(
                 f"/expenses?{urlencode({'err': str(exc)})}", status_code=303
             )
-        return _dashboard_response(
+        return _record_form_response(
             request,
-            user,
-            filter_category=category,
-            filter_period=period,
             error=str(exc),
             record=record,
         )
@@ -235,12 +268,9 @@ def record_expense(
         return RedirectResponse(
             f"/expenses?{urlencode({'msg': message})}", status_code=303
         )
-    return _dashboard_response(
+    return _record_form_response(
         request,
-        user,
-        filter_category=category,
-        filter_period=period,
-        headers=_toast_headers(message, "success"),
+        headers=_record_success_headers(message),
     )
 
 

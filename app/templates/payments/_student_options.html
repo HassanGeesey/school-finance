@@ -1,0 +1,29 @@
+{% if rows %}
+<div class="board shadow-none overflow-hidden">
+  <div class="max-h-[264px] overflow-y-auto">
+    {% for row in rows %}
+    <button type="button"
+            class="student-option"
+            hx-get="/payments/student-picker/select?student_id={{ row.student.id }}"
+            hx-target="#payment-student"
+            hx-swap="innerHTML">
+      <span class="min-w-0">
+        <span class="strong block truncate">{{ row.student.full_name }}</span>
+        <span class="muted text-[12px]">{{ row.student.school_class.name }}</span>
+      </span>
+      {% if row.balance_cents > 0 %}
+      <span class="badge badge-warning">Owes {{ money(row.balance_cents) }}</span>
+      {% elif row.balance_cents < 0 %}
+      <span class="badge badge-success">Credit {{ money(row.credits_cents) }}</span>
+      {% else %}
+      <span class="badge badge-neutral">Up to date</span>
+      {% endif %}
+    </button>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="board shadow-none">
+  <div class="muted p-3.5 text-center">No students found{% if q %} for “{{ q }}”{% endif %}</div>
+</div>
+{% endif %}

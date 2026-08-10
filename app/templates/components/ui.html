@@ -6,7 +6,11 @@
     <h1 class="page-title">{{ title }}</h1>
     {% if subtitle %}<p class="page-sub max-w-2xl">{{ subtitle }}</p>{% endif %}
   </div>
-  {% if actions %}<div class="page-actions">{{ actions }}</div>{% endif %}
+  {% if actions %}
+  <div class="page-actions">
+    {% if actions is string %}{{ actions }}{% else %}{% for action in actions %}{{ action }}{% endfor %}{% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endmacro %}
 

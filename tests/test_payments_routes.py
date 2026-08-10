@@ -111,28 +111,42 @@ def test_payments_page_requires_login(client):
     assert response.headers["location"].startswith("/login")
 
 
-def test_payments_page_shows_the_selected_students_live_balance(client):
+def test_payments_page_starts_without_a_selected_student(client):
     authenticated_admin(client)
-    sid = make_billed_student(client)
+    make_billed_student(client)
 
     response = client.get("/payments")
 
     assert response.status_code == 200
-    assert "Ada Lovelace" in response.text
-    assert "$50.00" in response.text  # live balance
-    assert "Owes $50.00" in response.text
+    assert "No student selected" in response.text
+    assert "Save &amp; print receipt" in response.text
 
 
-def test_payments_page_search_filters_students(client):
+def test_payments_search_dropdown_lists_matching_students(client):
     authenticated_admin(client)
     make_billed_student(client)
 
-    response = client.get("/payments?q=Grace")
+    response = client.get("/payments/student-picker?q=Ada")
     assert response.status_code == 200
+    assert "Ada Lovelace" in response.text
+    assert "$50.00" in response.text
+    assert "Owes $50.00" in response.text
+
+    response = client.get("/payments/student-picker?q=Grace")
     assert "No students found" in response.text
 
-    response = client.get("/payments?q=Ada")
+
+def test_selecting_a_student_swaps_in_their_summary(client):
+    authenticated_admin(client)
+    sid = make_billed_student(client)
+
+    response = client.get(f"/payments/student-picker/select?student_id={sid}")
+
+    assert response.status_code == 200
     assert "Ada Lovelace" in response.text
+    assert "$50.00" in response.text
+    assert "Owes $50.00" in response.text
+    assert f'name="student_id" value="{sid}"' in response.text
 
 
 # ---------------------------------------------------------------------------
@@ -318,11 +332,13 @@ def test_a_recorded_payment_reduces_the_balance_on_the_payments_page(client):
         follow_redirects=False,
     )
 
-    response = client.get("/payments")
+    page = client.get("/payments")
+    assert page.status_code == 200
+    assert "Cash" in page.text  # method options still listed
 
+    response = client.get(f"/payments/student-picker/select?student_id={sid}")
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
-    assert "Cash" in response.text
     assert "$40.00" in response.text  # $50 owed minus the $10 payment
 
 

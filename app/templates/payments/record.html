@@ -25,7 +25,7 @@
         <div class="mb-4 flex items-start justify-between gap-3 border-b border-base-300 pb-4">
           <div>
             <div class="strong">{{ student.full_name }}</div>
-            <div class="muted" style="font-size:12px">{{ student.school_class.name }} · {{ student_status_badge(student.status) }}</div>
+            <div class="muted text-[12px]">{{ student.school_class.name }} · {{ student_status_badge(student.status) }}</div>
           </div>
           {% if account.balance_cents > 0 %}
           <span class="badge badge-error">Owes {{ money(account.balance_cents) }}</span>
@@ -38,7 +38,7 @@
 
         <p class="mb-4 text-sm">
           <span class="muted">Balance to date:</span> <b class="num {{ 'text-error' if account.balance_cents > 0 else '' }}">{{ money(account.balance_cents) }}</b>
-          <span class="muted" style="margin-left:12px">Credit held:</span> <b class="num">{{ money(account.credits_cents) }}</b>
+          <span class="muted ml-3">Credit held:</span> <b class="num">{{ money(account.credits_cents) }}</b>
         </p>
 
         <form method="post" action="/payments/record">

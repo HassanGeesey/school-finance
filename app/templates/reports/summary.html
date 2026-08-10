@@ -12,7 +12,7 @@
   {{ stat_card("Income", money(report.income_cents), "arrow-down-tray", "success") }}
   {{ stat_card("Expenses", money(report.expenses_cents), "arrow-up-tray", "error") }}
   {{ stat_card("Net cash flow", money(report.net_cents), "banknotes", "neutral") }}
-  {{ stat_card("Outstanding arrears", money(report.arrears_cents), "exclamation-triangle", "warning") }}
+  {{ stat_card("Outstanding unpaid fees", money(report.arrears_cents), "exclamation-triangle", "warning") }}
 </div>
 {% endblock %}
 
@@ -43,7 +43,7 @@
     <div class="space-y-4">
       <div class="flex items-center justify-between rounded-box border border-base-300 p-4">
         <div>
-          <p class="text-sm font-medium text-base-content/70">Outstanding arrears</p>
+          <p class="text-sm font-medium text-base-content/70">Outstanding unpaid fees</p>
           <p class="text-xs text-base-content/50">Across all students, right now</p>
         </div>
         <p class="text-lg font-bold {{ 'text-warning' if report.arrears_cents > 0 else 'text-base-content' }}">{{ money(report.arrears_cents) }}</p>

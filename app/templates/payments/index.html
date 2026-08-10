@@ -1,26 +1,28 @@
 {% extends "base.html" %}
 {% from "components/icons.html" import icon %}
 {% from "components/ui.html" import page_header, btn %}
-{% from "students/_badges.html" import student_status_badge %}
 
 {% block title %}Record payment — {{ school_name() }}{% endblock %}
 {% block topbar_title %}Record payment{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-  {{ page_header("Record payment", "Find the student, enter the amount and method. Partial payments clear the oldest unpaid charges first.") }}
+  {{ page_header("Record payment", "Search for the student, pick one from the list, then enter the amount and method. Partial payments clear the oldest unpaid charges first.") }}
 
   <div class="grid items-start gap-6 lg:grid-cols-[440px_minmax(0,1fr)]">
     <div class="board">
       <div class="board-body">
         <form method="get" action="/payments">
-          <div class="field">
+          <div class="field relative">
             <label for="payment-search">Search student</label>
             <input id="payment-search" name="q" type="search" value="{{ q }}" placeholder="Type a name…"
                    autocomplete="off" class="input"
                    hx-get="/payments/student-picker"
                    hx-trigger="input changed delay:400ms, search"
-                   hx-target="#payment-student" hx-swap="innerHTML">
+                   hx-target="#payment-results" hx-swap="innerHTML">
+            <div id="payment-results" class="{{ '' if q else 'hidden' }} absolute left-0 right-0 top-full z-50 mt-1">
+              {% if q %}{% include "payments/_student_options.html" %}{% endif %}
+            </div>
           </div>
         </form>
 
@@ -40,7 +42,7 @@
 
           <div class="field">
             <label for="payment-method">Method</label>
-            <select id="payment-method" name="method" class="input" style="width:100%">
+            <select id="payment-method" name="method" class="input w-full">
               {% for value, text in methods.items() %}
               <option value="{{ value }}">{{ text }}</option>
               {% endfor %}
@@ -49,16 +51,16 @@
 
           <input type="hidden" name="paid_on" value="{{ today }}">
 
-          <div class="board" style="box-shadow:none;background:var(--accent-tint);border-color:#d4e0ec">
-            <div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-              <span style="font-size:13px;font-weight:600">Clears oldest unpaid charges</span>
-              <span id="payment-clears" class="num muted" style="font-size:13px">—</span>
+          <div class="alert alert-info">
+            <div class="flex w-full items-center justify-between gap-2.5 py-0.5">
+              <span class="text-sm font-semibold">Clears oldest unpaid charges</span>
+              <span id="payment-clears" class="num muted text-sm">—</span>
             </div>
           </div>
 
-          <div style="display:flex;gap:8px;margin-top:14px">
+          <div class="mt-3.5 flex gap-2">
             {{ btn(href="/payments", label="Cancel", variant="ghost") }}
-            <button id="payment-save" type="submit" class="btn btn-primary flex-1 justify-center" {% if not selected %}disabled{% endif %}>{{ icon("arrow-right", "h-4 w-4") }} Save &amp; print receipt</button>
+            <button id="payment-save" type="submit" class="btn btn-primary flex-1 justify-center" disabled>{{ icon("arrow-right", "h-4 w-4") }} Save &amp; print receipt</button>
           </div>
         </form>
       </div>
@@ -80,7 +82,7 @@
              hx-trigger="input changed delay:400ms from:#payment-amount, change from:#payment-method, load, htmx:afterSwap from:#payment-student"
              hx-swap="innerHTML"
              hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value, method: document.getElementById('payment-method').value}">
-          <p class="text-sm text-base-content/50">Fill in the amount and method to preview the receipt.</p>
+          <p class="text-sm text-base-content/50">Pick a student, then fill in the amount and method to preview the receipt.</p>
         </div>
       </div>
     </div>
@@ -90,12 +92,59 @@
 
 {% block body_end %}
 <script>
-  document.body.addEventListener('htmx:afterSwap', function (e) {
-    if (e.detail.target && e.detail.target.id === 'payment-student') {
-      var sid = document.querySelector('#payment-student input[name=student_id]');
-      var btn = document.getElementById('payment-save');
-      if (sid && btn) btn.disabled = !sid.value;
+  (function () {
+    var results = document.getElementById('payment-results');
+    var search = document.getElementById('payment-search');
+    var save = document.getElementById('payment-save');
+
+    function sidInput() {
+      return document.querySelector('#payment-student input[name=student_id]');
     }
-  });
+
+    function hasSelection() {
+      var sid = sidInput();
+      return !!sid && sid.value !== '';
+    }
+
+    function refreshSave() {
+      if (save) save.disabled = !hasSelection();
+    }
+
+    function showResults() {
+      if (results) results.classList.remove('hidden');
+    }
+
+    function hideResults() {
+      if (results) results.classList.add('hidden');
+    }
+
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      var t = e.detail.target;
+      if (!t) return;
+      if (t.id === 'payment-results') {
+        showResults();
+      } else if (t.id === 'payment-student') {
+        hideResults();
+        refreshSave();
+        var name = t.querySelector('.strong');
+        if (name && search) search.value = name.textContent.trim();
+      }
+    });
+
+    if (search) {
+      search.addEventListener('input', function () {
+        var sid = sidInput();
+        if (sid) sid.value = '';
+        refreshSave();
+      });
+    }
+
+    document.addEventListener('click', function (e) {
+      var inside = (results && results.contains(e.target)) || e.target === search;
+      if (!inside) hideResults();
+    });
+
+    refreshSave();
+  })();
 </script>
 {% endblock %}

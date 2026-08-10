@@ -15,23 +15,25 @@
 
 <div class="space-y-6">
   <div class="hero {{ 'owed' if hero_owed }}">
-    <div>
-      <div class="hero-label">{{ hero_label }}</div>
-      <div class="hero-amount num {{ hero_value_class }}">{{ money(account.balance_cents) }}</div>
-      <div class="hero-note">Outstanding charges minus credits — extras, waivers, payments, and credit are all included.</div>
-    </div>
-    <div class="flex flex-wrap gap-3">
-      <div class="rounded-lg border border-base-300 bg-base-100 px-4 py-2.5">
-        <div class="stat-label">Outstanding charges</div>
-        <div class="stat-value num" style="font-size:18px;color:var(--amber)">{{ money(account.outstanding_cents) }}</div>
+    <div class="flex w-full flex-col gap-4 lg:flex-row">
+      <div class="flex-1 rounded-lg bg-base-100 p-4">
+        <div class="hero-label">{{ hero_label }}</div>
+        <div class="hero-amount num {{ hero_value_class }}">{{ money(account.balance_cents) }}</div>
+        <div class="hero-note">Outstanding charges minus credits — extras, waivers, payments, and credit are all included.</div>
       </div>
-      <div class="rounded-lg border border-base-300 bg-base-100 px-4 py-2.5">
-        <div class="stat-label">Credit held</div>
-        <div class="stat-value num" style="font-size:18px">{{ money(account.credits_cents) }}</div>
-      </div>
-      <div class="rounded-lg border border-base-300 bg-base-100 px-4 py-2.5">
-        <div class="stat-label">Received</div>
-        <div class="stat-value num" style="font-size:18px;color:var(--green)">{{ money(account.received_cents) }}</div>
+      <div class="account-stats flex w-full flex-col gap-3 lg:w-64">
+        <div class="rounded-lg bg-base-100 px-4 py-2.5">
+          <div class="stat-label">Outstanding charges</div>
+          <div class="stat-value num amber">{{ money(account.outstanding_cents) }}</div>
+        </div>
+        <div class="rounded-lg bg-base-100 px-4 py-2.5">
+          <div class="stat-label">Credit held</div>
+          <div class="stat-value num">{{ money(account.credits_cents) }}</div>
+        </div>
+        <div class="rounded-lg bg-base-100 px-4 py-2.5">
+          <div class="stat-label">Received</div>
+          <div class="stat-value num green">{{ money(account.received_cents) }}</div>
+        </div>
       </div>
     </div>
   </div>

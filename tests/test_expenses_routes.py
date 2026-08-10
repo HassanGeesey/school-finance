@@ -210,9 +210,9 @@ def test_finance_can_record_an_expense(client):
     response = record_expense(client, category_id, description="Bus fuel", amount="45.00")
 
     assert response.status_code == 200
-    assert "Bus fuel" in response.text
-    assert "$45.00" in response.text
+    assert 'name="category_id"' in response.text  # a fresh form, not the list
     assert "toast" in response.headers["HX-Trigger"]
+    assert "expense-recorded" in response.headers["HX-Trigger"]
     (expense,) = expenses(client)
     assert expense.amount_cents == 4500
     assert expense.method == "cash"
@@ -228,6 +228,15 @@ def test_a_new_category_appears_in_the_record_dropdown_after_adding(client):
 
     assert "Salaries" in page.text
     assert 'name="category_id"' in page.text
+
+
+def test_expenses_page_has_a_record_expense_button_and_modal(client):
+    authenticated_admin(client)
+
+    page = client.get("/expenses")
+
+    assert 'id="record-expense-modal"' in page.text
+    assert "Record expense" in page.text
 
 
 def test_recording_an_expense_requires_a_category(client):
@@ -346,16 +355,25 @@ def test_expenses_page_offers_month_filter_options(client):
     assert "August 2026" in page.text
 
 
-def test_dashboard_partial_shows_the_form_once_a_category_exists(client):
+def test_record_form_partial_shows_the_form_once_a_category_exists(client):
     authenticated_admin(client)
 
-    before = client.get("/expenses/dashboard")
+    before = client.get("/expenses/record-form")
     assert "No expense categories yet" in before.text
     assert 'name="category_id"' not in before.text
 
     add_category(client, "Stationery")
 
-    after = client.get("/expenses/dashboard")
+    after = client.get("/expenses/record-form")
     assert "No expense categories yet" not in after.text
     assert 'name="category_id"' in after.text
     assert "Stationery" in after.text
+
+
+def test_dashboard_partial_stays_a_filter_and_list_without_the_form(client):
+    authenticated_admin(client)
+
+    page = client.get("/expenses/dashboard")
+
+    assert "No expenses yet" in page.text
+    assert 'name="category_id"' not in page.text

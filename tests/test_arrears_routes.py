@@ -130,7 +130,7 @@ def test_report_shows_the_sidebar_nav_item_active(client):
 
     assert response.status_code == 200
     assert "/arrears" in response.text
-    assert "Arrears" in response.text
+    assert "Unpaid fees" in response.text
 
 
 def test_fully_paid_students_are_excluded(client):
@@ -143,7 +143,7 @@ def test_fully_paid_students_are_excluded(client):
 
     assert response.status_code == 200
     assert "Ada Lovelace" not in response.text
-    assert "No arrears" in response.text
+    assert "No unpaid fees" in response.text
 
 
 def test_a_partial_payment_reduces_the_reported_amount(client):
@@ -185,5 +185,5 @@ def test_empty_state_when_nobody_owes(client):
     response = client.get("/arrears")
 
     assert response.status_code == 200
-    assert "No arrears" in response.text
+    assert "No unpaid fees" in response.text
     assert "nothing outstanding" in response.text

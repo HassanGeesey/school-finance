@@ -312,7 +312,7 @@ def test_summary_page_rolls_up_totals(client):
     assert "$40.00" in response.text  # income
     assert "$20.00" in response.text  # expenses
     assert "$20.00" in response.text  # net
-    assert "Outstanding arrears" in response.text
+    assert "Outstanding unpaid fees" in response.text
     assert "Credit balances" in response.text
 
 
@@ -325,7 +325,7 @@ def test_summary_csv_export(client):
 
     assert_csv(response)
     assert "40.00" in response.text
-    assert "Outstanding arrears" in response.text
+    assert "Outstanding unpaid fees" in response.text
 
 
 # ---------------------------------------------------------------------------

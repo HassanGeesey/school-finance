@@ -11,17 +11,15 @@
 
   <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for report in reports %}
-    <a href="{{ report.href }}"
-       class="stat transition-colors hover:border-primary/60"
-       style="cursor:pointer;text-decoration:none;display:block">
+    <a href="{{ report.href }}" class="stat stat-card">
       <div class="flex items-start justify-between gap-3">
         <div class="stat-label">{{ report.title }}</div>
         {% if report.icon %}
         <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-base-200 text-base-content/50">{{ icon(report.icon, "h-4 w-4") }}</span>
         {% endif %}
       </div>
-      <div class="stat-value num" style="font-size:15px;margin-top:6px">{{ report.description }}</div>
-      <div class="stat-hint" style="display:flex;align-items:center;gap:4px;color:var(--accent);font-weight:600">
+      <div class="stat-value num">{{ report.description }}</div>
+      <div class="stat-hint">
         {{ icon("arrow-right", "h-3.5 w-3.5") }} Open report
       </div>
     </a>

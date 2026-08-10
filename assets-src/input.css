@@ -739,9 +739,6 @@ input[type="radio"].radio {
 .muted {
   color: var(--ink-soft);
 }
-.dim {
-  color: var(--ink-faint);
-}
 .frow {
   display: flex;
   align-items: flex-end;
@@ -768,12 +765,6 @@ input[type="radio"].radio {
 .field .select {
   width: 100%;
 }
-.grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
-}
 .notice {
   display: flex;
   gap: 10px;
@@ -792,35 +783,71 @@ input[type="radio"].radio {
   flex-shrink: 0;
   margin-top: 2px;
 }
-.qa-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+
+/* ---------- Account summary chips (student fee account) ---------- */
+.account-stats .stat-value {
+  font-size: 18px;
+  white-space: normal;
 }
-.qa {
+.account-stats .stat-value.amber {
+  color: var(--amber);
+}
+.account-stats .stat-value.green {
+  color: var(--green);
+}
+
+/* ---------- Student picker dropdown rows ---------- */
+.student-option {
   display: flex;
+  width: 100%;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 11px 12px;
-  border-radius: 7px;
-  border: 1px solid var(--hairline);
-  background: var(--sheet-raised);
-  color: var(--ink);
-  font-weight: 600;
-  font-size: 13px;
+  padding: 10px 14px;
+  text-align: left;
   cursor: pointer;
+  background: var(--sheet);
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+  font: inherit;
+  color: inherit;
 }
-.qa:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(43, 95, 138, 0.08);
+.student-option:hover {
+  background: rgba(255, 255, 255, 0.7);
 }
-.qa svg {
+.student-option svg {
   width: 16px;
   height: 16px;
-  stroke: var(--accent);
 }
-.qa.alt svg {
-  stroke: var(--ink-soft);
+
+/* ---------- Report tiles (navigation cards) ---------- */
+.stat-card {
+  display: block;
+  min-width: 0;
+  background: var(--sheet);
+  border: 1px solid var(--hairline);
+  border-radius: var(--nb-radius);
+  box-shadow: var(--nb-shadow);
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.15s ease-in-out;
+}
+.stat-card:hover {
+  border-color: var(--accent);
+}
+.stat-card .stat-value {
+  white-space: normal;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  margin-top: 6px;
+}
+.stat-card .stat-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-weight: 600;
 }
 .table tfoot th,
 .table tfoot td {
@@ -880,6 +907,20 @@ body.sidebar-open #sidebar-backdrop {
   to {
     transform: rotate(360deg);
   }
+}
+
+.modal,
+.modal[open],
+.modal.modal-open,
+.modal-box {
+  transition: none;
+}
+
+.table tbody tr {
+  transition: background-color 0.15s ease-out;
+}
+.table tbody tr:hover {
+  background-color: color-mix(in oklab, var(--color-base-200) 55%, transparent);
 }
 
 .print-only {
