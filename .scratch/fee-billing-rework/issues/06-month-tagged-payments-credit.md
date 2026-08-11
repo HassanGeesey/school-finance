@@ -57,4 +57,4 @@ UI gap — the record screen now visibly defaults the month tag.
   +6 route tests). mypy clean on changed modules; the only reported error
   (students/routes.py:218) is pre-existing.
 
-Commit: TBD
+Commit: `fcdc11b`
