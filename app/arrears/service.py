@@ -3,13 +3,13 @@
 Arrears are **derived** from the expected-vs-paid comparison (ticket 08): for
 each student the account assembly (:func:`app.fees.account.student_account`)
 computes the expected amount, payments, and carried credit per owed month. A
-student is in arrears when their balance — expected minus paid minus credit —
-is positive. Routes are thin adapters over this module — it is the single
+student is in arrears when their balance — expected minus received — is
+positive. Routes are thin adapters over this module — it is the single
 testing seam.
 
 Rules that live here:
 - Arrears = accumulated monthly shortfalls across owed months. The balance
-  ``max(expected - paid - credits, 0)`` equals that sum once credit has been
+  ``max(expected - received, 0)`` equals that sum once credit has been
   applied oldest-owed-month-first, so a student who has paid exactly what they
   owe — or holds enough credit — owes nothing and is excluded.
 - Debt age is measured from the **oldest owed month still carrying a shortfall**
@@ -69,7 +69,7 @@ def debt_age_band(age_days: int) -> str:
 class ArrearsLine:
     """One owing student's row in the arrears report.
 
-    ``owed_cents`` is what they still owe (expected minus paid minus credit);
+    ``owed_cents`` is what they still owe (expected minus received);
     ``oldest_period_label`` names the month of their oldest unpaid shortfall,
     and ``age_days``/``age_band`` describe how old that debt is.
     """

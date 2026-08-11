@@ -40,7 +40,11 @@
                    hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value, month: document.getElementById('payment-month').value, year: document.getElementById('payment-year').value}">
           </div>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div id="payment-period" class="grid gap-4 sm:grid-cols-2"
+               hx-get="/payments/period-selects"
+               hx-trigger="htmx:afterSwap from:#payment-student"
+               hx-swap="innerHTML"
+               hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value || '0'}">
             <div class="field">
               <label for="payment-month" class="block text-[12.5px] font-semibold mb-1.5">For month</label>
               <select id="payment-month" name="month" class="select w-full">

@@ -193,10 +193,11 @@ class MonthLine:
 class AccountView:
     """A student's full account comparison and its running totals.
 
-    ``balance_cents`` is ``expected - paid - credit`` and may be negative when
-    the student holds credit (ticket 07). ``received_cents`` is every payment
-    ever recorded (including what became credit); ``paid_cents`` is the sum of
-    payments tagged to the owed months shown.
+    ``balance_cents`` is ``expected - received`` — the net position, positive
+    when the student still owes and negative when they hold credit (FW-15).
+    ``received_cents`` is every payment ever recorded (including what became
+    credit); ``paid_cents`` is the sum of payments tagged to the owed months
+    shown; ``credits_cents`` is the carried credit yet to be consumed.
     """
 
     student: Student
@@ -290,7 +291,10 @@ def student_account(
         line.status, _ = classify_paid_status(line.expected_cents, settled)
 
     received_cents = sum(payment.amount_cents for payment in payments)
-    balance_cents = expected_cents - paid_cents - credits_cents
+    # The net position: every dollar received either settles expected or is
+    # held as credit, so ``expected - received`` is never double counted
+    # (paid_cents already includes the part that became credit).
+    balance_cents = expected_cents - received_cents
     return AccountView(
         student=student,
         lines=lines,

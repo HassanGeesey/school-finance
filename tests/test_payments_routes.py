@@ -52,10 +52,13 @@ def create_class(client, name="Grade 1", status="active", template_id=None):
     return int(urlparse(response.headers["location"]).path.split("/")[-1])
 
 
-def add_student(client, class_id, first_name="Ada", last_name="Lovelace"):
+def add_student(client, class_id, first_name="Ada", last_name="Lovelace", enrolled_on=None):
+    data = {"first_name": first_name, "last_name": last_name}
+    if enrolled_on is not None:
+        data["enrolled_on"] = enrolled_on
     response = client.post(
         f"/classes/{class_id}/students",
-        data={"first_name": first_name, "last_name": last_name},
+        data=data,
         follow_redirects=False,
     )
     assert response.status_code == 303
@@ -66,12 +69,27 @@ def student_id(client):
         return session.query(Student).one().id
 
 
-def make_billed_student(client, amount="50.00"):
-    """A student who owes the current month's fee (enrolled today)."""
+def make_billed_student(client, amount="50.00", enrolled_on=None):
+    """A student who owes the current month's fee (enrolled today by default)."""
     template_id = add_fee_template(client, amount=amount)
     class_id = create_class(client, template_id=template_id)
-    add_student(client, class_id)
+    add_student(client, class_id, enrolled_on=enrolled_on)
     return student_id(client)
+
+
+def months_back(n: int) -> tuple[int, int]:
+    """The (month, year) ``n`` calendar months before the current month."""
+    today = date.today()
+    total = today.year * 12 + (today.month - 1) - n
+    return (total % 12) + 1, total // 12
+
+
+def next_month() -> tuple[int, int]:
+    """The calendar month after the current one."""
+    today = date.today()
+    if today.month == 12:
+        return 1, today.year + 1
+    return today.month + 1, today.year
 
 
 def payments(client):
@@ -145,6 +163,38 @@ def test_selecting_a_student_swaps_in_their_summary(client):
     assert f'name="student_id" value="{sid}"' in response.text
 
 
+def test_period_selects_default_to_the_oldest_unpaid_month_for_the_picked_student(client):
+    authenticated_admin(client)
+    month, year = months_back(3)
+    sid = make_billed_student(
+        client, enrolled_on=f"{year:04d}-{month:02d}-01"
+    )
+
+    response = client.get(f"/payments/period-selects?student_id={sid}")
+
+    assert response.status_code == 200
+    assert f'value="{month}" selected' in response.text
+    assert f'value="{year}" selected' in response.text
+
+
+def test_period_selects_are_blank_without_a_student(client):
+    authenticated_admin(client)
+
+    response = client.get("/payments/period-selects")
+
+    assert response.status_code == 200
+    assert "For month" in response.text
+    assert "selected" not in response.text
+
+
+def test_period_selects_404_for_a_missing_student(client):
+    authenticated_admin(client)
+
+    response = client.get("/payments/period-selects?student_id=999")
+
+    assert response.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Record form
 # ---------------------------------------------------------------------------
@@ -175,6 +225,20 @@ def test_record_form_shows_the_student_balance(client):
     assert "Ada Lovelace" in response.text
     assert "$50.00" in response.text
     assert "Record payment" in response.text
+
+
+def test_record_form_defaults_the_month_tag_to_the_oldest_unpaid_month(client):
+    authenticated_admin(client)
+    month, year = months_back(3)
+    sid = make_billed_student(
+        client, enrolled_on=f"{year:04d}-{month:02d}-01"
+    )
+
+    response = client.get(f"/payments/record?student_id={sid}")
+
+    assert response.status_code == 200
+    assert f'value="{month}" selected' in response.text  # For month (FW-22-1)
+    assert f'value="{year}" selected' in response.text
 
 
 def test_payment_preview_shows_the_allocation_without_writing(client):
@@ -317,6 +381,56 @@ def test_a_finance_officer_can_record_a_payment(client):
     assert response.status_code == 303
     assert len(payments(client)) == 1
     assert len(audit_entries(client)) == 1
+
+
+def test_an_out_of_range_tag_shows_a_warning_in_the_preview_but_records(
+    client,
+):
+    authenticated_admin(client)
+    sid = make_billed_student(client)
+    month, year = next_month()
+
+    preview = client.get(
+        f"/payments/preview?student_id={sid}&amount=40.00&month={month}&year={year}"
+    )
+    assert preview.status_code == 200
+    assert "outside this student's owed months" in preview.text
+
+    response = client.post(
+        "/payments/record",
+        data={
+            "student_id": str(sid),
+            "amount": "40.00",
+            "method": "cash",
+            "paid_on": "2026-08-06",
+            "month": str(month),
+            "year": str(year),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303  # warned, not blocked (FW-22-2)
+    (payment,) = payments(client)
+    assert (payment.month, payment.year) == (month, year)
+    (credit,) = credits(client)
+    assert credit.amount_cents == 4000  # outside the owed range → full credit
+
+
+def test_an_overpayment_balance_on_the_account_page_is_not_double_counted(client):
+    authenticated_admin(client)
+    sid = make_billed_student(client)
+
+    client.post(
+        "/payments/record",
+        data={"student_id": str(sid), "amount": "60.00", "method": "cash", "paid_on": "2026-08-06"},
+        follow_redirects=False,
+    )
+
+    page = client.get(f"/students/{sid}/account")
+    assert page.status_code == 200
+    assert "-$10.00" in page.text  # balance to date: holds $10 credit
+    assert "Credit held:" in page.text
+    assert "$10.00" in page.text
 
 
 def test_a_recorded_payment_reduces_the_balance_on_the_payments_page(client):

@@ -132,7 +132,7 @@ def _month_year_options(month: int | None, year: int | None) -> dict[str, object
         "month": str(month) if month is not None else "",
         "year": str(year) if year is not None else "",
         "months": [(i, MONTH_NAMES[i - 1]) for i in range(1, 13)],
-        "years": list(range(today.year, today.year + 2)),
+        "years": list(range(today.year - 1, today.year + 3)),
     }
 
 
@@ -258,6 +258,32 @@ def payment_student_picker(
         request=request,
         name="payments/_student_options.html",
         context={"rows": _picker_rows(request, q), "q": q},
+    )
+
+
+@router.get("/payments/period-selects", response_class=HTMLResponse)
+def payment_period_selects(
+    request: Request,
+    student_id: int = Query(0),
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    """The record screen's month/year pickers, defaulted to the picked
+    student's oldest unpaid owed month (FW-22-1).
+
+    Swapped in over htmx when a student is selected on the split-screen record
+    page, so the clerk sees the month the payment will be tagged to. With no
+    student (or one who owes nothing) the pickers are blank.
+    """
+    month, year = None, None
+    if student_id:
+        try:
+            month, year = _default_tag(request, student_id)
+        except StudentNotFound:
+            raise HTTPException(status_code=404, detail="Student not found.") from None
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="payments/_period_selects.html",
+        context=_month_year_options(month, year),
     )
 
 
