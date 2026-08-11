@@ -14,10 +14,12 @@
     <div class="mt-2">
       {% set record_btn = btn(href="/payments/record?student_id=" ~ student.id, label="Record payment", icon="plus", variant="primary") %}
       {% set waiver_btn = btn(label="Add waiver", icon="academic-cap", variant="secondary", type="button", attrs='hx-get="/students/' ~ student.id ~ '/waivers/new-form" hx-target="#waiver-modal-content" hx-swap="innerHTML" onclick="document.getElementById(\'waiver-modal\').showModal()"') %}
+      {% set change_btn = btn(href="/students/" ~ student.id ~ "/edit", label="Change amount", icon="pencil-square", variant="secondary") %}
+      {% set print_btn = btn(label="Print statement", icon="printer", variant="ghost", size="sm", type="button", attrs='onclick="window.print()"') %}
       {{ page_header(
         student.full_name,
         student.school_class.name ~ " · " ~ student_status_badge(student.status),
-        record_btn ~ waiver_btn
+        record_btn ~ waiver_btn ~ change_btn ~ print_btn
       ) }}
     </div>
   </div>

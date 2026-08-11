@@ -691,3 +691,25 @@ def test_missing_student_returns_404(client):
     assert client.get("/students/999/edit").status_code == 404
     assert client.post("/students/999/archive", follow_redirects=False).status_code == 404
     assert client.post("/students/999/restore", follow_redirects=False).status_code == 404
+
+
+def test_account_page_renders_the_per_month_comparison_for_a_logged_in_user(client):
+    authenticated_admin(client)
+    make_billed_student(client, name="Grade 1")
+    sid = student_ids(client)["Ada Lovelace"]
+
+    response = client.get(f"/students/{sid}/account")
+
+    assert response.status_code == 200
+    for header in ("Month", "Expected", "Waivers", "Paid", "Credit", "Remaining", "Status"):
+        assert header in response.text
+    assert "Total" in response.text
+    assert "Student statement" in response.text
+    assert "Print statement" in response.text
+
+
+def test_account_page_404s_for_a_missing_student(client):
+    authenticated_admin(client)
+    create_class(client)
+
+    assert client.get("/students/999/account").status_code == 404
