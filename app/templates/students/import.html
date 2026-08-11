@@ -9,7 +9,7 @@
 <div class="mx-auto max-w-2xl space-y-6">
   <div>
     <a href="/classes/{{ class_id }}" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} {{ class_name }}</a>
-    <div class="mt-2">{{ page_header("Import students", "Upload a CSV of student names. Every imported student joins " ~ class_name ~ " and is billed with this class's fee structure.") }}</div>
+    <div class="mt-2">{{ page_header("Import students", "Upload a CSV of student names. Every imported student joins " ~ class_name ~ " and uses this class's default fee template.") }}</div>
   </div>
 
   {% if error %}

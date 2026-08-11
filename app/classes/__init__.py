@@ -1,1 +1,1 @@
-"""Classes & fee structures feature: routes + service layer."""
+"""Classes feature: routes + service layer (default fee template per class)."""

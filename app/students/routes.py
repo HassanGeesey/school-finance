@@ -214,6 +214,7 @@ def _apply_billing_change(
         return _service(request).change_amount(
             user=user, student_id=student.id, amount=amount, month=month, year=year
         )
+    assert template_id is not None
     return _service(request).set_template(
         user=user, student_id=student.id, fee_template_id=template_id, month=month, year=year
     )

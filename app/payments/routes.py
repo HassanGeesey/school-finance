@@ -411,7 +411,7 @@ def payment_receipt(
         name="payments/receipt.html",
         context={
             "payment": payment,
-            "allocation_rows": [
+            "applied_rows": [
                 {
                     "period_label": period_label(payment.month, payment.year),
                     "amount_cents": applied_cents,

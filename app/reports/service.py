@@ -20,7 +20,7 @@ Rules that live here (fee-billing rework — ticket 08):
 - The student list is the register: every student (optionally one class) with
   their class, status, and the amount in force for the current month.
 - Month dropdowns come from owed months + payment months + expense months
-  (no ``Charge`` periods).
+  (no charge rows).
 - The dashboard is the current month's KPIs (collections, expenses, arrears,
   active students), a six-month income/expense series, the arrears debt-age
   band counts, and the all-time expense-by-category lines.

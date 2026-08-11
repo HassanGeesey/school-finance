@@ -1,30 +1,30 @@
 # School Finance
 
-A self-contained web app for running a school's finances — fee structures,
-monthly fee generation, per-student adjustments, and a full audit trail. Built
+A self-contained web app for running a school's finances — fee templates,
+monthly expected-vs-paid billing, waivers, and a full audit trail. Built
 with **FastAPI**, **SQLAlchemy**, and a **Jinja2 + htmx + daisyUI** interface.
 
-> A single-page billing workflow: set up your classes and their fee structures,
-> generate each month's charges in one click, adjust individual students' bills
-> (extras/waivers), and see every change in the audit log.
+> A single-page billing workflow: set up fee templates and class defaults,
+> and billing is derived from enrollment — every month a student is expected
+> to pay their template amount, payments are recorded against a month, and
+> the books compare expected vs paid (with waivers and credit) in the audit
+> log.
 
 ## Features
 
 **Implemented**
 
-- **Classes & fee structures** — create classes (Active / Completed / Inactive)
-  and define their monthly fee items (e.g. Tuition, Boarding). Each student's
-  monthly charge is the sum of their class's items.
+- **Fee templates** — named monthly amounts a class defaults to and a student
+  can be linked to (or overridden with a custom amount). Billing is **derived
+  from enrollment**: a student is expected to pay their amount in force for
+  each owed month (from enrollment through departure, excluding closed
+  months), so there are no charge rows and no generation step.
 - **Students** — add and search students, import them from CSV, and
   archive/restore without losing history.
-- **Monthly fee generation** — pick a class (or all Active classes), a month
-  and a year, and generate one charge per active student. The item breakdown is
-  snapshotted at generation time, so later structure edits never rewrite
-  history. Generation is **duplicate-safe**: a class+month+year can only be
-  billed once, and "All classes" re-runs skip classes that were already billed.
-- **Adjustments** — Admin-only extras and waivers on a single student's month.
-  Waivers can clear a charge but never drive it below zero. Adjustments update
-  the student's balance immediately and are audited.
+- **Payments & waivers** — record a payment against a student + month;
+  partial payments clear the oldest unpaid months first and overpayment
+  becomes credit. Admin-only waivers reduce a month's expected amount and
+  are audited.
 - **Expenses** — an Admin-managed category list (add/rename/remove, archived
   rather than deleted) and a record card open to the Finance role: date,
   category, description, amount, and cash/bank/other method, with category and
@@ -38,11 +38,12 @@ with **FastAPI**, **SQLAlchemy**, and a **Jinja2 + htmx + daisyUI** interface.
   request is audited before the server stops. Every one of these actions lands
   in the audit log.
 - **Audit log** — every meaningful action (setup, login, class/student edits,
-  fee generation, adjustments, user management, backups, shutdown) is recorded
-  with who did it, when, and a human-readable summary.
+  fee templates, waivers, amount changes, closed months, payments, user
+  management, backups, shutdown) is recorded with who did it, when, and a
+  human-readable summary.
 - **Roles** — Admin and Finance officer. Finance can view classes, students,
-  and accounts, generate fees, and record expenses; only Admin can mutate
-  structure, manage users, run backups, or shut the app down.
+  accounts, and reports, record payments/expenses, and apply waivers; only
+  Admin can mutate structure, manage users, run backups, or shut the app down.
 - **Design-system shell** — dashboard, grouped sidebar, toasts, confirm
   dialogs, and modal-based editing built on htmx partials.
 
@@ -100,9 +101,9 @@ app/
   money.py           # Integer-cent money helpers & formatting
   audit/             # Audit log (actions + service)
   auth/              # Login, sessions, role-based dependencies
-  classes/           # Classes & fee structures
+  classes/           # Classes & default fee-template picker
   students/          # Students, CSV import, archiving
-  fees/              # Fee generation + per-student adjustments
+  fees/              # Fee templates, waivers, closed months + derived account
   admin/             # User management (service + routes)
   system/            # Backups + in-app shutdown (service + routes)
   templates/         # Jinja2 templates & shared UI components

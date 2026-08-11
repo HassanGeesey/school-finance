@@ -43,7 +43,7 @@
         </div>
         <div class="flex items-end">
           <p class="text-xs text-base-content/60">
-            Completed/Inactive classes stop generating fees but keep their records; choose Active to reopen.
+            Completed/Inactive classes stop being owed but keep their records; choose Active to reopen.
           </p>
         </div>
         <div>
@@ -85,7 +85,7 @@
                 <a href="/students/{{ student.id }}/edit" class="btn btn-ghost btn-xs">{{ icon("pencil-square", "h-4 w-4") }} Edit</a>
                 {% if student.status == "active" %}
                 <form method="post" action="/students/{{ student.id }}/archive">
-                  <button type="submit" data-confirm="Archive {{ student.full_name }}? History and any outstanding charges stay." class="btn btn-ghost btn-xs text-error">{{ icon("archive-box", "h-4 w-4") }} Archive</button>
+                  <button type="submit" data-confirm="Archive {{ student.full_name }}? History and any outstanding balance stay." class="btn btn-ghost btn-xs text-error">{{ icon("archive-box", "h-4 w-4") }} Archive</button>
                 </form>
                 {% else %}
                 <form method="post" action="/students/{{ student.id }}/restore">

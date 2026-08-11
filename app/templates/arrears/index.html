@@ -14,7 +14,7 @@
 
   <div class="grid gap-4 sm:grid-cols-3">
     {{ stat_card("Owing students", student_count, "user-group", "error", "Students with an outstanding balance") }}
-    {{ stat_card("Total owed", money(total_cents), "banknotes", "error", "Unpaid charges minus credits") }}
+    {{ stat_card("Total owed", money(total_cents), "banknotes", "error", "Expected minus paid and credit") }}
     {{ stat_card("Over 60 days", overdue_count, "exclamation-triangle", "warning", overdue_count ~ " student" ~ ("s" if overdue_count != 1 else "") ~ " with debt older than 60 days") }}
   </div>
 

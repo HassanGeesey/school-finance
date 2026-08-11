@@ -3,8 +3,8 @@
 Every auditable action across the app is recorded through :meth:`AuditService.log`
 with the acting user, a timestamp, and a readable summary. The log is append-only
 by design: this service exposes no update or delete operations, and no route in
-the app offers one. Future features (payments, expenses, fee generation,
-adjustments, configuration) call ``log`` at the same seam.
+the app offers one. Future features (payments, expenses, fee templates,
+waivers, configuration) call ``log`` at the same seam.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ class AuditActions:
     LOGIN = "login"
     LOGOUT = "logout"
 
-    # Classes & fee structures.
+    # Classes.
     CLASS_CREATE = "class_create"
     CLASS_RENAME = "class_rename"
     CLASS_STATUS = "class_status"

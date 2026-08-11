@@ -7,7 +7,7 @@
 
 {% block content %}
 <div class="space-y-6">
-  {{ page_header("Record payment", "Search for the student, pick one from the list, then enter the amount and method. Partial payments clear the oldest unpaid charges first.") }}
+  {{ page_header("Record payment", "Search for the student, pick one from the list, then enter the amount and method. Partial payments clear the oldest unpaid months first.") }}
 
   <div class="grid items-start gap-6 lg:grid-cols-[440px_minmax(0,1fr)]">
     <div class="board">
@@ -76,7 +76,7 @@
 
           <div class="alert alert-info">
             <div class="flex w-full items-center justify-between gap-2.5 py-0.5">
-              <span class="text-sm font-semibold">Clears oldest unpaid charges</span>
+              <span class="text-sm font-semibold">Clears oldest unpaid months</span>
               <span id="payment-clears" class="num muted text-sm">—</span>
             </div>
           </div>
