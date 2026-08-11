@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 class Settings:
     APP_NAME = "School Finance"
-    VERSION = "0.2.0"
+    VERSION = "0.3.0"
 
     # Overridable via environment for tests/portable installs.
     DATA_DIR = Path(os.environ.get("SCHOOL_FINANCE_DATA", str(BASE_DIR / "data")))
