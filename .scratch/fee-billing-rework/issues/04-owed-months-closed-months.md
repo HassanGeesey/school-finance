@@ -26,4 +26,4 @@ Implemented for the fee-billing rework.
 - **Note on "remove" being a hard delete:** the repo's no-hard-deletes rule (models.py) is a deliberate exception here — the ticket says "add/remove a closed month", ticket 01's `ClosedMonth` model carries no status flag, and the list is configuration, not history. Noted as a judgement call in code review.
 - **Verification:** `python -m pytest tests/` — 579 passed, exit 0. `mypy app` reports one pre-existing error in `app/students/routes.py` (present at HEAD; this ticket's files are clean).
 - **Note:** a concurrent session was editing the same tree (ticket 05 — waivers). Per user instruction the commit stages only ticket 04 files; `app/main.py` unavoidably also carries the waiver session's two `app.state.waivers` wiring lines.
-- **Commit:** (see git log for this ticket's commit hash).
+- **Commit:** `302de0d` — "Add closed months manager & owed-month range (fee-billing-rework ticket 04)".
