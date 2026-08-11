@@ -415,7 +415,7 @@ def paid_students_csv(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     rows: list[list[object]] = [
         ["Paid students", report.period_label],
-        ["Class", "Student", "Status", "Charged", "Paid", "Remaining"],
+        ["Class", "Student", "Status", "Expected", "Paid", "Credit", "Remaining"],
     ]
     rows += [
         [
@@ -424,6 +424,7 @@ def paid_students_csv(
             line.status,
             _amount(line.expected_cents),
             _amount(line.paid_cents),
+            _amount(line.credit_cents),
             _amount(line.remaining_cents),
         ]
         for line in report.lines

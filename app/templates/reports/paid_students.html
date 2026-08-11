@@ -18,7 +18,7 @@
   {{ stat_card("Unpaid", report.unpaid_count, "x-mark", "error") }}
 </div>
 <div class="grid gap-4 sm:grid-cols-3">
-  {{ stat_card("Charged", money(report.expected_cents), "banknotes", "neutral") }}
+  {{ stat_card("Expected", money(report.expected_cents), "banknotes", "neutral") }}
   {{ stat_card("Collected", money(report.collected_cents), "arrow-down-tray", "success") }}
   {{ stat_card("Outstanding", money(report.outstanding_cents), "exclamation-triangle", "warning") }}
 </div>
@@ -28,7 +28,7 @@
 {% call card(title="Paid students for " ~ report.period_label) %}
   <div class="overflow-x-auto">
     <table class="table">
-      <thead><tr><th>Student</th><th>Class</th><th>Status</th><th class="text-right">Charged</th><th class="text-right">Paid</th><th class="text-right">Remaining</th></tr></thead>
+      <thead><tr><th>Student</th><th>Class</th><th>Status</th><th class="text-right">Expected</th><th class="text-right">Paid</th><th class="text-right">Credit</th><th class="text-right">Remaining</th></tr></thead>
       <tbody>
       {% for line in report.lines %}
         <tr>
@@ -37,10 +37,11 @@
           <td>{{ badge(charge_status_labels[line.status], charge_status_tones[line.status]) }}</td>
           <td class="text-right">{{ money(line.expected_cents) }}</td>
           <td class="text-right">{{ money(line.paid_cents) }}</td>
+          <td class="text-right">{{ money(line.credit_cents) }}</td>
           <td class="text-right font-semibold">{{ money(line.remaining_cents) }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="6" class="text-center py-6 text-base-content/50">No students were billed for this month.</td></tr>
+        <tr><td colspan="7" class="text-center py-6 text-base-content/50">No students were billed for this month.</td></tr>
       {% endfor %}
       </tbody>
     </table>
