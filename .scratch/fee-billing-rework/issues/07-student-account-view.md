@@ -6,11 +6,18 @@
 
 **Blocked by:** 04 — Owed months & closed months, 05 — Waivers, 06 — Month-tagged payments & credit
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Per-month rows: expected, waivers, paid, credit consumed, status
-- [ ] Totals: expected, paid, credit balance, outstanding balance
-- [ ] Statement prints the per-month breakdown
-- [ ] Tests: account assembly service tests (+ route tests)
+- [x] Per-month rows: expected, waivers, paid, credit consumed, status
+- [x] Totals: expected, paid, credit balance, outstanding balance
+- [x] Statement prints the per-month breakdown
+- [x] Tests: account assembly service tests (+ route tests)
 
 ## Comments
+
+The derived account view was already landed (checkpoint `cf11560`): `app/fees/account.py` `student_account` assembles per-month `MonthLine`s (expected/waivers/paid/credit-consumed/remaining/status) with the credit pass (FW-21), totals, and the payments/credit lists; `students/account.html` + `fees/_account_finance.html` render them. This ticket closes the remaining gaps:
+
+- **Actions:** account page gains a "Change amount" button (→ `/students/{id}/edit`, which carries the effective-month change UI from ticket 03) and a "Print statement" button (`window.print()`), matching the receipt print pattern. The per-month breakdown already prints (no no-print rule on the finance card).
+- **Tests:** `tests/test_fees_account.py` adds 8 direct `student_account` assembly tests — credit pass consumed oldest-owed-month-first with per-month credit on `MonthLine`, leftover credit visible in `credits_cents`, paid/partial/unpaid status via the classifier, credit promoting partial→paid, totals (expected/paid/received/credits/balance, negative balance with credit), and closed months excluded from `account.lines`. `tests/test_students_routes.py` adds an account-page render test (all 7 column headers + totals row + statement print header + print button) and a 404 for a missing student.
+- **Verification:** `pytest tests/test_fees_account.py tests/test_students_routes.py tests/test_payments_service.py tests/test_waivers_routes.py tests/test_payments_routes.py` → 115 passed. `mypy app/students app/fees` → clean except the known pre-existing `app/students/routes.py:218` error.
+- **Commit:** `461ac58`.
