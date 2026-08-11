@@ -6,20 +6,23 @@ Run from the repo root::
     .venv\\Scripts\\python.exe scripts\\seed_demo.py --reset    # wipe demo data, then seed
 
 Everything is written through the app's own services, so every row lands via
-the real business rules (validation, oldest-unpaid-first allocation, audit
-trail). Created data:
+the real business rules (validation, oldest-unpaid-first credit, audit trail).
+Created data:
 
 - A school profile plus an ``admin`` / ``finance`` login (only when missing).
-- Four classes (Grade 4-7) with itemized fee structures.
-- ~42 students with East African names.
-- Four months of generated fees, with a deliberate spread of payments:
-  fully paid, one/two months behind, half-paid, and never-paid students — so
-  the arrears page shows current, amber, and red debts.
+- Four fee templates (Grade 4-7) and four classes defaulting to them.
+- ~42 students with East African names, enrolled at the start of the seeding
+  window and linked to their class template.
+- Four owed months of derived billing with a deliberate spread of month-tagged
+  payments: fully paid, one/two months behind, half-paid, never-paid, and one
+  overpaying student whose excess rolls forward as credit — so the arrears page
+  shows current, amber, and red debts.
+- A full-month waiver for the archived student's newest owed month.
 - Expense categories and several months of expenses.
 
-``--reset`` deletes all *domain* data (classes, students, charges, payments,
-expenses, ...). It never touches users, the school profile, or the append-only
-audit log.
+``--reset`` deletes all *domain* data (templates, classes, students, payments,
+credits, waivers, expenses, ...). It never touches users, the school profile,
+or the append-only audit log.
 """
 
 from __future__ import annotations
@@ -29,8 +32,6 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import func
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.admin.service import AdminUserService
@@ -39,21 +40,20 @@ from app.classes.service import ClassService
 from app.config import settings
 from app.db import Database, make_engine
 from app.expenses.service import ExpenseService
-from app.fees.service import FeeService
+from app.fees.service import TemplateService, WaiverService
 from app.models import (
-    Adjustment,
-    Charge,
     Class,
+    ClosedMonth,
     Credit,
     Expense,
     ExpenseCategory,
-    FeeItem,
-    GenerationRecord,
+    FeeTemplate,
     Payment,
-    PaymentAllocation,
     Student,
+    StudentAmountChange,
     User,
     UserRoles,
+    Waiver,
 )
 from app.payments.service import PaymentService
 from app.profile.service import ProfileService
@@ -62,13 +62,16 @@ from app.students.service import StudentService
 ADMIN_LOGIN = ("admin", "admin123")
 FINANCE_LOGIN = ("finance", "finance123")
 
-# Class name -> [(fee item, amount), ...]
-CLASSES = {
-    "Grade 4": [("Tuition", "100.00"), ("Boarding", "40.00")],
-    "Grade 5": [("Tuition", "110.00"), ("Boarding", "40.00")],
-    "Grade 6": [("Tuition", "120.00"), ("Boarding", "40.00")],
-    "Grade 7": [("Tuition", "130.00"), ("Boarding", "40.00")],
+# Grade name -> (fee template name, monthly amount)
+TEMPLATES = {
+    "Grade 4": ("Grade 4 — Full fee", "140.00"),
+    "Grade 5": ("Grade 5 — Full fee", "150.00"),
+    "Grade 6": ("Grade 6 — Full fee", "160.00"),
+    "Grade 7": ("Grade 7 — Full fee", "170.00"),
 }
+
+# Class name -> number of students seeded into it.
+CLASS_STUDENT_COUNTS = {"Grade 4": 12, "Grade 5": 11, "Grade 6": 10, "Grade 7": 9}
 
 # (first, last) name pairs assigned round-robin across classes.
 STUDENTS = [
@@ -111,6 +114,12 @@ def _recent_periods(today: date, count: int = 4) -> list[tuple[int, int]]:
     ]
 
 
+def _enrollment_start(today: date) -> date:
+    """The first day of the oldest period — every student is enrolled then."""
+    year, month = _recent_periods(today)[0]
+    return date(year, month, 1)
+
+
 def _safe_day(today: date, year: int, month: int, day: int) -> date:
     """A date that is never in the future (current-month days are clamped)."""
     if (year, month) == (today.year, today.month):
@@ -128,6 +137,8 @@ def _profile_for(index: int) -> str:
         return "two_behind"
     if index % 5 == 3:
         return "one_behind"
+    if index % 17 == 8:
+        return "credit"
     return "current"
 
 
@@ -139,7 +150,8 @@ class Seeder:
         self.admin = AdminUserService(db, audit=audit)
         self.classes = ClassService(db, audit=audit)
         self.students = StudentService(db, audit=audit)
-        self.fees = FeeService(db, audit=audit)
+        self.templates = TemplateService(db, audit=audit)
+        self.waivers = WaiverService(db, audit=audit)
         self.payments = PaymentService(db, audit=audit)
         self.expenses = ExpenseService(db, audit=audit)
         self.profile = ProfileService(db, audit=audit, logos=None)
@@ -195,44 +207,40 @@ class Seeder:
 
     # ------------------------------------------------------------------ domain
 
-    def seed_classes_and_students(self, actor: User) -> dict[str, int]:
-        class_ids: dict[str, int] = {}
-        students_by_class: dict[int, list[Student]] = {}
-        counts = {"Grade 4": 12, "Grade 5": 11, "Grade 6": 10, "Grade 7": 9}
+    def seed_templates(self, actor: User) -> dict[str, int]:
+        ids: dict[str, int] = {}
+        for grade, (name, amount) in TEMPLATES.items():
+            template = self.templates.create_template(user=actor, name=name, amount=amount)
+            ids[grade] = template.id
+        return ids
+
+    def seed_classes_and_students(self, actor: User, template_ids: dict[str, int]) -> None:
+        enrolled = _enrollment_start(self.today)
         index = 0
-        for name, items in CLASSES.items():
-            cls = self.classes.create_class(user=actor, name=name)
-            class_ids[name] = cls.id
-            for item_name, amount in items:
-                self.classes.add_fee_item(
-                    user=actor, class_id=cls.id, name=item_name, amount=amount
-                )
-            students_by_class[cls.id] = []
-            for _ in range(counts[name]):
+        for grade, count in CLASS_STUDENT_COUNTS.items():
+            cls = self.classes.create_class(
+                user=actor, name=grade, default_template_id=template_ids[grade]
+            )
+            for _ in range(count):
                 first, last = STUDENTS[index]
                 index += 1
-                student = self.students.add_student(
-                    user=actor, class_id=cls.id, first_name=first, last_name=last
+                self.students.add_student(
+                    user=actor,
+                    class_id=cls.id,
+                    first_name=first,
+                    last_name=last,
+                    enrolled_on=enrolled,
+                    fee_template_id=template_ids[grade],
                 )
-                students_by_class[cls.id].append(student)
-        return class_ids
 
     def complete_grade7(self, actor: User) -> None:
-        """Mark Grade 7 completed after its bills were generated (retains arrears)."""
+        """Mark Grade 7 completed (keeps its students' owed months and arrears)."""
         with self.db.session() as session:
             cls = session.query(Class).filter(Class.name == "Grade 7").first()
         if cls is not None and cls.status != "completed":
             self.classes.update_class(
                 user=actor, class_id=cls.id, name=cls.name, status="completed"
             )
-
-    def seed_charges(self, actor: User) -> None:
-        with self.db.session() as session:
-            class_ids = [cls.id for cls in session.query(Class).all()]
-        for period in _recent_periods(self.today):
-            year, month = period
-            for class_id in class_ids:
-                self.fees.generate(user=actor, class_id=class_id, month=month, year=year)
 
     def seed_payments(self, actor: User) -> None:
         methods = ["cash", "bank", "other"]
@@ -243,8 +251,9 @@ class Seeder:
                 .all()
             )
             monthly_by_class = {
-                cls.id: self._monthly_fee_cents(session, cls.id)
+                cls.id: cls.default_template.amount_cents
                 for cls in session.query(Class).all()
+                if cls.default_template is not None
             }
         periods = _recent_periods(self.today)
         for position, student in enumerate(students):
@@ -261,15 +270,54 @@ class Seeder:
                     cents = int(monthly * 0.5)
                 else:
                     cents = monthly
+                if profile == "credit" and offset == 0:
+                    cents += 5000  # overpay -> the excess becomes account credit
                 self.payments.record_payment(
                     user=actor,
                     student_id=student.id,
                     amount=f"{cents / 100:.2f}",
                     method=methods[position % len(methods)],
-                    paid_on=_safe_day(
-                        self.today, year, month, 3 + position % 3
-                    ),
+                    paid_on=_safe_day(self.today, year, month, 3 + position % 3),
+                    month=month,
+                    year=year,
                 )
+
+    def archive_a_student(self, actor: User) -> Student | None:
+        """Leave one never-paying student archived but still in arrears."""
+        with self.db.session() as session:
+            student = (
+                session.query(Student)
+                .order_by(Student.id)
+                .filter(Student.status == "active")
+                .first()
+            )
+        if student is None:
+            return None
+        self.students.archive_student(user=actor, student_id=student.id)
+        return student
+
+    def seed_waiver(self, actor: User, student: Student | None) -> None:
+        """Waive the archived student's newest owed month in full (FW-10/FW-11)."""
+        if student is None:
+            return
+        from app.fees.account import expected_cents
+
+        year, month = _recent_periods(self.today)[-1]
+        with self.db.session() as session:
+            live = session.get(Student, student.id)
+            assert live is not None
+            closed = {(row.month, row.year) for row in session.query(ClosedMonth).all()}
+            amount = expected_cents(session, live, month, year, closed, date.today())
+        if amount <= 0:
+            return
+        self.waivers.add_waiver(
+            user=actor,
+            student_id=student.id,
+            month=month,
+            year=year,
+            amount=f"{amount / 100:.2f}",
+            label="Sponsorship — month covered",
+        )
 
     def seed_expenses(self, actor: User) -> None:
         category_ids: dict[str, int] = {}
@@ -280,36 +328,15 @@ class Seeder:
             plan = list(MONTHLY_EXPENSES)
             if offset % 2 == 0:
                 plan = plan + BI_MONTHLY_EXPENSES
-            for category, description, amount, method, day in plan:
+            for cat, description, amount, method, day in plan:
                 self.expenses.record_expense(
                     user=actor,
-                    category_id=category_ids[category],
+                    category_id=category_ids[cat],
                     description=description,
                     amount=amount,
                     method=method,
                     occurred_on=_safe_day(self.today, year, month, day),
                 )
-
-    def archive_a_student(self, actor: User) -> None:
-        """Leave one never-paying student archived but still in arrears."""
-        with self.db.session() as session:
-            student = (
-                session.query(Student)
-                .order_by(Student.id)
-                .filter(Student.status == "active")
-                .first()
-            )
-            if student is not None:
-                self.students.archive_student(user=actor, student_id=student.id)
-
-    @staticmethod
-    def _monthly_fee_cents(session, class_id: int) -> int:
-        total = (
-            session.query(func.sum(FeeItem.amount_cents))
-            .filter(FeeItem.class_id == class_id)
-            .scalar()
-        )
-        return int(total or 0)
 
     # ------------------------------------------------------------------ report
 
@@ -317,15 +344,17 @@ class Seeder:
         from app.arrears.service import ArrearsService
 
         with self.db.session() as session:
+            templates = session.query(FeeTemplate).count()
             students = session.query(Student).count()
-            charges = session.query(Charge).count()
             payments = session.query(Payment).count()
+            waivers = session.query(Waiver).count()
             expenses = session.query(Expense).count()
             categories = session.query(ExpenseCategory).count()
         arrears_lines = len(ArrearsService(self.db).arrears_report())
         print(
-            f"Seeded: {len(CLASSES)} classes, {students} students, "
-            f"{charges} charges, {payments} payments, "
+            f"Seeded: {len(TEMPLATES)} templates, "
+            f"{len(CLASS_STUDENT_COUNTS)} classes, {students} students, "
+            f"{payments} payments, {waivers} waiver(s), "
             f"{categories} expense categories, {expenses} expenses, "
             f"{arrears_lines} student(s) in arrears."
         )
@@ -334,17 +363,16 @@ class Seeder:
 def reset_domain(db: Database) -> None:
     """Delete demo domain data (never users, profile, or audit)."""
     with db.session() as session:
-        session.query(PaymentAllocation).delete()
+        session.query(Waiver).delete()
         session.query(Credit).delete()
         session.query(Payment).delete()
-        session.query(Adjustment).delete()
-        session.query(Charge).delete()
-        session.query(GenerationRecord).delete()
+        session.query(StudentAmountChange).delete()
         session.query(Expense).delete()
         session.query(ExpenseCategory).delete()
-        session.query(FeeItem).delete()
         session.query(Student).delete()
+        session.query(ClosedMonth).delete()
         session.query(Class).delete()
+        session.query(FeeTemplate).delete()
         session.commit()
 
 
@@ -375,12 +403,13 @@ def main() -> None:
 
     seeder = Seeder(db)
     actor = seeder.ensure_users_and_profile()
-    seeder.seed_classes_and_students(actor)
-    seeder.seed_charges(actor)
+    template_ids = seeder.seed_templates(actor)
+    seeder.seed_classes_and_students(actor, template_ids)
     seeder.complete_grade7(actor)
     seeder.seed_payments(actor)
+    archived = seeder.archive_a_student(actor)
+    seeder.seed_waiver(actor, archived)
     seeder.seed_expenses(actor)
-    seeder.archive_a_student(actor)
     seeder.summary()
     print("Done. Start the app (run.bat) and log in with admin/admin123.")
 
