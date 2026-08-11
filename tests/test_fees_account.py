@@ -13,15 +13,8 @@ from datetime import date
 
 from app.charge_status import ChargeStatus
 from app.fees.account import is_in_owed_range, month_range, owed_months, student_account
-from app.models import (
-    Class,
-    ClosedMonth,
-    Credit,
-    FeeTemplate,
-    Payment,
-    Student,
-    StudentStatus,
-)
+from app.models import Class, ClosedMonth, Student, StudentStatus
+from tests.helpers import add_credit, add_payment, make_billed_student
 
 
 def make_student(session, enrolled_on, archived_on=None) -> Student:
@@ -39,53 +32,6 @@ def make_student(session, enrolled_on, archived_on=None) -> Student:
     session.add(student)
     session.flush()
     return student
-
-
-def make_billed_student(session, enrolled_on, archived_on=None, amount=5000) -> Student:
-    """A student linked to a fee template, so every owed month expects ``amount``."""
-    cls = Class(name="Grade 1")
-    session.add(cls)
-    session.flush()
-    template = FeeTemplate(name="Standard", amount_cents=amount)
-    session.add(template)
-    session.flush()
-    student = Student(
-        class_id=cls.id,
-        first_name="Ada",
-        last_name="Lovelace",
-        status=StudentStatus.ACTIVE,
-        enrolled_on=enrolled_on,
-        archived_on=archived_on,
-        fee_template_id=template.id,
-    )
-    session.add(student)
-    session.flush()
-    return student
-
-
-def add_payment(session, student_id, amount_cents, month, year) -> Payment:
-    payment = Payment(
-        student_id=student_id,
-        amount_cents=amount_cents,
-        method="cash",
-        paid_on=date(year, month, 1),
-        month=month,
-        year=year,
-    )
-    session.add(payment)
-    session.flush()
-    return payment
-
-
-def add_credit(session, student_id, amount_cents, payment=None) -> Credit:
-    credit = Credit(
-        student_id=student_id,
-        amount_cents=amount_cents,
-        payment_id=payment.id if payment is not None else None,
-    )
-    session.add(credit)
-    session.flush()
-    return credit
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +124,7 @@ def test_is_in_owed_range_respects_enrollment_and_archive(session):
 
 
 def test_excess_payment_becomes_credit_consumed_oldest_owed_month_first(session):
-    student = make_billed_student(session, date(2026, 3, 1), archived_on=date(2026, 5, 31))
+    student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 5, 31))
     payment = add_payment(session, student.id, 6000, 3, 2026)  # $60 on a $50 month
     add_credit(session, student.id, 1000, payment=payment)  # excess rolls forward (FW-15)
     session.commit()
@@ -194,7 +140,7 @@ def test_excess_payment_becomes_credit_consumed_oldest_owed_month_first(session)
 
 
 def test_unused_credit_stays_visible_on_the_account_and_lines(session):
-    student = make_billed_student(session, date(2026, 3, 1), archived_on=date(2026, 4, 30))
+    student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 4, 30))
     payment = add_payment(session, student.id, 8000, 3, 2026)
     add_credit(session, student.id, 3000, payment=payment)
     session.commit()
@@ -209,7 +155,7 @@ def test_unused_credit_stays_visible_on_the_account_and_lines(session):
 
 
 def test_month_status_is_paid_partial_unpaid(session):
-    student = make_billed_student(session, date(2026, 3, 1), archived_on=date(2026, 5, 31))
+    student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 5, 31))
     add_payment(session, student.id, 5000, 3, 2026)  # settled → paid
     add_payment(session, student.id, 2000, 4, 2026)  # some but not all → partial
     session.commit()
@@ -222,7 +168,7 @@ def test_month_status_is_paid_partial_unpaid(session):
 
 
 def test_credit_consumed_promotes_a_partial_month_to_paid(session):
-    student = make_billed_student(session, date(2026, 3, 1), archived_on=date(2026, 3, 31))
+    student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 3, 31))
     payment = add_payment(session, student.id, 3000, 3, 2026)
     add_credit(session, student.id, 2000, payment=payment)
     session.commit()
@@ -237,7 +183,7 @@ def test_credit_consumed_promotes_a_partial_month_to_paid(session):
 
 
 def test_totals_expected_paid_credits_and_balance(session):
-    student = make_billed_student(session, date(2026, 3, 1), archived_on=date(2026, 4, 30))
+    student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 4, 30))
     payment = add_payment(session, student.id, 6000, 3, 2026)
     add_credit(session, student.id, 1000, payment=payment)
     session.commit()
@@ -253,7 +199,7 @@ def test_totals_expected_paid_credits_and_balance(session):
 
 
 def test_balance_can_be_negative_when_holding_credit(session):
-    student = make_billed_student(session, date(2026, 3, 1), archived_on=date(2026, 3, 31))
+    student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 3, 31))
     payment = add_payment(session, student.id, 6000, 3, 2026)
     add_credit(session, student.id, 1000, payment=payment)
     session.commit()
@@ -267,7 +213,7 @@ def test_balance_can_be_negative_when_holding_credit(session):
 
 
 def test_closed_months_are_excluded_from_the_account_lines(session):
-    student = make_billed_student(session, date(2026, 3, 1), archived_on=date(2026, 5, 31))
+    student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 5, 31))
     session.add(ClosedMonth(month=4, year=2026))
     session.commit()
 

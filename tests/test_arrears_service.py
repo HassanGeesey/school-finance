@@ -19,93 +19,13 @@ from app.arrears.service import (
     ArrearsService,
     debt_age_band,
 )
-from app.models import (
-    Class,
-    ClassStatus,
-    Credit,
-    FeeTemplate,
-    Payment,
-    Student,
-    StudentAmountChange,
-    StudentStatus,
-)
-
-PASSWORD = "correct horse battery staple"
+from app.models import ClassStatus, StudentStatus
+from tests.helpers import add_credit, add_payment, make_billed_student
 
 
 @pytest.fixture()
 def arrears(db) -> ArrearsService:
     return ArrearsService(db)
-
-
-def make_billed_student(
-    session,
-    *,
-    enrolled_on,
-    archived_on=None,
-    amount=5000,
-    first="Ada",
-    last="Lovelace",
-    class_name="Grade 1",
-    class_status=ClassStatus.ACTIVE,
-    status=StudentStatus.ACTIVE,
-) -> Student:
-    """A student linked to a fee template, so every owed month expects ``amount``."""
-    cls = Class(name=class_name, status=class_status)
-    session.add(cls)
-    session.flush()
-    template = FeeTemplate(name="Standard", amount_cents=amount)
-    session.add(template)
-    session.flush()
-    student = Student(
-        class_id=cls.id,
-        first_name=first,
-        last_name=last,
-        status=status,
-        enrolled_on=enrolled_on,
-        archived_on=archived_on,
-        fee_template_id=template.id,
-    )
-    session.add(student)
-    session.flush()
-    # The students service seeds the amount in force at the enrollment month
-    # (``_seed_amount``); mirror it so past months resolve without a template
-    # lazy-load.
-    session.add(
-        StudentAmountChange(
-            student_id=student.id,
-            amount_cents=amount,
-            month=enrolled_on.month,
-            year=enrolled_on.year,
-        )
-    )
-    session.flush()
-    return student
-
-
-def add_payment(session, student_id, amount_cents, month, year) -> Payment:
-    payment = Payment(
-        student_id=student_id,
-        amount_cents=amount_cents,
-        method="cash",
-        paid_on=date(year, month, 1),
-        month=month,
-        year=year,
-    )
-    session.add(payment)
-    session.flush()
-    return payment
-
-
-def add_credit(session, student_id, amount_cents, payment=None) -> Credit:
-    credit = Credit(
-        student_id=student_id,
-        amount_cents=amount_cents,
-        payment_id=payment.id if payment is not None else None,
-    )
-    session.add(credit)
-    session.flush()
-    return credit
 
 
 # ---------------------------------------------------------------------------

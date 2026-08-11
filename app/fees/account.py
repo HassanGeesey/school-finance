@@ -197,7 +197,8 @@ class AccountView:
     when the student still owes and negative when they hold credit (FW-15).
     ``received_cents`` is every payment ever recorded (including what became
     credit); ``paid_cents`` is the sum of payments tagged to the owed months
-    shown; ``credits_cents`` is the carried credit yet to be consumed.
+    shown; ``credits_cents`` is the total credit carried on the account (the
+    per-month Credit column shows how much each month consumed).
     """
 
     student: Student

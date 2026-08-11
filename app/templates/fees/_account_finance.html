@@ -111,4 +111,31 @@
       </table>
     {% endcall %}
   {% endcall %}
+
+  {% call card(title="Credit", subtitle="Excess payments carried on the account; it covers the oldest owed shortfalls first (FW-21).") %}
+    {% call table_scroll() %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th class="text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for credit in account.credits %}
+          <tr>
+            <td>{{ credit.created_at.date().isoformat() }}</td>
+            <td class="text-right font-semibold text-base-content">{{ money(credit.amount_cents) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="2">
+              {{ empty_state("No credit held", "Excess payments will appear here as credit.", "banknotes") }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endcall %}
+  {% endcall %}
 </div>
