@@ -41,7 +41,14 @@
         <tbody>
           {% for line in account.lines %}
           <tr>
-            <td class="font-medium text-base-content">{{ line.period_label }}</td>
+            <td class="font-medium text-base-content">
+              {{ line.period_label }}
+              {% for waiver in line.waivers %}
+              <div class="mt-1 flex items-center gap-1 text-xs text-base-content/60">
+                {{ icon("academic-cap", "h-3 w-3") }} {{ waiver.label }} — {{ money(waiver.amount_cents) }}
+              </div>
+              {% endfor %}
+            </td>
             <td class="text-right num">{{ money(line.expected_cents) }}</td>
             <td class="text-right num">{{ money(line.waivers_cents) }}</td>
             <td class="text-right num">{{ money(line.paid_cents) }}</td>

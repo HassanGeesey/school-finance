@@ -1,0 +1,40 @@
+{# Add-waiver form, loaded into the account page's modal by the "Add waiver"
+   action. Posts over htmx to ``/students/<id>/waivers``; the route re-renders
+   this partial with the error, or — on success — with a toast + ``waivers-changed``
+   event (which closes the modal and refreshes the account finance body). #}
+{% from "components/ui.html" import form_field, alert, btn %}
+{% from "components/icons.html" import icon %}
+
+<div>
+  <form hx-post="/students/{{ student.id }}/waivers"
+        hx-target="#waiver-modal-content" hx-swap="innerHTML"
+        method="post" novalidate>
+    <h3 class="text-lg font-semibold">Add waiver</h3>
+    <p class="mt-1 text-sm text-base-content/60">Forgives part or all of one month's expected amount. Multiple waivers stack; a reason is required.</p>
+
+    {% if error %}
+    <div class="mt-3">{{ alert("error", error) }}</div>
+    {% endif %}
+
+    <div class="mt-4 space-y-4">
+      <div>
+        <label for="waiver-period" class="label"><span class="label-text">For month</span></label>
+        <select id="waiver-period" name="period" class="select select-bordered w-full" required>
+          {% for month, year, period_label_text in month_options %}
+          <option value="{{ "%04d-%02d"|format(year, month) }}" {% if selected_period == "%04d-%02d"|format(year, month) %}selected{% endif %}>{{ period_label_text }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>{{ form_field("amount", "Amount to waive", type="text", value=amount, placeholder="0.00", required=true) }}</div>
+      <div>
+        <label for="waiver-label" class="label"><span class="label-text">Reason</span></label>
+        <input id="waiver-label" name="label" type="text" value="{{ label }}" placeholder="e.g. Skipped month, hardship" class="input w-full" required>
+      </div>
+    </div>
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" onclick="document.getElementById('waiver-modal').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary">{{ icon("academic-cap", "h-4 w-4") }} Add waiver</button>
+    </div>
+  </form>
+</div>

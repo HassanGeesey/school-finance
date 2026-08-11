@@ -34,7 +34,7 @@ from .db import Database, make_engine
 from .expenses.routes import router as expenses_router
 from .expenses.service import ExpenseService
 from .fees.routes import router as fees_router
-from .fees.service import TemplateService
+from .fees.service import ClosedMonthService, TemplateService, WaiverService
 from .models import User
 from .profile.routes import router as profile_router
 from .profile.service import LogoStorage, ProfileService
@@ -74,6 +74,8 @@ def create_app(
     classes = ClassService(db, audit=audit)
     students = StudentService(db, audit=audit)
     fees = TemplateService(db, audit=audit)
+    fees_closed = ClosedMonthService(db, audit=audit)
+    waivers = WaiverService(db, audit=audit)
     expenses = ExpenseService(db, audit=audit)
     admin = AdminUserService(db, audit=audit)
     templates = build_templates(settings.TEMPLATES_DIR)
@@ -127,6 +129,8 @@ def create_app(
     app.state.classes = classes
     app.state.students = students
     app.state.fees = fees
+    app.state.fees_closed = fees_closed
+    app.state.waivers = waivers
     app.state.expenses = expenses
     app.state.admin = admin
     app.state.profile = profile

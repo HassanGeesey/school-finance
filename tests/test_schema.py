@@ -122,31 +122,22 @@ def test_payment_stores_the_month_tag(db, session: Session):
     assert (stored.month, stored.year) == (3, 2026)
 
 
-def test_waiver_is_unique_per_student_month_year(db, session: Session):
+def test_waiver_allows_stacking_on_the_same_month(db, session: Session):
     student = _make_student(db, session)
 
-    session.add(
-        Waiver(
-            student_id=student.id,
-            month=3,
-            year=2026,
-            amount_cents=2000,
-            label="Hardship",
-        )
-    )
-    session.commit()
-
-    with pytest.raises(IntegrityError):
+    for cents in (2000, 1500):
         session.add(
             Waiver(
                 student_id=student.id,
                 month=3,
                 year=2026,
-                amount_cents=500,
-                label="Another reason",
+                amount_cents=cents,
+                label="Hardship",
             )
         )
-        session.commit()
+    session.commit()
+
+    assert session.query(Waiver).count() == 2
 
 
 def test_waiver_allows_stacking_on_different_months(db, session: Session):

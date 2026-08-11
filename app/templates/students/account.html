@@ -12,10 +12,12 @@
   <div>
     <a href="/classes/{{ student.class_id }}" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All classes · {{ student.school_class.name }}</a>
     <div class="mt-2">
+      {% set record_btn = btn(href="/payments/record?student_id=" ~ student.id, label="Record payment", icon="plus", variant="primary") %}
+      {% set waiver_btn = btn(label="Add waiver", icon="academic-cap", variant="secondary", type="button", attrs='hx-get="/students/' ~ student.id ~ '/waivers/new-form" hx-target="#waiver-modal-content" hx-swap="innerHTML" onclick="document.getElementById(\'waiver-modal\').showModal()"') %}
       {{ page_header(
         student.full_name,
         student.school_class.name ~ " · " ~ student_status_badge(student.status),
-        btn(href="/payments/record?student_id=" ~ student.id, label="Record payment", icon="plus", variant="primary")
+        record_btn ~ waiver_btn
       ) }}
     </div>
   </div>
@@ -36,8 +38,28 @@
     </div>
   </div>
 
-  <div id="account-finance">
+  <div id="account-finance"
+       hx-get="/students/{{ student.id }}/account/finance"
+       hx-trigger="waivers-changed from:body"
+       hx-target="this"
+       hx-swap="outerHTML">
     {% include "fees/_account_finance.html" %}
   </div>
+
+  <dialog id="waiver-modal" class="modal">
+    <div class="modal-box" id="waiver-modal-content">
+      {% include "students/_waiver_form.html" %}
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
 </div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+  document.body.addEventListener('waivers-changed', function () {
+    var dialog = document.getElementById('waiver-modal');
+    if (dialog && dialog.open) dialog.close();
+  });
+</script>
 {% endblock %}

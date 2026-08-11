@@ -9,6 +9,7 @@ imported and which rows were skipped.
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from urllib.parse import urlencode
 
@@ -23,6 +24,8 @@ from ..fees.account import amount_in_force
 from ..fees.service import (
     MONTH_NAMES,
     TemplateService,
+    WaiverError,
+    WaiverService,
     default_effective_month,
     period_label,
 )
@@ -41,10 +44,27 @@ def _service(request: Request) -> StudentService:
     return service
 
 
+def _waivers(request: Request) -> WaiverService:
+    service = request.app.state.waivers
+    assert isinstance(service, WaiverService)
+    return service
+
+
 def _reports(request: Request) -> ReportService:
     service = request.app.state.reports
     assert isinstance(service, ReportService)
     return service
+
+
+def _get_student(request: Request, student_id: int):
+    try:
+        return _service(request).get_student(student_id)
+    except StudentNotFound:
+        raise HTTPException(status_code=404, detail="Student not found.") from None
+
+
+def _is_htmx(request: Request) -> bool:
+    return request.headers.get("HX-Request") == "true"
 
 
 def _templates(request: Request) -> Jinja2Templates:
@@ -351,27 +371,160 @@ def student_account_page(
     ``PaymentService.account_summary``; the print block on the page doubles as
     the statement.
     """
-    try:
-        student = _service(request).get_student(student_id)
-    except StudentNotFound:
-        raise HTTPException(status_code=404, detail="Student not found.")
-    payments = request.app.state.payments
-    assert isinstance(payments, PaymentService)
-    summary = payments.account_summary(student_id)
+    student = _get_student(request, student_id)
+    context = _account_context(request, student)
+    context["msg"] = request.query_params.get("msg", "")
+    context["err"] = request.query_params.get("err", "")
     return _templates(request).TemplateResponse(
         request=request,
         name="students/account.html",
-        context={
-            "student": student,
-            "account": summary.account,
-            "oldest_unpaid": summary.oldest_unpaid,
-            "period_label": period_label,
-            "msg": request.query_params.get("msg", ""),
-            "err": request.query_params.get("err", ""),
-            "charge_status_labels": CHARGE_STATUS_LABELS,
-            "charge_status_tones": CHARGE_STATUS_TONES,
+        context=context,
+    )
+
+
+@router.get("/students/{student_id}/account/finance", response_class=HTMLResponse)
+def account_finance_partial(
+    request: Request,
+    student_id: int,
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    """The account's finance body alone, so the page can refresh it after a
+    waiver (htmx ``waivers-changed`` event)."""
+    student = _get_student(request, student_id)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="fees/_account_finance.html",
+        context=_account_context(request, student),
+    )
+
+
+def _account_context(request: Request, student) -> dict[str, object]:
+    payments = request.app.state.payments
+    assert isinstance(payments, PaymentService)
+    summary = payments.account_summary(student.id)
+    return {
+        "student": student,
+        "account": summary.account,
+        "oldest_unpaid": summary.oldest_unpaid,
+        "period_label": period_label,
+        "charge_status_labels": CHARGE_STATUS_LABELS,
+        "charge_status_tones": CHARGE_STATUS_TONES,
+    }
+
+
+@router.get("/students/{student_id}/waivers/new-form", response_class=HTMLResponse)
+def waiver_form(
+    request: Request,
+    student_id: int,
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    """The add-waiver form, loaded into the account page's modal (htmx).
+
+    The month picker lists the student's owed months (oldest unpaid first, or
+    the first owed month by default). Both Admin and Finance officer may waive
+    (FW-13), so the route is behind ``require_login`` only.
+    """
+    student = _get_student(request, student_id)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="students/_waiver_form.html",
+        context=_waiver_form_context(request, student),
+    )
+
+
+@router.post("/students/{student_id}/waivers", response_class=HTMLResponse)
+def add_waiver(
+    request: Request,
+    student_id: int,
+    period: str = Form(""),
+    amount: str = Form(""),
+    label: str = Form(""),
+    user: User = Depends(require_login),
+) -> Response:
+    student = _get_student(request, student_id)
+    try:
+        month, year = _coerce_waiver_period(period)
+        _waivers(request).add_waiver(
+            user=user, student_id=student_id, month=month, year=year, amount=amount, label=label
+        )
+    except WaiverError as exc:
+        if not _is_htmx(request):
+            return RedirectResponse(
+                f"/students/{student_id}/account?{urlencode({'err': str(exc)})}",
+                status_code=303,
+            )
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="students/_waiver_form.html",
+            context=_waiver_form_context(
+                request, student, amount=amount, label=label, period=period, error=str(exc)
+            ),
+            status_code=400,
+        )
+    message = "Waiver added."
+    if not _is_htmx(request):
+        return RedirectResponse(
+            f"/students/{student_id}/account?{urlencode({'msg': message})}",
+            status_code=303,
+        )
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="students/_waiver_form.html",
+        context=_waiver_form_context(request, student),
+        headers={
+            "HX-Trigger": json.dumps(
+                {
+                    "toast": {"message": message, "tone": "success"},
+                    "waivers-changed": True,
+                }
+            )
         },
     )
+
+
+def _coerce_waiver_period(raw: str) -> tuple[int, int]:
+    """A posted ``YYYY-MM`` owed-month picker value."""
+    raw = (raw or "").strip()
+    try:
+        year, month = (int(part) for part in raw.split("-"))
+    except (TypeError, ValueError):
+        raise WaiverError("Choose a valid month to waive.") from None
+    if not 1 <= month <= 12:
+        raise WaiverError("Choose a valid month to waive.")
+    return month, year
+
+
+def _waiver_form_context(
+    request: Request,
+    student,
+    *,
+    amount: str = "",
+    label: str = "",
+    period: str = "",
+    error: str = "",
+) -> dict[str, object]:
+    payments = request.app.state.payments
+    assert isinstance(payments, PaymentService)
+    summary = payments.account_summary(student.id)
+    options = [
+        (line.month, line.year, line.period_label) for line in summary.account.lines
+    ]
+    if not options:
+        today = date.today()
+        options = [(today.month, today.year, period_label(today.month, today.year))]
+    if summary.oldest_unpaid is not None:
+        year, month = summary.oldest_unpaid
+        default_period = f"{year:04d}-{month:02d}"
+    else:
+        default_period = f"{options[0][1]:04d}-{options[0][0]:02d}"
+    return {
+        "student": student,
+        "month_options": options,
+        "selected_period": period or default_period,
+        "amount": amount,
+        "label": label,
+        "error": error,
+    }
 
 
 @router.post("/classes/{class_id}/students", response_class=HTMLResponse)

@@ -209,9 +209,6 @@ class Waiver(Base):
     """
 
     __tablename__ = "waivers"
-    __table_args__ = (
-        UniqueConstraint("student_id", "month", "year", name="uq_waiver_student_month_year"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
