@@ -33,6 +33,11 @@ def create_template(client, name="Standard", amount="100.00"):
     return service.create_template(user=None, name=name, amount=amount)
 
 
+def add_closed_month(client, month=7, year=2026):
+    service = client.app.state.fees_closed
+    return service.add_closed_month(user=None, month=month, year=year)
+
+
 def htmx_headers() -> dict[str, str]:
     return {"HX-Request": "true"}
 
@@ -329,3 +334,158 @@ def test_archive_missing_template_404s(mini_client):
     client = authenticated_mini_client(mini_client)
 
     assert client.post("/fees/templates/999/archive").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Closed months (FW-17): the Admin's school-wide closed-month list
+# ---------------------------------------------------------------------------
+
+
+def test_fees_page_shows_the_closed_months_section(mini_client):
+    client = authenticated_mini_client(mini_client)
+
+    response = client.get("/fees")
+
+    assert response.status_code == 200
+    assert "Closed months" in response.text
+
+
+def test_closed_months_list_partial_renders_rows(mini_client):
+    client = authenticated_mini_client(mini_client)
+    add_closed_month(client, month=7, year=2026)
+
+    response = client.get("/fees/closed-months/list")
+
+    assert response.status_code == 200
+    assert "July 2026" in response.text
+    assert "No closed months" not in response.text
+
+
+def test_closed_months_list_partial_shows_the_empty_state(mini_client):
+    client = authenticated_mini_client(mini_client)
+
+    response = client.get("/fees/closed-months/list")
+
+    assert response.status_code == 200
+    assert "No closed months" in response.text
+
+
+def test_closed_months_list_is_open_to_finance(mini_client):
+    client = login_finance_client(mini_client)
+
+    assert client.get("/fees/closed-months/list").status_code == 200
+
+
+def test_closed_months_add_form_is_admin_only(mini_client):
+    client = login_finance_client(mini_client)
+
+    body = client.get("/fees/closed-months/list").text
+
+    assert "Close month" not in body
+    assert "/fees/closed-months" not in body
+
+
+def test_add_closed_month_via_htmx(mini_client):
+    client = authenticated_mini_client(mini_client)
+
+    response = client.post(
+        "/fees/closed-months",
+        data={"month": "7", "year": "2026"},
+        headers=htmx_headers(),
+    )
+
+    assert response.status_code == 200
+    trigger = json.loads(response.headers["HX-Trigger"])
+    assert trigger["toast"]["message"] == "July 2026 closed."
+    assert client.app.state.fees_closed.closed_month_set() == {(7, 2026)}
+
+
+def test_add_closed_month_via_plain_redirect(mini_client):
+    client = authenticated_mini_client(mini_client)
+
+    response = client.post(
+        "/fees/closed-months",
+        data={"month": "7", "year": "2026"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/fees")
+    assert "msg=" in response.headers["location"]
+
+
+def test_add_closed_month_requires_admin(mini_client):
+    client = login_finance_client(mini_client)
+
+    response = client.post(
+        "/fees/closed-months", data={"month": "7", "year": "2026"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_add_duplicate_closed_month_shows_an_error(mini_client):
+    client = authenticated_mini_client(mini_client)
+    add_closed_month(client, month=7, year=2026)
+
+    response = client.post(
+        "/fees/closed-months",
+        data={"month": "7", "year": "2026"},
+        headers=htmx_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "already closed" in response.text
+    assert client.app.state.fees_closed.closed_month_set() == {(7, 2026)}
+
+
+def test_add_closed_month_rejects_an_invalid_period(mini_client):
+    client = authenticated_mini_client(mini_client)
+
+    response = client.post(
+        "/fees/closed-months",
+        data={"month": "13", "year": "2026"},
+        headers=htmx_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "between 1 and 12" in response.text
+
+
+def test_remove_closed_month_via_htmx(mini_client):
+    client = authenticated_mini_client(mini_client)
+    add_closed_month(client, month=7, year=2026)
+
+    response = client.post(
+        "/fees/closed-months/remove",
+        data={"month": "7", "year": "2026"},
+        headers=htmx_headers(),
+    )
+
+    assert response.status_code == 200
+    trigger = json.loads(response.headers["HX-Trigger"])
+    assert trigger["toast"]["message"] == "July 2026 reopened."
+    assert client.app.state.fees_closed.closed_month_set() == set()
+
+
+def test_remove_closed_month_that_is_not_closed_shows_an_error(mini_client):
+    client = authenticated_mini_client(mini_client)
+
+    response = client.post(
+        "/fees/closed-months/remove",
+        data={"month": "7", "year": "2026"},
+        headers=htmx_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "not on the closed list" in response.text
+
+
+def test_remove_closed_month_requires_admin(mini_client):
+    client = login_finance_client(mini_client)
+
+    response = client.post(
+        "/fees/closed-months/remove", data={"month": "7", "year": "2026"}
+    )
+
+    assert response.status_code == 403

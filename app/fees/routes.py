@@ -1,13 +1,15 @@
-"""Fee template routes: the Admin's templates page and its HTMX partials.
+"""Fee routes: the Admin's templates page and the closed-months manager.
 
-Thin adapters over :class:`app.fees.service.TemplateService`. Viewing the list
-is open to any logged-in user; creating, editing, and archiving templates is
-Admin-only (Q24) and audited by the service layer. The add/edit form lives in a
-modal opened by the page action and posts over htmx — a save returns a fresh
-form and raises a toast + ``templates-changed`` event (which closes the modal
-and refreshes the list), with a plain-redirect fallback when htmx isn't present.
-Editing a template's amount asks for the month the change takes effect (default:
-next month); the amount itself is the current amount until that month.
+Thin adapters over :class:`app.fees.service.TemplateService` and
+:class:`app.fees.service.ClosedMonthService`. Viewing the lists is open to any
+logged-in user; creating, editing, archiving templates, and closing/reopening
+months is Admin-only (Q24) and audited by the service layer. The add/edit form
+lives in a modal opened by the page action and posts over htmx — a save returns
+a fresh form and raises a toast + ``templates-changed`` event (which closes the
+modal and refreshes the list), with a plain-redirect fallback when htmx isn't
+present. Editing a template's amount asks for the month the change takes effect
+(default: next month); the amount itself is the current amount until that month.
+The closed-months card swaps itself in place over htmx on every add/remove.
 """
 
 from __future__ import annotations
@@ -25,11 +27,15 @@ from ..models import User
 from ..money import format_cents, format_input_cents
 from .service import (
     MONTH_NAMES,
+    ClosedMonthError,
+    ClosedMonthService,
+    DuplicateClosedMonth,
     InvalidPeriod,
     TemplateError,
     TemplateNotFound,
     TemplateService,
     default_effective_month,
+    period_label,
 )
 
 router = APIRouter(include_in_schema=False)
@@ -164,6 +170,8 @@ def fees_page(request: Request, _user: User = Depends(require_login)) -> HTMLRes
         name="fees/index.html",
         context={
             **_list_context(request),
+            **_closed_context(request),
+            "error": "",
             "msg": request.query_params.get("msg", ""),
             "err": request.query_params.get("err", ""),
         },
@@ -292,3 +300,93 @@ def _status_mutation(
     if not _is_htmx(request):
         return _redirect(message)
     return _list_response(request, toast={"message": message, "tone": "success"})
+
+
+# ---------------------------------------------------------------------------
+# Closed months (FW-17): the school-wide list every owed month is derived from
+# ---------------------------------------------------------------------------
+
+
+def _closed_service(request: Request) -> ClosedMonthService:
+    service = request.app.state.fees_closed
+    assert isinstance(service, ClosedMonthService)
+    return service
+
+
+def _closed_context(request: Request) -> dict[str, object]:
+    """The context the closed-months card renders from, on the page or alone."""
+    now = datetime.now()
+    return {
+        "closed_months": _closed_service(request).list_closed_months(),
+        "months": [(i, MONTH_NAMES[i - 1]) for i in range(1, 13)],
+        "years": list(range(now.year - 1, now.year + 3)),
+        "is_admin": _is_admin(request),
+        "period_label": period_label,
+    }
+
+
+def _closed_response(
+    request: Request,
+    *,
+    toast: dict[str, str] | None = None,
+    error: str = "",
+    headers: dict[str, str] | None = None,
+) -> HTMLResponse:
+    merged = dict(headers or {})
+    if toast is not None:
+        merged["HX-Trigger"] = json.dumps({"toast": toast})
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="fees/_closed_months_list.html",
+        context={**_closed_context(request), "error": error},
+        headers=merged or None,
+    )
+
+
+@router.get("/fees/closed-months/list", response_class=HTMLResponse)
+def closed_months_list(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
+    """The closed-months card alone, so the page can refresh it."""
+    return _closed_response(request)
+
+
+@router.post("/fees/closed-months", response_class=HTMLResponse)
+def add_closed_month(
+    request: Request,
+    month: str = Form(""),
+    year: str = Form(""),
+    user: User = Depends(require_admin),
+) -> Response:
+    try:
+        m = _coerce_month(month)
+        y = _coerce_year(year)
+        closed = _closed_service(request).add_closed_month(user=user, month=m, year=y)
+    except (ClosedMonthError, InvalidPeriod) as exc:
+        if not _is_htmx(request):
+            return _redirect(str(exc), err=True)
+        return _closed_response(request, error=str(exc))
+    message = f"{period_label(closed.month, closed.year)} closed."
+    if not _is_htmx(request):
+        return _redirect(message)
+    return _closed_response(request, toast={"message": message, "tone": "success"})
+
+
+@router.post("/fees/closed-months/remove", response_class=HTMLResponse)
+def remove_closed_month(
+    request: Request,
+    month: str = Form(""),
+    year: str = Form(""),
+    user: User = Depends(require_admin),
+) -> Response:
+    try:
+        m = _coerce_month(month)
+        y = _coerce_year(year)
+        _closed_service(request).remove_closed_month(user=user, month=m, year=y)
+    except (ClosedMonthError, InvalidPeriod) as exc:
+        if not _is_htmx(request):
+            return _redirect(str(exc), err=True)
+        return _closed_response(request, error=str(exc))
+    assert m is not None and y is not None
+    message = f"{period_label(m, y)} reopened."
+    if not _is_htmx(request):
+        return _redirect(message)
+    return _closed_response(request, toast={"message": message, "tone": "success"})

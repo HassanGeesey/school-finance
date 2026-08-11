@@ -511,7 +511,10 @@ class ClosedMonthService:
         )
         return closed
 
-    def remove_closed_month(self, *, user: User | None, month: int, year: int) -> None:
+    def remove_closed_month(
+        self, *, user: User | None, month: int | None, year: int | None
+    ) -> None:
+        month, year = self._validate_period(month, year)
         with self._session() as session:
             closed = (
                 session.query(ClosedMonth)

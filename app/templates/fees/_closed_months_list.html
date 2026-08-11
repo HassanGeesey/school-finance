@@ -1,0 +1,67 @@
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import alert, card, btn, empty_state, table_scroll %}
+
+<div id="closed-months-card">
+  {% call card(title="Closed months", subtitle="A closed month is excluded from every student's owed months — no fees are expected and it never appears as unpaid.") %}
+  {% if error %}
+  <div class="mb-4">{{ alert("error", error) }}</div>
+  {% endif %}
+  {% if is_admin %}
+  <form class="mb-4 flex flex-wrap items-end gap-2"
+        hx-post="/fees/closed-months"
+        hx-target="#closed-months-card" hx-swap="outerHTML">
+    <label class="form-control w-36">
+      <div class="label"><span class="label-text">Month</span></div>
+      <select name="month" class="select select-bordered select-sm">
+        {% for i, name in months %}
+        <option value="{{ i }}">{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-control w-28">
+      <div class="label"><span class="label-text">Year</span></div>
+      <select name="year" class="select select-bordered select-sm">
+        {% for y in years %}
+        <option value="{{ y }}">{{ y }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {{ btn(label="Close month", icon="plus", variant="primary", size="sm", type="submit") }}
+  </form>
+  {% endif %}
+  {% call table_scroll() %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Month</th>
+          {% if is_admin %}<th class="w-32 text-right">Actions</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for closed in closed_months %}
+        <tr>
+          <td class="font-medium">{{ period_label(closed.month, closed.year) }}</td>
+          {% if is_admin %}
+          <td class="text-right whitespace-nowrap">
+            <button type="button" class="btn btn-ghost btn-xs text-success"
+                    data-confirm="Reopen {{ period_label(closed.month, closed.year) }}? Fees become due again."
+                    hx-post="/fees/closed-months/remove"
+                    hx-vals='{"month": {{ closed.month }}, "year": {{ closed.year }}}'
+                    hx-target="#closed-months-card" hx-swap="outerHTML">
+              {{ icon("arrow-path", "h-4 w-4") }} Reopen
+            </button>
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="{{ 2 if is_admin else 1 }}">
+            {{ empty_state("No closed months", "A closed month is skipped for every student, so holidays never show as unpaid.", "rectangle-stack") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endcall %}
+  {% endcall %}
+</div>

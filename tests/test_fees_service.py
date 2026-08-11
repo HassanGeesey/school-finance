@@ -14,6 +14,9 @@ import pytest
 from app.audit.service import AuditActions, AuditService
 from app.classes.service import ClassService
 from app.fees.service import (
+    ClosedMonthError,
+    ClosedMonthService,
+    DuplicateClosedMonth,
     InvalidPeriod,
     TemplateError,
     TemplateNotFound,
@@ -23,6 +26,7 @@ from app.fees.service import (
 )
 from app.models import (
     AuditLogEntry,
+    ClosedMonth,
     StudentAmountChange,
     User,
     UserRoles,
@@ -50,6 +54,11 @@ def classes(db, audit) -> ClassService:
 @pytest.fixture()
 def students(db, audit) -> StudentService:
     return StudentService(db, audit=audit)
+
+
+@pytest.fixture()
+def closed_months(db, audit) -> ClosedMonthService:
+    return ClosedMonthService(db, audit=audit)
 
 
 @pytest.fixture()
@@ -551,3 +560,72 @@ def test_restoring_a_live_template_is_a_no_op(templates, admin, session):
 def test_archiving_a_missing_template_raises(templates, admin):
     with pytest.raises(TemplateNotFound):
         templates.archive_template(user=admin, template_id=999)
+
+
+# ---------------------------------------------------------------------------
+# Closed months (FW-17): add / remove, unique per month+year, audited
+# ---------------------------------------------------------------------------
+
+
+def test_add_closed_month_stores_month_year_and_audits(closed_months, admin, session):
+    closed_months.add_closed_month(user=admin, month=7, year=2026)
+
+    stored = session.query(ClosedMonth).one()
+    assert stored.month == 7
+    assert stored.year == 2026
+    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.CLOSED_MONTH_ADD).one()
+    assert entry.user_id == admin.id
+    assert "July 2026" in entry.summary
+
+
+def test_add_closed_month_is_idempotent_by_month_and_year(closed_months, admin, session):
+    closed_months.add_closed_month(user=admin, month=7, year=2026)
+
+    with pytest.raises(DuplicateClosedMonth):
+        closed_months.add_closed_month(user=admin, month=7, year=2026)
+
+    assert session.query(ClosedMonth).count() == 1
+
+
+def test_add_closed_month_rejects_an_invalid_month(closed_months, admin):
+    with pytest.raises(ClosedMonthError):
+        closed_months.add_closed_month(user=admin, month=13, year=2026)
+    with pytest.raises(ClosedMonthError):
+        closed_months.add_closed_month(user=admin, month=None, year=2026)
+
+
+def test_add_closed_month_rejects_an_out_of_range_year(closed_months, admin):
+    with pytest.raises(ClosedMonthError):
+        closed_months.add_closed_month(user=admin, month=1, year=1900)
+
+
+def test_remove_closed_month_deletes_and_audits(closed_months, admin, session):
+    closed_months.add_closed_month(user=admin, month=7, year=2026)
+
+    closed_months.remove_closed_month(user=admin, month=7, year=2026)
+
+    assert session.query(ClosedMonth).count() == 0
+    entry = session.query(AuditLogEntry).filter_by(action=AuditActions.CLOSED_MONTH_REMOVE).one()
+    assert entry.user_id == admin.id
+    assert "July 2026" in entry.summary
+
+
+def test_remove_closed_month_missing_raises(closed_months, admin):
+    with pytest.raises(ClosedMonthError):
+        closed_months.remove_closed_month(user=admin, month=7, year=2026)
+
+
+def test_list_closed_months_orders_newest_first(closed_months, admin):
+    closed_months.add_closed_month(user=admin, month=1, year=2026)
+    closed_months.add_closed_month(user=admin, month=12, year=2025)
+    closed_months.add_closed_month(user=admin, month=3, year=2026)
+
+    rows = closed_months.list_closed_months()
+
+    assert [(row.month, row.year) for row in rows] == [(3, 2026), (1, 2026), (12, 2025)]
+
+
+def test_closed_month_set_returns_lookup_pairs(closed_months, admin):
+    closed_months.add_closed_month(user=admin, month=7, year=2026)
+
+    assert closed_months.closed_month_set() == {(7, 2026)}
