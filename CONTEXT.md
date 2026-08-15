@@ -24,6 +24,38 @@ _Avoid_: Icon, Picture, Brandmark
 The optional free-text contact block of the School Profile — Address, Phone, Email, and Website. No validation; blank fields simply do not display on printed documents.
 _Avoid_: Contact info, Contact fields, Details
 
+## Schools & campuses
+
+**School**:
+An organization the app serves (e.g. "Sunrise Primary School"). A School contains one or more Campuses; it is the umbrella everything belongs to.
+_Avoid_: Organization, tenant, institution
+
+**Campus**:
+A branch of a School (1..N). Students, classes, and campus staff live in a Campus; an Admin or Finance officer belongs to exactly one Campus. Even a one-branch School has a Campus from day one, so a second branch needs no migration.
+_Avoid_: Branch, site, location, school unit
+
+## Users & roles
+
+**Superadmin**:
+A School's platform user. Lives in the School Dashboard: creates Campuses, assigns a Campus Admin to each, and creates Owner/Shareholder accounts. Views every campus's data read-only — management, never data entry.
+_Avoid_: Root user, platform admin, administrator
+
+**Campus Admin**:
+The admin user of exactly one Campus (an "Admin"). Does the single-school Admin's job, scoped to one Campus: classes, students, fee templates, waivers, closed months, expenses, reports, and managing the campus's Finance Officers.
+_Avoid_: Manager, school admin, lead
+
+**Finance Officer**:
+A campus user who records payments and expenses and runs reports — the single-school Finance officer's job, scoped to one Campus.
+_Avoid_: Cashier, clerk, accounts
+
+**Owner/Shareholder**:
+A read-only user who can view every Campus's data in a School and the School Dashboard's summaries.
+_Avoid_: Viewer, spectator, stakeholder
+
+**School Dashboard**:
+The school-wide summary view: per-campus KPI cards (collections, arrears, expenses, expected-vs-paid) with drill-down into any campus. Working home of the Superadmin; read-only for Owners/Shareholders.
+_Avoid_: Overview, console, hub page
+
 ## Fee billing
 
 **Fee Template**:

@@ -196,3 +196,49 @@ Grilling session log. Updated as decisions are made.
 | # | Question | Answer |
 |---|----------|--------|
 | C-1 | What drives moving the DB to the cloud? | **Reliability + centralization.** Two delivery paths: the .exe keeps SQLite (offline); the online path moves to a centralized cloud DB. Wants to **manage all schools from one DB**, with each school effectively a "user"/tenant. (Per-school managed DBs — original reading of the compose-per-school plan — rejected; wants **one** central database.) |
+| C-2 | Cloud DB provider (Neon vs Supabase) | **Neon** — pure managed serverless Postgres, no BaaS extras. App already has its own auth/logo/ORM (FastAPI + SQLAlchemy sync); Supabase's Auth/Storage/Realtime/PostgREST would go unused and PostgREST would be a competing data path. Neon = drop-in Postgres the existing `make_engine()` can target, keeping web and .exe code byte-identical. |
+| C-3 | Tenant isolation shape in the central DB | **App-layer `school_id` scoping now; Postgres RLS as a follow-up ticket.** Every tenant table gets a `school_id` column + FK; one dependency injects the school (container env `SCHOOL_ID`) into the existing `get_db` choke point, services filter by it. RLS layered on later at no rework cost. Schema-per-tenant rejected. |
+| C-4 | App deployment topology | **Per-school app instance, one central DB** — each school keeps its own container on Dokploy (as today), each pointed at the central Neon DB with a tenant key in env. One shared DB, single source of truth; deploy/outage blast radius stays one school. |
+| C-5 | .exe delivery path | **Fully offline, stays SQLite, never touches Neon.** Runs as a single fixed tenant (school_id = 1) in its local DB so the codebase stays one branch (D-1). |
+| C-6 | Topology revision (under discussion) | User floated a stronger per-school model: each school on **its own subdomain**, its **own app instance** (one school's outage must not affect others), possibly on **different VPS or the school's own VPS**, **separate database per school** ("for the database they are separate"), and billing **per school for storage used**. Conflicts with C-1's "one central DB" — being discussed. |
+| C-7 | Cloud DB provider (supersedes C-2) | **Supabase, DB-only** — Supabase used purely as managed Postgres; the app's own FastAPI auth, ORM, and file storage stay untouched; `make_engine()` targets Supabase Postgres. Supersedes C-2 (Neon). |
+| C-8 | School ↔ Campus hierarchy | **School → Campus (1..N)** — a school can have many campuses; students belong to a campus; the campus is the independently-managed unit. Even where it's 1:1 today, the hierarchy is real so a second campus needs no migration. |
+| C-9 | What "restructure" covers | **The data model** — add the tenant layer (school + campus scoping) to tables and services. Architecture/deployment and UI follow in later rounds. |
+| C-10 | Multi-school dashboard purpose | **Read-only monitoring** — aggregate KPIs across all campuses/schools (collections, arrears, expenses, expected-vs-paid) with drill-down into any campus. Campus staff manage their own data; the dashboard is a viewing pane, not a control center. |
+
+## Multi-school user roles grilling session
+
+> Pivot: session moved from DB topology (C-1/C-6 — parked) to the **user-role model** first.
+
+| # | Question | Answer |
+|---|----------|--------|
+| UR-1 | Who are the users, now that multi-school is real? | **Four roles:** (1) **Superadmin** — manages campus admins and owners/shareholders; (2) **Owner/Shareholder** — sees **all** campuses' data **read-only**; (3) **Admin** — per campus, does exactly the job they do today; (4) **Finance officer** — per campus, does exactly the job they do today. |
+| UR-2 | Superadmin's data powers | **Manage-only + read-only.** Superadmin creates/manages campuses, campus admins, and owners/shareholders; can **view** any campus's data but never records or edits data. |
+| UR-3 | Owner/Shareholder visibility depth | **All data per campus + a per-campus summary dashboard.** They see each campus's full data (read-only) and a dashboard summarizing every campus. |
+| UR-4 | Campus scope of Admin/Finance | **One campus per user.** An admin/finance account is tied to exactly one campus and manages only it. |
+| UR-5 | Who creates whom | **Superadmin creates campus admins + owners/shareholders; campus admin keeps today's user-management power, campus-scoped** (creates finance officers — whether they can also create fellow admins pending). |
+| UR-6 | First-run provisioning | **Hub-first.** One setup wizard creates the superadmin; superadmin then creates campuses and their admins in-app. |
+| UR-7 | School ↔ Campus hierarchy (C-8 re-confirmed) | **School → Campus (1..N).** "School has campuses" — the school is the umbrella; campuses are its branches. |
+| UR-8 | Superadmin's powers (refined) | **Manages campus admins; can see the per-campus summary dashboard and each campus's full data (read-only).** ⚠️ Conflicts with UR-1 ("manages campus admins **and owners/shareholders**") — pending. |
+| UR-9 | Owner dashboard | **One dashboard, shared by superadmin and owners** — per-campus summary cards (collections, arrears, expenses, expected-vs-paid) with drill-down into any campus. C-10 confirmed. |
+| UR-10 | Offline .exe roles | **Unchanged — Admin + Finance only.** Superadmin/owner are cloud-path only; the .exe setup wizard still creates the one Admin (Q22). |
+| UR-11 | Campus admin's user-management scope | **Finance officers only.** Creating/demoting campus **admins** is superadmin's call (UR-1's "superadmin manages campus admins" taken literally). |
+| UR-12 | Superadmin's home & tools (resolves UR-8) | **Superadmin lives in the School Dashboard.** From there they: create **owner/shareholder** user accounts, create **campuses**, and **assign an Admin to each campus**. UR-1 stands — superadmin manages admins AND owners. Views each campus's data read-only + the summary dashboard. |
+
+> Parked by user (per C-9, arch./deployment rounds come later): **DB topology** (C-1 central vs C-6 per-school). The role model — a School Dashboard summarizing all campuses, owners/superadmin reading across every campus — pushes toward one central DB; not re-asked until the user pulls it back.
+
+| UR-13 | Superadmin scope | **One superadmin per school** (not global) — lives in that school's dashboard; creates that school's campuses, assigns an admin to each, and creates the school's owner/shareholder accounts. Each school's deployment runs its own superadmin. |
+| UR-14 | Campus scoping (re-ask) | **Campus = full operational unit, including branding** — each campus owns its profile (name/logo/contact, shown on receipts/sidebar/footer), closed months, fee templates, classes, students, expenses. The School is just the umbrella. |
+| UR-15 | .exe in the hierarchy | **Unchanged — no campus layer on the .exe** ("don't change the school campus"): the offline app keeps today's single-school model; School → Campus exists on the cloud path only. |
+| UR-16 | Owner/Shareholder scope | **Their school's campuses only** — a school's owners see that school's campuses' data (read-only) and that school's dashboard summary. |
+| UR-17 | School bootstrap | **The setup wizard creates the school + its superadmin together** — first run: name the school, create the superadmin account; then the superadmin creates campuses, admins, and owners in the School Dashboard (extends UR-6). |
+
+**Settled role model:** Superadmin (per school, wizard-born) → creates Campuses, assigns each a Campus Admin, creates Owners/Shareholders; School → Campus (1..N); Campus owns everything operational incl. branding; Admin/Finance scoped to one campus, jobs unchanged; Owners read-only per school; dashboard = per-campus summaries + drill-down, shared by superadmin (home) and owners (read-only); .exe untouched.
+
+## Data-model round (multi-school)
+
+| # | Question | Answer |
+|---|----------|--------|
+| MD-1 | DB topology (final, unparked) | **One central Supabase Postgres** (C-1/C-7 confirmed; C-6 dead). All schools in one DB; each school's instance scopes by `school_id`; owner/superadmin cross-campus views are plain queries. |
+| MD-2 | Tenant columns | **`campus_id` only on operational tables** (students, classes, templates, waivers, payments, credits, expenses, expense categories, closed months, student amount changes, audit) — school reached via campus → school join. `users` carries `school_id` (superadmin, owner) or `campus_id` (admin, finance). One FK per row. |
+| MD-3 | Fee template scope | **Per campus only** — each campus creates its own templates; a two-campus school duplicates "Standard — $100" per campus (copy on creation). Branding stays campus-level (UR-14). |
