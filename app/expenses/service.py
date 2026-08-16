@@ -32,6 +32,12 @@ from sqlalchemy.orm import Session, joinedload
 from ..audit.service import AuditActions, AuditService
 from ..db import Database
 from ..models import Expense, ExpenseCategory, PaymentMethods, User
+from ..tenants.scope import (
+    campus_for_write,
+    in_scope,
+    scope,
+    scoped_campus_filter,
+)
 from ..money import (
     InvalidAmount,
     Money,
@@ -132,6 +138,10 @@ class ExpenseService:
         if category is None:
             suffix = " active" if active_only else ""
             raise CategoryNotFound(f"No{suffix} expense category with id {category_id} exists.")
+        cur = scope()
+        if cur is not None and not in_scope(session, cur, category.campus_id):
+            suffix = " active" if active_only else ""
+            raise CategoryNotFound(f"No{suffix} expense category with id {category_id} exists.")
         return category
 
     @staticmethod
@@ -141,6 +151,11 @@ class ExpenseService:
         query = session.query(func.lower(ExpenseCategory.name)).filter(
             func.lower(ExpenseCategory.name) == name.lower()
         )
+        cur = scope()
+        if cur is not None:
+            query = query.filter(
+                scoped_campus_filter(session, cur, ExpenseCategory.campus_id)
+            )
         if exclude_id is not None:
             query = query.filter(ExpenseCategory.id != exclude_id)
         return query.first() is not None
@@ -151,6 +166,11 @@ class ExpenseService:
         """Active categories alphabetically, or all of them when ``include_archived``."""
         with self._session() as session:
             query = session.query(ExpenseCategory)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, ExpenseCategory.campus_id)
+                )
             if not include_archived:
                 query = query.filter(ExpenseCategory.is_active.is_(True))
             return query.order_by(ExpenseCategory.name, ExpenseCategory.id).all()
@@ -163,7 +183,9 @@ class ExpenseService:
                 raise DuplicateCategoryName(
                     f"An expense category named '{name}' already exists."
                 )
-            category = ExpenseCategory(name=name)
+            category = ExpenseCategory(
+                name=name, campus_id=campus_for_write(scope())
+            )
             session.add(category)
             try:
                 session.commit()
@@ -251,6 +273,7 @@ class ExpenseService:
                 amount_cents=amount_cents,
                 method=method,
                 occurred_on=occurred_on,
+                campus_id=campus_for_write(scope()),
                 recorded_by=user.id if user is not None else None,
             )
             session.add(expense)
@@ -279,6 +302,9 @@ class ExpenseService:
         """Expenses most recent first, optionally filtered by category and month."""
         with self._session() as session:
             query = session.query(Expense).options(joinedload(Expense.category))
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Expense.campus_id))
             if category_id is not None:
                 query = query.filter(Expense.category_id == category_id)
             if month is not None and year is not None:
@@ -295,7 +321,11 @@ class ExpenseService:
         Feeds the month filter dropdown so it only offers months with data.
         """
         with self._session() as session:
-            rows = session.query(Expense.occurred_on).distinct().all()
+            query = session.query(Expense.occurred_on)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Expense.campus_id))
+            rows = query.distinct().all()
         periods = {(when.year, when.month) for (when,) in rows}
         return sorted(periods, reverse=True)
 

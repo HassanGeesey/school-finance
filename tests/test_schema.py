@@ -16,6 +16,7 @@ from app.models import (
     Campus,
     Class,
     ClosedMonth,
+    ExpenseCategory,
     FeeTemplate,
     Payment,
     School,
@@ -178,13 +179,48 @@ def test_waiver_allows_stacking_on_different_months(db, session: Session):
     assert session.query(Waiver).count() == 2
 
 
-def test_closed_month_is_unique_per_month_year(db, session: Session):
-    session.add(ClosedMonth(month=7, year=2026))
+def test_closed_month_is_unique_per_campus(db, session: Session):
+    school = School(name="Sunrise Primary")
+    session.add(school)
+    session.flush()
+    campus_a = Campus(school_id=school.id, name="Campus A")
+    campus_b = Campus(school_id=school.id, name="Campus B")
+    session.add_all([campus_a, campus_b])
+    session.flush()
+    session.add(ClosedMonth(campus_id=campus_a.id, month=7, year=2026))
     session.commit()
 
+    # Same campus, same month → the DB rejects the duplicate.
     with pytest.raises(IntegrityError):
-        session.add(ClosedMonth(month=7, year=2026))
+        session.add(ClosedMonth(campus_id=campus_a.id, month=7, year=2026))
         session.commit()
+    session.rollback()
+
+    # A different campus may close the same month (MD-3: per-campus policy).
+    session.add(ClosedMonth(campus_id=campus_b.id, month=7, year=2026))
+    session.commit()
+
+
+def test_expense_category_name_is_unique_per_campus(db, session: Session):
+    school = School(name="Sunrise Primary")
+    session.add(school)
+    session.flush()
+    campus_a = Campus(school_id=school.id, name="Campus A")
+    campus_b = Campus(school_id=school.id, name="Campus B")
+    session.add_all([campus_a, campus_b])
+    session.flush()
+    session.add(ExpenseCategory(campus_id=campus_a.id, name="Salaries"))
+    session.commit()
+
+    # Same campus, same name → the DB rejects the duplicate.
+    with pytest.raises(IntegrityError):
+        session.add(ExpenseCategory(campus_id=campus_a.id, name="Salaries"))
+        session.commit()
+    session.rollback()
+
+    # A different campus may reuse the name (MD-3: per-campus categories).
+    session.add(ExpenseCategory(campus_id=campus_b.id, name="Salaries"))
+    session.commit()
 
 
 def test_round_trip_user_and_class(db, session: Session):

@@ -39,6 +39,12 @@ from ..models import (
     User,
     Waiver,
 )
+from ..tenants.scope import (
+    campus_for_write,
+    in_scope,
+    scope,
+    scoped_campus_filter,
+)
 from ..money import (
     AmountInput,
     InvalidAmount,
@@ -110,6 +116,9 @@ class TemplateService:
         template = session.get(FeeTemplate, template_id)
         if template is None:
             raise TemplateNotFound(f"No fee template with id {template_id} exists.")
+        cur = scope()
+        if cur is not None and not in_scope(session, cur, template.campus_id):
+            raise TemplateNotFound(f"No fee template with id {template_id} exists.")
         return template
 
     @staticmethod
@@ -166,7 +175,11 @@ class TemplateService:
         amount_cents = self._validate_amount(amount)
 
         with self._session() as session:
-            template = FeeTemplate(name=name, amount_cents=amount_cents)
+            template = FeeTemplate(
+                name=name,
+                amount_cents=amount_cents,
+                campus_id=campus_for_write(scope()),
+            )
             session.add(template)
             session.commit()
             session.refresh(template)
@@ -259,10 +272,19 @@ class TemplateService:
         entry at exactly that month is updated in place, so a template never
         stacks two entries on the same month. Returns how many linked students
         were touched (0 when no student is linked yet).
+
+        Propagation stays within the acting Campus: linked students from another
+        Campus are never touched, even when the linkage row exists (a foreign
+        link is normally refused at creation, but a corrupt row must not leak
+        amount changes across Campuses).
         """
-        students = (
-            session.query(Student).filter(Student.fee_template_id == template_id).all()
-        )
+        cur = scope()
+        query = session.query(Student).filter(Student.fee_template_id == template_id)
+        if cur is not None:
+            query = query.filter(
+                scoped_campus_filter(session, cur, Student.campus_id)
+            )
+        students = query.all()
         if not students:
             return 0
         existing = {
@@ -275,6 +297,7 @@ class TemplateService:
             )
             .all()
         }
+        campus_id = campus_for_write(cur)
         for student in students:
             row = existing.get((student.id, month, year))
             if row is None:
@@ -284,10 +307,13 @@ class TemplateService:
                         amount_cents=amount_cents,
                         month=month,
                         year=year,
+                        campus_id=campus_id,
                     )
                 )
             else:
                 row.amount_cents = amount_cents
+                if campus_id is not None:
+                    row.campus_id = campus_id
         return len(students)
 
     def archive_template(self, *, user: User | None, template_id: int) -> FeeTemplate:
@@ -323,37 +349,45 @@ class TemplateService:
         return template
 
     def list_templates(self) -> list[FeeTemplate]:
-        """Every template, active ones first, then archived — both by name."""
+        """Every template visible to the acting Campus, active ones first, then
+        archived — both by name."""
         with self._session() as session:
+            query = session.query(FeeTemplate)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, FeeTemplate.campus_id)
+                )
             return (
-                session.query(FeeTemplate)
-                .order_by(FeeTemplate.archived, FeeTemplate.name, FeeTemplate.id)
+                query.order_by(FeeTemplate.archived, FeeTemplate.name, FeeTemplate.id)
                 .all()
             )
 
     def list_active_templates(self) -> list[FeeTemplate]:
         """Only non-archived templates, for the class/student pickers."""
         with self._session() as session:
-            return (
-                session.query(FeeTemplate)
-                .filter(FeeTemplate.archived.is_(False))
-                .order_by(FeeTemplate.name, FeeTemplate.id)
-                .all()
-            )
+            query = session.query(FeeTemplate).filter(FeeTemplate.archived.is_(False))
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, FeeTemplate.campus_id)
+                )
+            return query.order_by(FeeTemplate.name, FeeTemplate.id).all()
 
     def get_template(self, template_id: int) -> FeeTemplate:
         with self._session() as session:
             return self._get_template(session, template_id)
 
     def linked_student_counts(self) -> dict[int, int]:
-        """How many students are currently linked to each template id (FW-19)."""
+        """How many students are currently linked to each visible template id (FW-19)."""
         with self._session() as session:
-            rows = (
-                session.query(Student.fee_template_id, func.count(Student.id))
-                .filter(Student.fee_template_id.isnot(None))
-                .group_by(Student.fee_template_id)
-                .all()
+            query = session.query(Student.fee_template_id, func.count(Student.id)).filter(
+                Student.fee_template_id.isnot(None)
             )
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
+            rows = query.group_by(Student.fee_template_id).all()
         return {template_id: int(count) for template_id, count in rows}
 
 
@@ -424,12 +458,16 @@ class WaiverService:
             student = session.get(Student, student_id)
             if student is None:
                 raise WaiverError("Choose a student.")
+            cur = scope()
+            if cur is not None and not in_scope(session, cur, student.campus_id):
+                raise WaiverError("Choose a student.")
             waiver = Waiver(
                 student_id=student_id,
                 month=month,
                 year=year,
                 amount_cents=amount_cents,
                 label=label,
+                campus_id=campus_for_write(cur),
                 created_by=user.id if user is not None else None,
             )
             session.add(waiver)
@@ -486,16 +524,21 @@ class ClosedMonthService:
     ) -> ClosedMonth:
         month, year = self._validate_period(month, year)
         with self._session() as session:
-            exists = (
-                session.query(ClosedMonth)
-                .filter(ClosedMonth.month == month, ClosedMonth.year == year)
-                .one_or_none()
+            cur = scope()
+            query = session.query(ClosedMonth).filter(
+                ClosedMonth.month == month, ClosedMonth.year == year
             )
-            if exists is not None:
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, ClosedMonth.campus_id)
+                )
+            if query.one_or_none() is not None:
                 raise DuplicateClosedMonth(
                     f"{period_label(month, year)} is already closed."
                 )
-            closed = ClosedMonth(month=month, year=year)
+            closed = ClosedMonth(
+                month=month, year=year, campus_id=campus_for_write(cur)
+            )
             session.add(closed)
             try:
                 session.commit()
@@ -516,11 +559,15 @@ class ClosedMonthService:
     ) -> None:
         month, year = self._validate_period(month, year)
         with self._session() as session:
-            closed = (
-                session.query(ClosedMonth)
-                .filter(ClosedMonth.month == month, ClosedMonth.year == year)
-                .one_or_none()
+            query = session.query(ClosedMonth).filter(
+                ClosedMonth.month == month, ClosedMonth.year == year
             )
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, ClosedMonth.campus_id)
+                )
+            closed = query.one_or_none()
             if closed is None:
                 raise ClosedMonthError(
                     f"{period_label(month, year)} is not on the closed list."
@@ -534,16 +581,30 @@ class ClosedMonthService:
         )
 
     def list_closed_months(self) -> list[ClosedMonth]:
-        """Every closed month, newest first."""
+        """Every closed month visible to the acting Campus, newest first."""
         with self._session() as session:
+            query = session.query(ClosedMonth)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, ClosedMonth.campus_id)
+                )
             return (
-                session.query(ClosedMonth)
-                .order_by(ClosedMonth.year.desc(), ClosedMonth.month.desc(), ClosedMonth.id)
+                query.order_by(
+                    ClosedMonth.year.desc(), ClosedMonth.month.desc(), ClosedMonth.id
+                )
                 .all()
             )
 
     def closed_month_set(self) -> set[tuple[int, int]]:
-        """The closed months as a lookup set of ``(month, year)`` pairs."""
+        """The closed months visible to the acting Campus as a lookup set of
+        ``(month, year)`` pairs."""
         with self._session() as session:
-            rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+            query = session.query(ClosedMonth.month, ClosedMonth.year)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, ClosedMonth.campus_id)
+                )
+            rows = query.all()
         return {(month, year) for month, year in rows}

@@ -312,12 +312,18 @@ class Waiver(Base):
 
 
 class ClosedMonth(Base):
-    """A month the whole school is closed: excluded from every student's owed
-    months, so it never appears as unpaid (FW-17)."""
+    """A month the campus is closed: excluded from every student's owed
+    months, so it never appears as unpaid (FW-17).
+
+    Per-Campus (MD-3): each branch sets its own holidays, so uniqueness is per
+    (campus_id, month, year). Legacy rows with a NULL campus_id are school-wide
+    and deduplicated by the service (SQLite treats NULLs as distinct in unique
+    constraints).
+    """
 
     __tablename__ = "closed_months"
     __table_args__ = (
-        UniqueConstraint("month", "year", name="uq_closed_month_year"),
+        UniqueConstraint("campus_id", "month", "year", name="uq_closed_month_campus_year"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -378,12 +384,15 @@ class Credit(Base):
 
 class ExpenseCategory(Base):
     __tablename__ = "expense_categories"
+    __table_args__ = (
+        UniqueConstraint("campus_id", "name", name="uq_expense_categories_campus_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int | None] = mapped_column(
         ForeignKey("campuses.id"), nullable=True, index=True
     )
-    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     # Archiving is the "remove": the row and its expenses stay, but the category
     # stops appearing in the record dropdown (no hard deletes — see module docstring).
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

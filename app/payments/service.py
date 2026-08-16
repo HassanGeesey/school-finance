@@ -45,6 +45,12 @@ from ..money import (
     parse_positive_cents,
 )
 from ..students.service import StudentNotFound
+from ..tenants.scope import (
+    campus_for_write,
+    in_scope,
+    scope,
+    scoped_campus_filter,
+)
 
 PAYMENT_METHOD_LABELS = {
     PaymentMethods.CASH: "Cash",
@@ -116,7 +122,13 @@ class PaymentService:
 
     @staticmethod
     def _closed_months(session: Session) -> set[tuple[int, int]]:
-        rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+        query = session.query(ClosedMonth.month, ClosedMonth.year)
+        cur = scope()
+        if cur is not None:
+            query = query.filter(
+                scoped_campus_filter(session, cur, ClosedMonth.campus_id)
+            )
+        rows = query.all()
         return {(month, year) for month, year in rows}
 
     @staticmethod
@@ -170,6 +182,9 @@ class PaymentService:
         )
         if student is None:
             raise StudentNotFound(f"No student with id {student_id} exists.")
+        cur = scope()
+        if cur is not None and not in_scope(session, cur, student.campus_id):
+            raise StudentNotFound(f"No student with id {student_id} exists.")
         return student
 
     def account_summary(self, student_id: int) -> AccountSummary:
@@ -222,15 +237,15 @@ class PaymentService:
     @staticmethod
     def _month_paid(session: Session, student_id: int, month: int, year: int) -> int:
         """Total cents already tagged to one (student, month)."""
-        rows = (
-            session.query(Payment.amount_cents)
-            .filter(
-                Payment.student_id == student_id,
-                Payment.month == month,
-                Payment.year == year,
-            )
-            .all()
+        query = session.query(Payment.amount_cents).filter(
+            Payment.student_id == student_id,
+            Payment.month == month,
+            Payment.year == year,
         )
+        cur = scope()
+        if cur is not None:
+            query = query.filter(scoped_campus_filter(session, cur, Payment.campus_id))
+        rows = query.all()
         return sum(amount for (amount,) in rows)
 
     def record_payment(
@@ -272,6 +287,7 @@ class PaymentService:
                 paid_on=paid_on,
                 month=month,
                 year=year,
+                campus_id=campus_for_write(scope()),
                 recorded_by=user.id if user is not None else None,
             )
             session.add(payment)
@@ -282,6 +298,7 @@ class PaymentService:
                         student_id=student_id,
                         amount_cents=credit,
                         payment_id=payment.id,
+                        campus_id=campus_for_write(scope()),
                     )
                 )
 
@@ -308,23 +325,30 @@ class PaymentService:
     def get_payment(self, payment_id: int) -> Payment:
         """One payment with its student and class (for receipts)."""
         with self._session() as session:
-            payment = (
+            query = (
                 session.query(Payment)
                 .options(joinedload(Payment.student).joinedload(Student.school_class))
                 .filter(Payment.id == payment_id)
-                .one_or_none()
             )
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Payment.campus_id))
+            payment = query.one_or_none()
         if payment is None:
             raise PaymentNotFound(f"No payment with id {payment_id} exists.")
         return payment
 
     def list_recent_payments(self, limit: int = 10) -> list[Payment]:
-        """The most recent payments across all students, for the payments page."""
+        """The most recent payments visible to the acting Campus, for the payments page."""
         with self._session() as session:
+            query = session.query(Payment).options(
+                joinedload(Payment.student).joinedload(Student.school_class)
+            )
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Payment.campus_id))
             return (
-                session.query(Payment)
-                .options(joinedload(Payment.student).joinedload(Student.school_class))
-                .order_by(Payment.created_at.desc(), Payment.id.desc())
+                query.order_by(Payment.created_at.desc(), Payment.id.desc())
                 .limit(limit)
                 .all()
             )
