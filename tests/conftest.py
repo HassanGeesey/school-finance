@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.db import Database, make_engine
 from app.main import create_app
+from app.models import Campus, School
+from app.tenants.scope import RequestScope, scope_context
 from tests.mini_app import build_mini_app
 
 
@@ -34,6 +36,33 @@ def db() -> Database:
 def session(db: Database) -> Iterator[Session]:
     with db.session() as session:
         yield session
+
+
+@pytest.fixture()
+def world(db: Database) -> Iterator[RequestScope]:
+    """A bare db plus one implicit School + Campus, with the request scope set.
+
+    Service tests that exercise operational reads/writes run under this scope so
+    the mandatory tenant layer (ticket 09) is satisfied: reads filter to the
+    implicit Campus and writes get stamped. No user is seeded — tests create
+    their own actors.
+    """
+    with db.session() as session:
+        school = School(name="Implicit School")
+        session.add(school)
+        session.flush()
+        campus = Campus(school_id=school.id, name="Implicit Campus")
+        session.add(campus)
+        session.commit()
+        scope_ = RequestScope(user=None, school_id=school.id, campus_id=campus.id)
+    with scope_context(scope_):
+        yield scope_
+
+
+@pytest.fixture()
+def campus_id(world: RequestScope) -> int:
+    """The implicit Campus id for raw-seed stamps (ticket 09)."""
+    return world.campus_id
 
 
 @pytest.fixture()

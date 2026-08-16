@@ -27,6 +27,7 @@ from app.models import (
     User,
     UserRoles,
 )
+from app.tenants.scope import scope
 
 NAME = "Head Teacher"
 USERNAME = "admin"
@@ -64,12 +65,16 @@ def authenticated_admin(client: TestClient) -> None:
 
 def add_finance_user(client: TestClient) -> None:
     with cast(FastAPI, client.app).state.db.session() as session:
+        school = session.query(School).one()
+        campus = session.query(Campus).filter_by(school_id=school.id).first()
         session.add(
             User(
                 name="Cashier",
                 username="cashier",
                 password_hash=hash_password("long enough password"),
                 role=UserRoles.FINANCE,
+                school_id=school.id,
+                campus_id=campus.id if campus is not None else None,
             )
         )
         session.commit()
@@ -85,6 +90,27 @@ def login_as(
 ) -> None:
     client.post("/logout", follow_redirects=False)
     login(client, username=username, password=password)
+
+
+def in_admin_scope(client: TestClient, fn):
+    """Run ``fn`` under the implicit school's Admin scope.
+
+    Route tests seed data by calling a service directly (``app.state.<service>``),
+    which runs outside an HTTP request and so has no request scope. The tenant
+    layer (ticket 09) makes unscoped service calls an error, so seeding is
+    wrapped in the acting Admin's scope (falling back to any user in
+    finance-only tests).
+    """
+    from app.models import User
+    from app.tenants.scope import RequestScope, scope_context
+
+    with cast(FastAPI, client.app).state.db.session() as session:
+        user = (
+            session.query(User).filter_by(username=USERNAME).one_or_none()
+            or session.query(User).order_by(User.id).first()
+        )
+    with scope_context(RequestScope.for_user(user)):
+        return fn()
 
 
 def seed_second_campus(client: TestClient) -> tuple[int, int]:
@@ -122,6 +148,14 @@ def seed_second_campus(client: TestClient) -> tuple[int, int]:
 # -- Derived-billing fixtures (ticket 07/08 service tests) ---------------------
 
 
+def _campus_id() -> int:
+    """The acting scope's Campus: operational rows must carry one (ticket 09)."""
+    campus_id = scope().campus_id if scope() is not None else None
+    if campus_id is None:
+        raise RuntimeError("billing fixtures require a campus-scoped context")
+    return campus_id
+
+
 def make_billed_student(
     session,
     *,
@@ -135,14 +169,16 @@ def make_billed_student(
     status=StudentStatus.ACTIVE,
 ) -> Student:
     """A student linked to a fee template, so every owed month expects ``amount``."""
-    cls = Class(name=class_name, status=class_status)
+    campus_id = _campus_id()
+    cls = Class(name=class_name, status=class_status, campus_id=campus_id)
     session.add(cls)
     session.flush()
-    template = FeeTemplate(name="Standard", amount_cents=amount)
+    template = FeeTemplate(name="Standard", amount_cents=amount, campus_id=campus_id)
     session.add(template)
     session.flush()
     student = Student(
         class_id=cls.id,
+        campus_id=campus_id,
         first_name=first,
         last_name=last,
         status=status,
@@ -158,6 +194,7 @@ def make_billed_student(
     session.add(
         StudentAmountChange(
             student_id=student.id,
+            campus_id=campus_id,
             amount_cents=amount,
             month=enrolled_on.month,
             year=enrolled_on.year,
@@ -170,6 +207,7 @@ def make_billed_student(
 def add_payment(session, student_id, amount_cents, month, year, paid_on=None) -> Payment:
     payment = Payment(
         student_id=student_id,
+        campus_id=_campus_id(),
         amount_cents=amount_cents,
         method="cash",
         paid_on=paid_on or date(year, month, 1),
@@ -184,6 +222,7 @@ def add_payment(session, student_id, amount_cents, month, year, paid_on=None) ->
 def add_credit(session, student_id, amount_cents, payment=None) -> Credit:
     credit = Credit(
         student_id=student_id,
+        campus_id=_campus_id(),
         amount_cents=amount_cents,
         payment_id=payment.id if payment is not None else None,
     )

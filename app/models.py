@@ -16,9 +16,10 @@ There are no charge rows and no generation step.
 
 Multi-school / multi-campus (cloud path): a School is the umbrella holding
 one or more Campuses, and the Campus is the fully self-contained operational
-unit (``docs/adr/0003``). Every operational table is scoped by a nullable
-``campus_id`` (MD-2) — the School is reached via the campus → school join —
-and the audit log carries a nullable campus for school-level actions. Users
+unit (``docs/adr/0003``). Every operational data table is scoped by a mandatory
+``campus_id`` (NOT NULL, ticket 09) — the School is reached via the campus →
+school join — while the audit log keeps a nullable campus for school-level
+actions (MD-2). Users
 carry a scope: ``school_id`` for Superadmin/Owner, ``campus_id`` for
 Admin/Finance. The offline .exe keeps the single-school model: a fresh install
 bootstraps one implicit School + Campus silently. The Campus owns the identity
@@ -168,8 +169,8 @@ class Class(Base):
     __tablename__ = "classes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ClassStatus.ACTIVE)
@@ -182,15 +183,15 @@ class Class(Base):
 
     default_template: Mapped[FeeTemplate | None] = relationship()
     students: Mapped[list[Student]] = relationship(back_populates="school_class")
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class Student(Base):
     __tablename__ = "students"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False, index=True)
     first_name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -210,7 +211,7 @@ class Student(Base):
 
     school_class: Mapped[Class] = relationship(back_populates="students")
     fee_template: Mapped[FeeTemplate | None] = relationship(back_populates="students")
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
     @property
     def full_name(self) -> str:
@@ -231,8 +232,8 @@ class FeeTemplate(Base):
     __tablename__ = "fee_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -240,7 +241,7 @@ class FeeTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     students: Mapped[list[Student]] = relationship(back_populates="fee_template")
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class StudentAmountChange(Base):
@@ -255,8 +256,8 @@ class StudentAmountChange(Base):
     __tablename__ = "student_amount_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -265,7 +266,7 @@ class StudentAmountChange(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class Waiver(Base):
@@ -279,8 +280,8 @@ class Waiver(Base):
     __tablename__ = "waivers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -291,7 +292,7 @@ class Waiver(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class ClosedMonth(Base):
@@ -299,9 +300,7 @@ class ClosedMonth(Base):
     months, so it never appears as unpaid (FW-17).
 
     Per-Campus (MD-3): each branch sets its own holidays, so uniqueness is per
-    (campus_id, month, year). Legacy rows with a NULL campus_id are school-wide
-    and deduplicated by the service (SQLite treats NULLs as distinct in unique
-    constraints).
+    (campus_id, month, year). ``campus_id`` is mandatory (ticket 09).
     """
 
     __tablename__ = "closed_months"
@@ -310,14 +309,14 @@ class ClosedMonth(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class Payment(Base):
@@ -331,8 +330,8 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -345,7 +344,7 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class Credit(Base):
@@ -354,15 +353,15 @@ class Credit(Base):
     __tablename__ = "credits"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class ExpenseCategory(Base):
@@ -372,8 +371,8 @@ class ExpenseCategory(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     # Archiving is the "remove": the row and its expenses stay, but the category
@@ -381,15 +380,15 @@ class ExpenseCategory(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class Expense(Base):
     __tablename__ = "expenses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+    campus_id: Mapped[int] = mapped_column(
+        ForeignKey("campuses.id"), nullable=False, index=True
     )
     category_id: Mapped[int] = mapped_column(ForeignKey("expense_categories.id"), nullable=False, index=True)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -400,7 +399,7 @@ class Expense(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     category: Mapped[ExpenseCategory] = relationship()
-    campus: Mapped[Campus | None] = relationship()
+    campus: Mapped[Campus] = relationship()
 
 
 class AuditLogEntry(Base):
@@ -411,9 +410,7 @@ class AuditLogEntry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Nullable: school-level actions (campus creation, admin assignment, owner
     # management) are recorded school-wide, not under a single campus (MD-2).
-    campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
-    )
+    campus_id: Mapped[int | None] = mapped_column(ForeignKey("campuses.id"), nullable=True, index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     summary: Mapped[str] = mapped_column(String(500), nullable=False)

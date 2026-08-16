@@ -23,7 +23,13 @@ from app.models import (
     StudentStatus,
 )
 from app.reports.service import ReportService
+from app.tenants.scope import scope
 from tests.helpers import add_credit, add_payment, make_billed_student
+
+
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
 
 
 @pytest.fixture()
@@ -67,7 +73,7 @@ def test_paid_students_exposes_expected_paid_credit_remaining_status(session, re
 def test_paid_students_excludes_a_closed_month(session, reports):
     today = date.today()
     make_billed_student(session, enrolled_on=date(today.year, today.month, 1))
-    session.add(ClosedMonth(month=today.month, year=today.year))
+    session.add(ClosedMonth(month=today.month, year=today.year, campus_id=scope().campus_id))
     session.commit()
 
     report = reports.paid_students(today.month, today.year)
@@ -158,12 +164,13 @@ def test_list_periods_unions_owed_payment_and_expense_months(session, reports):
         payment_year,
         paid_on=date(payment_year, payment_month, 5),
     )
-    category = ExpenseCategory(name="Utilities")
+    category = ExpenseCategory(name="Utilities", campus_id=scope().campus_id)
     session.add(category)
     session.flush()
     session.add(
         Expense(
             category_id=category.id,
+            campus_id=scope().campus_id,
             description="Bus fuel",
             amount_cents=2000,
             method="cash",

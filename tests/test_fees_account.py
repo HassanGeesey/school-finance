@@ -11,18 +11,28 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from app.charge_status import ChargeStatus
 from app.fees.account import is_in_owed_range, month_range, owed_months, student_account
 from app.models import Class, ClosedMonth, Student, StudentStatus
+from app.tenants.scope import scope
 from tests.helpers import add_credit, add_payment, make_billed_student
 
 
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
+
+
 def make_student(session, enrolled_on, archived_on=None) -> Student:
-    cls = Class(name="Grade 1")
+    campus_id = scope().campus_id
+    cls = Class(name="Grade 1", campus_id=campus_id)
     session.add(cls)
     session.flush()
     student = Student(
         class_id=cls.id,
+        campus_id=campus_id,
         first_name="Ada",
         last_name="Lovelace",
         status=StudentStatus.ACTIVE,
@@ -90,7 +100,7 @@ def test_closed_months_are_skipped_inside_the_owed_range(session):
 
 def test_closed_months_accept_closedmonth_rows(session):
     student = make_student(session, date(2026, 1, 5), archived_on=date(2026, 3, 31))
-    rows = [ClosedMonth(month=2, year=2026)]
+    rows = [ClosedMonth(month=2, year=2026, campus_id=scope().campus_id)]
     session.add_all(rows)
     session.commit()
 
@@ -214,7 +224,7 @@ def test_balance_can_be_negative_when_holding_credit(session):
 
 def test_closed_months_are_excluded_from_the_account_lines(session):
     student = make_billed_student(session, enrolled_on=date(2026, 3, 1), archived_on=date(2026, 5, 31))
-    session.add(ClosedMonth(month=4, year=2026))
+    session.add(ClosedMonth(month=4, year=2026, campus_id=scope().campus_id))
     session.commit()
 
     closed = session.query(ClosedMonth).all()

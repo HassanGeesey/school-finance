@@ -23,6 +23,11 @@ from app.models import ClassStatus, StudentStatus
 from tests.helpers import add_credit, add_payment, make_billed_student
 
 
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
+
+
 @pytest.fixture()
 def arrears(db) -> ArrearsService:
     return ArrearsService(db)

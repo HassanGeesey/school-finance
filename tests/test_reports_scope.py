@@ -6,8 +6,7 @@ Two Campuses of one School each hold their own payments, expenses, credits, and
 students, so income-vs-expense, expense-by-category, paid-students, summarized
 finance, the student register, the period dropdowns, the dashboard KPIs/charts,
 and the arrears report all reflect only the acting Campus. A School-bound
-Superadmin sees both Campuses; legacy NULL-campus rows stay visible to every
-scope. Route concerns live in ``test_reports_routes.py``.
+Superadmin sees both Campuses. Route concerns live in ``test_reports_routes.py``.
 """
 
 from datetime import date
@@ -369,23 +368,3 @@ def test_arrears_report_is_per_campus(db, session):
     assert [line.student.last_name for line in lines_b] == ["Hopper"]
     assert lines_b[0].owed_cents == 10000
     assert [line.student.last_name for line in lines_sa] == ["Hopper"]
-
-
-# ---------------------------------------------------------------------------
-# Legacy NULL-campus rows stay visible
-# ---------------------------------------------------------------------------
-
-
-def test_legacy_null_campus_rows_stay_visible_to_every_scope(reports, session):
-    _school, campus_a, campus_b, admin_a, admin_b, _superadmin = seed_tenant_world(session)
-    today = date.today()
-    legacy_class = Class(name="Legacy")
-    session.add(legacy_class)
-    session.flush()
-    billed_student(session, legacy_class, None, "Alan", "Turing", today)
-    session.commit()
-
-    for admin in (admin_a, admin_b):
-        with scope_context(RequestScope.for_user(admin)):
-            report = reports.student_list()
-        assert [line.student.last_name for line in report.lines] == ["Turing"]

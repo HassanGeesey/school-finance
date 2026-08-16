@@ -54,7 +54,7 @@ from ..money import (
     NonPositiveAmount,
     parse_positive_cents,
 )
-from ..tenants.scope import campus_for_write, in_scope, scope, scoped_campus_filter
+from ..tenants.scope import campus_for_write, in_scope, require_scope, scope, scoped_campus_filter
 
 
 class StudentError(Exception):
@@ -180,7 +180,7 @@ class StudentService:
         student = session.get(Student, student_id)
         if student is None:
             raise StudentNotFound(f"No student with id {student_id} exists.")
-        cur = scope()
+        cur = require_scope()
         if cur is not None and not in_scope(session, cur, student.campus_id):
             raise StudentNotFound(f"No student with id {student_id} exists.")
         return student
@@ -189,7 +189,7 @@ class StudentService:
         cls = session.get(Class, class_id)
         if cls is None:
             raise ClassNotFound(f"No class with id {class_id} exists.")
-        cur = scope()
+        cur = require_scope()
         if cur is not None and not in_scope(session, cur, cls.campus_id):
             raise ClassNotFound(f"No class with id {class_id} exists.")
         return cls
@@ -228,7 +228,7 @@ class StudentService:
         template = session.get(FeeTemplate, template_id)
         if template is None:
             raise TemplateNotFound(f"No fee template with id {template_id} exists.")
-        cur = scope()
+        cur = require_scope()
         if cur is not None and not in_scope(session, cur, template.campus_id):
             raise TemplateNotFound(f"No fee template with id {template_id} exists.")
         return template
@@ -260,7 +260,7 @@ class StudentService:
         if row is None:
             row = StudentAmountChange(
                 student_id=student_id,
-                campus_id=campus_for_write(scope()),
+                campus_id=campus_for_write(require_scope()),
                 amount_cents=amount_cents,
                 month=month,
                 year=year,
@@ -295,7 +295,7 @@ class StudentService:
             raise StudentError("Choose a fee template or enter a monthly amount.")
 
         with self._session() as session:
-            cur = scope()
+            cur = require_scope()
             cls = self._get_class(session, class_id)
             student = Student(
                 class_id=class_id,
@@ -515,7 +515,7 @@ class StudentService:
             )
             if student is None:
                 raise StudentNotFound(f"No student with id {student_id} exists.")
-            cur = scope()
+            cur = require_scope()
             if cur is not None and not in_scope(session, cur, student.campus_id):
                 raise StudentNotFound(f"No student with id {student_id} exists.")
         return student
@@ -528,7 +528,7 @@ class StudentService:
         """Students of one class, sorted by name, optionally filtered by status."""
         with self._session() as session:
             self._get_class(session, class_id)
-            cur = scope()
+            cur = require_scope()
             query = session.query(Student).filter(Student.class_id == class_id)
             if cur is not None:
                 query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
@@ -548,7 +548,7 @@ class StudentService:
         """
         term = (query or "").strip()
         with self._session() as session:
-            cur = scope()
+            cur = require_scope()
             q = session.query(Student).options(joinedload(Student.school_class))
             if cur is not None:
                 q = q.filter(scoped_campus_filter(session, cur, Student.campus_id))
@@ -601,7 +601,7 @@ class StudentService:
         skipped: list[SkippedRow] = []
         seen: set[tuple[str, str]] = set()
         with self._session() as session:
-            cur = scope()
+            cur = require_scope()
             cls = self._get_class(session, class_id)
             template = (
                 self._get_template(session, fee_template_id)

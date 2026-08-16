@@ -5,14 +5,16 @@ A request-scoped :class:`RequestScope` is derived from the authenticated user
 ``school_id``) and set in a context variable by the session middleware in
 ``app.main``. Services read it through :func:`scope` to filter reads and stamp
 ``campus_id`` on writes, so route signatures stay unchanged while every
-operational table becomes tenant-aware.
+operational table is tenant-aware.
 
-Outside an HTTP request (pure service tests, direct service calls, the setup
-path) the context variable is unset and :func:`scope` returns ``None``: reads
-are unfiltered and writes are left unstamped, exactly the legacy single-school
-behavior (ticket 01 is additive). Rows with a NULL ``campus_id`` are legacy
-rows created before scoping; they stay visible to every user of the deployment
-until the hardening ticket makes the columns non-nullable.
+The tenant layer is mandatory (ticket 09): every operational row carries a
+``campus_id`` (NOT NULL) and every operational read/write runs inside a scope.
+:func:`require_scope` and :func:`campus_for_write` raise
+:class:`TenantScopeError` when no scope is available, and
+:func:`scoped_campus_filter` narrows every query to the scope's campuses, so an
+unscoped query path fails loudly instead of leaking. The users table (school-
+or campus-scoped via its own columns) and the audit log (school-level entries
+stay NULL, MD-2) are the two deliberate carve-outs — see :func:`audit_scope_filter`.
 """
 
 from __future__ import annotations
@@ -29,12 +31,19 @@ from ..models import Campus, User, UserRoles
 
 __all__ = [
     "RequestScope",
+    "TenantScopeError",
+    "audit_scope_filter",
     "campus_for_write",
     "in_scope",
+    "require_scope",
     "scope",
     "scope_context",
     "scoped_campus_filter",
 ]
+
+
+class TenantScopeError(RuntimeError):
+    """A service call required a tenant scope but none was available."""
 
 
 @dataclass(frozen=True)
@@ -54,11 +63,9 @@ class RequestScope:
     def for_user(cls, user: User | None) -> "RequestScope | None":
         """Resolve a user's role into its tenant scope.
 
-        ``None`` when there is no user (anonymous requests and system-level
-        work run unscoped), or when the user carries no tenant columns at all —
-        the legacy single-school users (finance officers created before the
-        multi-school work) stay unscoped so nothing regresses. All four roles
-        are recognized (ticket 03): the two Campus-bound roles carry the
+        ``None`` when there is no user (anonymous requests) or when the user
+        carries no tenant columns at all — those users have no campus. All four
+        roles are recognized (ticket 03): the two Campus-bound roles carry the
         user's campus, and the two School-bound roles carry the user's school.
         """
         if user is None:
@@ -82,6 +89,14 @@ def scope() -> RequestScope | None:
     return _scope_var.get()
 
 
+def require_scope() -> RequestScope:
+    """The current request's scope — :class:`TenantScopeError` when unset."""
+    current = _scope_var.get()
+    if current is None:
+        raise TenantScopeError("no tenant scope on this request")
+    return current
+
+
 @contextmanager
 def scope_context(scope_: RequestScope | None) -> Iterator[None]:
     """Set the scope for the duration of the block (middleware and tests)."""
@@ -96,8 +111,7 @@ def _visible_campus_ids(session: Session, scope_: RequestScope) -> list[int]:
     """The campus ids the scope may see.
 
     A Campus-bound scope sees exactly its campus; a School-bound scope sees
-    every campus of its school; an unscoped-but-not-None scope (a user with no
-    tenant columns yet) sees nothing.
+    every campus of its school.
     """
     if scope_.campus_id is not None:
         return [scope_.campus_id]
@@ -111,30 +125,47 @@ def _visible_campus_ids(session: Session, scope_: RequestScope) -> list[int]:
     return []
 
 
-def scoped_campus_filter(session: Session, scope_: RequestScope, column):
+def scoped_campus_filter(session: Session, scope_: RequestScope | None, column):
     """A SQLAlchemy filter limiting ``column`` to the scope's campuses.
 
-    Legacy NULL-campus rows are included alongside the scope's campuses, so
-    pre-scoping data stays visible within the deployment.
+    Operational rows always carry a campus (ticket 09), so an unscoped call is
+    a bug and raises rather than leaking or silently returning empty.
     """
-    ids = _visible_campus_ids(session, scope_)
-    return or_(column.in_(ids), column.is_(None))
+    if scope_ is None:
+        raise TenantScopeError("unscoped query: a scope is required")
+    return column.in_(_visible_campus_ids(session, scope_))
 
 
-def in_scope(session: Session, scope_: RequestScope, campus_id: int | None) -> bool:
+def audit_scope_filter(session: Session, scope_: RequestScope | None, column):
+    """Audit browsing filter: the scope's campuses plus the NULL-campus bucket.
+
+    School-level and system audit entries are recorded school-wide (MD-2) and
+    carry a NULL Campus by design; they stay visible alongside the scope's
+    Campus entries so the single-school audit page behaves exactly as before.
+    """
+    if scope_ is None:
+        raise TenantScopeError("unscoped query: a scope is required")
+    return or_(column.in_(_visible_campus_ids(session, scope_)), column.is_(None))
+
+
+def in_scope(session: Session, scope_: RequestScope | None, campus_id: int | None) -> bool:
     """Whether a row whose campus is ``campus_id`` is visible to the scope.
 
-    Legacy NULL rows are visible to every scope.
+    Rows always carry a campus (ticket 09); without a scope nothing is visible.
     """
+    if scope_ is None:
+        return False
     if campus_id is None:
-        return True
+        return False
     return campus_id in _visible_campus_ids(session, scope_)
 
 
-def campus_for_write(scope_: RequestScope | None) -> int | None:
-    """The ``campus_id`` a new operational row should be stamped with.
+def campus_for_write(scope_: RequestScope | None) -> int:
+    """The ``campus_id`` a new operational row must be stamped with.
 
-    ``None`` when unscoped (no request, or a School-bound role that never
-    writes operational data).
+    Requires a Campus-bound scope: unscoped requests and School-bound roles
+    (Superadmin/Owner) never write operational data directly and raise.
     """
-    return scope_.campus_id if scope_ is not None else None
+    if scope_ is None or scope_.campus_id is None:
+        raise TenantScopeError("operational writes require a campus-scoped request")
+    return scope_.campus_id

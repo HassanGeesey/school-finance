@@ -37,7 +37,7 @@ from ..fees.account import student_account
 from ..fees.service import period_label
 from ..models import ClosedMonth, Student
 from ..money import Money
-from ..tenants.scope import scope, scoped_campus_filter
+from ..tenants.scope import require_scope, scoped_campus_filter
 
 LATE_THRESHOLD_DAYS = 30
 OVERDUE_THRESHOLD_DAYS = 60
@@ -98,7 +98,7 @@ class ArrearsService:
     @staticmethod
     def _closed_months(session: Session) -> set[tuple[int, int]]:
         query = session.query(ClosedMonth.month, ClosedMonth.year)
-        cur = scope()
+        cur = require_scope()
         if cur is not None:
             query = query.filter(
                 scoped_campus_filter(session, cur, ClosedMonth.campus_id)
@@ -115,12 +115,13 @@ class ArrearsService:
         defaults to the real date.
         """
         today = today or date.today()
+        lines: list[ArrearsLine] = []
         with self._session() as session:
             query = (
                 session.query(Student)
                 .options(joinedload(Student.school_class))
             )
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
             students = (
@@ -129,31 +130,30 @@ class ArrearsService:
             )
             closed = self._closed_months(session)
 
-        lines: list[ArrearsLine] = []
-        for student in students:
-            account = student_account(session, student, today, closed)
-            owed = account.owed_cents
-            if owed <= 0:
-                continue
-            oldest = min(
-                (line.year, line.month)
-                for line in account.lines
-                if line.remaining_cents > 0
-            )
-            oldest_start = date(oldest[0], oldest[1], 1)
-            age_days = max((today - oldest_start).days, 0)
-            lines.append(
-                ArrearsLine(
-                    student=student,
-                    class_name=student.school_class.name,
-                    class_status=student.school_class.status,
-                    student_status=student.status,
-                    owed_cents=owed,
-                    oldest_period_label=period_label(oldest[1], oldest[0]),
-                    oldest_period_start=oldest_start,
-                    age_days=age_days,
-                    age_band=debt_age_band(age_days),
+            for student in students:
+                account = student_account(session, student, today, closed)
+                owed = account.owed_cents
+                if owed <= 0:
+                    continue
+                oldest = min(
+                    (line.year, line.month)
+                    for line in account.lines
+                    if line.remaining_cents > 0
                 )
-            )
+                oldest_start = date(oldest[0], oldest[1], 1)
+                age_days = max((today - oldest_start).days, 0)
+                lines.append(
+                    ArrearsLine(
+                        student=student,
+                        class_name=student.school_class.name,
+                        class_status=student.school_class.status,
+                        student_status=student.status,
+                        owed_cents=owed,
+                        oldest_period_label=period_label(oldest[1], oldest[0]),
+                        oldest_period_start=oldest_start,
+                        age_days=age_days,
+                        age_band=debt_age_band(age_days),
+                    )
+                )
         lines.sort(key=lambda line: (line.oldest_period_start, -line.owed_cents))
         return lines

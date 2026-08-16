@@ -48,7 +48,7 @@ from ..students.service import StudentNotFound
 from ..tenants.scope import (
     campus_for_write,
     in_scope,
-    scope,
+    require_scope,
     scoped_campus_filter,
 )
 
@@ -123,7 +123,7 @@ class PaymentService:
     @staticmethod
     def _closed_months(session: Session) -> set[tuple[int, int]]:
         query = session.query(ClosedMonth.month, ClosedMonth.year)
-        cur = scope()
+        cur = require_scope()
         if cur is not None:
             query = query.filter(
                 scoped_campus_filter(session, cur, ClosedMonth.campus_id)
@@ -182,7 +182,7 @@ class PaymentService:
         )
         if student is None:
             raise StudentNotFound(f"No student with id {student_id} exists.")
-        cur = scope()
+        cur = require_scope()
         if cur is not None and not in_scope(session, cur, student.campus_id):
             raise StudentNotFound(f"No student with id {student_id} exists.")
         return student
@@ -242,7 +242,7 @@ class PaymentService:
             Payment.month == month,
             Payment.year == year,
         )
-        cur = scope()
+        cur = require_scope()
         if cur is not None:
             query = query.filter(scoped_campus_filter(session, cur, Payment.campus_id))
         rows = query.all()
@@ -287,7 +287,7 @@ class PaymentService:
                 paid_on=paid_on,
                 month=month,
                 year=year,
-                campus_id=campus_for_write(scope()),
+                campus_id=campus_for_write(require_scope()),
                 recorded_by=user.id if user is not None else None,
             )
             session.add(payment)
@@ -298,7 +298,7 @@ class PaymentService:
                         student_id=student_id,
                         amount_cents=credit,
                         payment_id=payment.id,
-                        campus_id=campus_for_write(scope()),
+                        campus_id=campus_for_write(require_scope()),
                     )
                 )
 
@@ -330,7 +330,7 @@ class PaymentService:
                 .options(joinedload(Payment.student).joinedload(Student.school_class))
                 .filter(Payment.id == payment_id)
             )
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(scoped_campus_filter(session, cur, Payment.campus_id))
             payment = query.one_or_none()
@@ -344,7 +344,7 @@ class PaymentService:
             query = session.query(Payment).options(
                 joinedload(Payment.student).joinedload(Student.school_class)
             )
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(scoped_campus_filter(session, cur, Payment.campus_id))
             return (

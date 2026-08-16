@@ -29,11 +29,17 @@ from ..audit.service import AuditActions, AuditService
 from ..auth.service import hash_password
 from ..db import Database
 from ..models import User, UserRoles
+from ..tenants.scope import RequestScope, require_scope
 
 USER_ROLE_LABELS = {
     UserRoles.ADMIN: "Admin",
     UserRoles.FINANCE: "Finance officer",
 }
+SCHOOL_ROLE_LABELS = {
+    UserRoles.SUPERADMIN: "Superadmin",
+    UserRoles.OWNER: "Owner",
+}
+ALL_ROLE_LABELS = {**USER_ROLE_LABELS, **SCHOOL_ROLE_LABELS}
 VALID_ROLES = set(USER_ROLE_LABELS)
 
 
@@ -72,8 +78,16 @@ class AdminUserService:
             self._audit.log(user=user, action=action, summary=summary)
 
     @staticmethod
-    def _get_user(session: Session, user_id: int) -> User:
-        user = session.query(User).filter(User.id == user_id).one_or_none()
+    def _users_in_scope(session: Session, scope_: RequestScope):
+        """The user query narrowed to the acting scope: its Campus for a
+        Campus-bound scope, its School for a School-bound scope."""
+        if scope_.campus_id is not None:
+            return session.query(User).filter(User.campus_id == scope_.campus_id)
+        return session.query(User).filter(User.school_id == scope_.school_id)
+
+    def _get_user(self, session: Session, user_id: int) -> User:
+        scope_ = require_scope()
+        user = self._users_in_scope(session, scope_).filter(User.id == user_id).one_or_none()
         if user is None:
             raise UserNotFound(f"No user with id {user_id} exists.")
         return user
@@ -85,21 +99,34 @@ class AdminUserService:
             query = query.filter(User.id != exclude_id)
         return query.first() is not None
 
-    @staticmethod
-    def _active_admin_count(session: Session) -> int:
+    def _active_admin_count(self, session: Session) -> int:
+        scope_ = require_scope()
         return (
-            session.query(User)
+            self._users_in_scope(session, scope_)
             .filter(User.role == UserRoles.ADMIN, User.is_active.is_(True))
             .count()
         )
 
+    @staticmethod
+    def _assert_manageable(user: User) -> None:
+        """A Campus-bound Admin manages only Finance officers of their own Campus
+        (multi-school ticket 08). ``_get_user`` already narrowed the target to the
+        acting scope; this adds the Finance-only rule so a Campus Admin can never
+        disable/enable or reset the password of another Admin."""
+        scope_ = require_scope()
+        if scope_.campus_id is not None and user.role != UserRoles.FINANCE:
+            raise AdminUserError(
+                "Campus admins can only manage Finance officer accounts."
+            )
+
     # -- Reads ---------------------------------------------------------------
 
     def list_users(self) -> list[User]:
-        """All users: active first, then by username."""
+        """The acting scope's users: active first, then by username."""
+        scope_ = require_scope()
         with self._session() as session:
             return (
-                session.query(User)
+                self._users_in_scope(session, scope_)
                 .order_by(User.is_active.desc(), func.lower(User.username), User.id)
                 .all()
             )
@@ -124,6 +151,14 @@ class AdminUserService:
             raise AdminUserError("A password is required.")
         if role not in VALID_ROLES:
             raise AdminUserError("Choose Admin or Finance officer.")
+        scope_ = require_scope()
+        # A Campus-bound Admin manages only their own Campus's Finance officers
+        # (multi-school ticket 08): they can never create or promote other
+        # Admins — that is the Superadmin's School-level job.
+        if scope_.campus_id is not None and role != UserRoles.FINANCE:
+            raise AdminUserError(
+                "Campus admins can only create Finance officer accounts."
+            )
 
         with self._session() as session:
             if self._username_taken(session, username):
@@ -135,6 +170,10 @@ class AdminUserService:
                 username=username,
                 password_hash=hash_password(password),
                 role=role,
+                # Tenant scope: the new account belongs to the acting scope —
+                # its Campus (Admin/Finance) or its School (Superadmin/Owner).
+                school_id=scope_.school_id,
+                campus_id=scope_.campus_id,
             )
             session.add(user)
             session.commit()
@@ -155,6 +194,7 @@ class AdminUserService:
             user = self._get_user(session, user_id)
             if actor is not None and user.id == actor.id:
                 raise CannotDisableSelf("You cannot disable your own account.")
+            self._assert_manageable(user)
             if (
                 user.role == UserRoles.ADMIN
                 and user.is_active
@@ -178,6 +218,7 @@ class AdminUserService:
         """Re-enable a disabled account. No-op (and unaudited) if already active."""
         with self._session() as session:
             user = self._get_user(session, user_id)
+            self._assert_manageable(user)
             if user.is_active:
                 return user
             user.is_active = True
@@ -196,6 +237,7 @@ class AdminUserService:
             raise AdminUserError("A new password is required.")
         with self._session() as session:
             user = self._get_user(session, user_id)
+            self._assert_manageable(user)
             user.password_hash = hash_password(password)
             session.commit()
             session.refresh(user)

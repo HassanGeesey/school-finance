@@ -24,6 +24,11 @@ from app.models import AuditLogEntry, Expense, ExpenseCategory, User, UserRoles
 PASSWORD = "correct horse battery staple"
 
 
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
+
+
 @pytest.fixture()
 def audit(db) -> AuditService:
     return AuditService(db)

@@ -16,6 +16,11 @@ from app.models import AuditLogEntry, Class, ClassStatus, Student, User, UserRol
 PASSWORD = "correct horse battery staple"
 
 
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
+
+
 @pytest.fixture()
 def audit(db) -> AuditService:
     return AuditService(db)
@@ -295,7 +300,9 @@ def test_class_summary_reports_student_count_and_default_amount(
     template = make_template(templates, admin, amount="75.00")
     cls = classes.create_class(user=admin, name="Grade 1", default_template_id=template.id)
     for first, last in [("Ada", "Lovelace"), ("Grace", "Hopper")]:
-        session.add(Student(first_name=first, last_name=last, class_id=cls.id))
+        session.add(
+            Student(first_name=first, last_name=last, class_id=cls.id, campus_id=cls.campus_id)
+        )
     session.commit()
 
     summary = classes.class_summary(cls.id)
@@ -359,7 +366,14 @@ def test_student_counts_groups_students_by_class(classes, session):
         ("Grace", "Hopper", first.id),
         ("Alan", "Turing", second.id),
     ]:
-        session.add(Student(first_name=first_name, last_name=last_name, class_id=class_id))
+        session.add(
+            Student(
+                first_name=first_name,
+                last_name=last_name,
+                class_id=class_id,
+                campus_id=first.campus_id,
+            )
+        )
     session.commit()
 
     assert classes.student_counts() == {first.id: 2, second.id: 1}

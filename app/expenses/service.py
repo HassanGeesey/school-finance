@@ -35,7 +35,7 @@ from ..models import Expense, ExpenseCategory, PaymentMethods, User
 from ..tenants.scope import (
     campus_for_write,
     in_scope,
-    scope,
+    require_scope,
     scoped_campus_filter,
 )
 from ..money import (
@@ -138,7 +138,7 @@ class ExpenseService:
         if category is None:
             suffix = " active" if active_only else ""
             raise CategoryNotFound(f"No{suffix} expense category with id {category_id} exists.")
-        cur = scope()
+        cur = require_scope()
         if cur is not None and not in_scope(session, cur, category.campus_id):
             suffix = " active" if active_only else ""
             raise CategoryNotFound(f"No{suffix} expense category with id {category_id} exists.")
@@ -151,7 +151,7 @@ class ExpenseService:
         query = session.query(func.lower(ExpenseCategory.name)).filter(
             func.lower(ExpenseCategory.name) == name.lower()
         )
-        cur = scope()
+        cur = require_scope()
         if cur is not None:
             query = query.filter(
                 scoped_campus_filter(session, cur, ExpenseCategory.campus_id)
@@ -166,7 +166,7 @@ class ExpenseService:
         """Active categories alphabetically, or all of them when ``include_archived``."""
         with self._session() as session:
             query = session.query(ExpenseCategory)
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(
                     scoped_campus_filter(session, cur, ExpenseCategory.campus_id)
@@ -184,7 +184,7 @@ class ExpenseService:
                     f"An expense category named '{name}' already exists."
                 )
             category = ExpenseCategory(
-                name=name, campus_id=campus_for_write(scope())
+                name=name, campus_id=campus_for_write(require_scope())
             )
             session.add(category)
             try:
@@ -273,7 +273,7 @@ class ExpenseService:
                 amount_cents=amount_cents,
                 method=method,
                 occurred_on=occurred_on,
-                campus_id=campus_for_write(scope()),
+                campus_id=campus_for_write(require_scope()),
                 recorded_by=user.id if user is not None else None,
             )
             session.add(expense)
@@ -302,7 +302,7 @@ class ExpenseService:
         """Expenses most recent first, optionally filtered by category and month."""
         with self._session() as session:
             query = session.query(Expense).options(joinedload(Expense.category))
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(scoped_campus_filter(session, cur, Expense.campus_id))
             if category_id is not None:
@@ -322,7 +322,7 @@ class ExpenseService:
         """
         with self._session() as session:
             query = session.query(Expense.occurred_on)
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(scoped_campus_filter(session, cur, Expense.campus_id))
             rows = query.distinct().all()

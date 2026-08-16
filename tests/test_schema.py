@@ -3,6 +3,11 @@ the fee-billing reshape is reflected (no charge rows — enrollment-derived mode
 Templates carry a default template per class, an optional linked template per
 student, and an ``archived`` flag; amount changes are effective-dated rows in
 ``student_amount_changes``.
+
+Tenant layer (ticket 09): every operational data table carries a NOT NULL
+``campus_id`` — an operational row cannot exist without a tenant home. The
+``users`` scope columns and the ``audit_log.campus_id`` (school-level events,
+MD-2) are the deliberate nullable exceptions.
 """
 
 from datetime import date
@@ -45,8 +50,8 @@ EXPECTED_TABLES = {
     "campuses",
 }
 
-# Every operational table is scoped by a nullable ``campus_id`` (MD-2). The
-# School is reached via the campus → school join, never a denormalized school_id.
+# Every operational data table is scoped by a mandatory ``campus_id`` (ticket 09).
+# The School is reached via the campus → school join, never a denormalized school_id.
 OPERATIONAL_TABLES = {
     "classes",
     "students",
@@ -58,8 +63,12 @@ OPERATIONAL_TABLES = {
     "credits",
     "expense_categories",
     "expenses",
-    "audit_log",
 }
+
+# The audit log is the one operational-adjacent table that stays nullable:
+# school-level actions (setup, campus creation, admin assignment) are recorded
+# school-wide under a NULL Campus (MD-2).
+AUDIT_LOG_TABLES = {"audit_log"}
 
 REMOVED_TABLES = {
     "fee_items",
@@ -70,9 +79,22 @@ REMOVED_TABLES = {
 }
 
 
-def _make_class(db) -> Class:
+def _make_campus(db) -> Campus:
     with db.session() as session:
-        school_class = Class(name="Grade 3")
+        school = School(name="Sunrise Primary")
+        session.add(school)
+        session.flush()
+        campus = Campus(school_id=school.id, name="Main Campus")
+        session.add(campus)
+        session.commit()
+        session.refresh(campus)
+        return campus
+
+
+def _make_class(db) -> Class:
+    campus = _make_campus(db)
+    with db.session() as session:
+        school_class = Class(name="Grade 3", campus_id=campus.id)
         session.add(school_class)
         session.commit()
         session.refresh(school_class)
@@ -81,7 +103,10 @@ def _make_class(db) -> Class:
 
 def _make_student(db, session: Session) -> Student:
     school_class = _make_class(db)
-    student = Student(class_id=school_class.id, first_name="Ada", last_name="Lovelace")
+    student = Student(
+        class_id=school_class.id, campus_id=school_class.campus_id,
+        first_name="Ada", last_name="Lovelace",
+    )
     session.add(student)
     session.commit()
     session.refresh(student)
@@ -95,7 +120,8 @@ def test_create_all_creates_every_domain_table(db):
 
 
 def test_money_is_stored_as_integer_cents(db, session: Session):
-    template = FeeTemplate(name="Standard", amount_cents=10000)
+    campus = _make_campus(db)
+    template = FeeTemplate(name="Standard", amount_cents=10000, campus_id=campus.id)
     session.add(template)
     session.commit()
 
@@ -118,6 +144,7 @@ def test_payment_requires_a_month_and_year_tag(db, session: Session):
         session.add(
             Payment(
                 student_id=student.id,
+                campus_id=student.campus_id,
                 amount_cents=5000,
                 method="cash",
                 paid_on=date(2026, 3, 5),
@@ -130,6 +157,7 @@ def test_payment_stores_the_month_tag(db, session: Session):
     student = _make_student(db, session)
     payment = Payment(
         student_id=student.id,
+        campus_id=student.campus_id,
         amount_cents=5000,
         method="cash",
         paid_on=date(2026, 3, 5),
@@ -150,6 +178,7 @@ def test_waiver_allows_stacking_on_the_same_month(db, session: Session):
         session.add(
             Waiver(
                 student_id=student.id,
+                campus_id=student.campus_id,
                 month=3,
                 year=2026,
                 amount_cents=cents,
@@ -167,6 +196,7 @@ def test_waiver_allows_stacking_on_different_months(db, session: Session):
         session.add(
             Waiver(
                 student_id=student.id,
+                campus_id=student.campus_id,
                 month=month,
                 year=2026,
                 amount_cents=1000,
@@ -223,8 +253,9 @@ def test_expense_category_name_is_unique_per_campus(db, session: Session):
 
 
 def test_round_trip_user_and_class(db, session: Session):
+    campus = _make_campus(db)
     session.add(User(username="admin", name="Head Teacher", password_hash="x", role="admin"))
-    session.add(Class(name="Grade 3", status="active"))
+    session.add(Class(name="Grade 3", status="active", campus_id=campus.id))
     session.commit()
 
     assert session.query(User).count() == 1
@@ -232,7 +263,7 @@ def test_round_trip_user_and_class(db, session: Session):
 
 
 # ---------------------------------------------------------------------------
-# Tenant layer (multi-school ticket 01) — additive only
+# Tenant layer (multi-school ticket 01/09)
 # ---------------------------------------------------------------------------
 
 
@@ -280,17 +311,31 @@ def test_campus_archived_is_a_soft_delete_flag(db, session: Session):
     assert stored.archived is False
 
 
-def test_every_operational_table_has_a_nullable_campus_id(db):
+def test_every_operational_table_has_a_mandatory_campus_id(db):
     for table in OPERATIONAL_TABLES:
         columns = {column["name"]: column for column in inspect(db.engine).get_columns(table)}
         assert "campus_id" in columns, f"{table} missing campus_id"
-        assert columns["campus_id"]["nullable"] is True, f"{table} campus_id not nullable"
+        assert columns["campus_id"]["nullable"] is False, f"{table} campus_id is nullable"
         foreign_keys = inspect(db.engine).get_foreign_keys(table)
         assert any(
             fk["constrained_columns"] == ["campus_id"]
             and fk["referred_table"] == "campuses"
             for fk in foreign_keys
         ), f"{table} campus_id does not reference campuses"
+
+
+def test_audit_log_keeps_a_nullable_campus_id_for_school_level_events(db):
+    columns = {column["name"]: column for column in inspect(db.engine).get_columns("audit_log")}
+    assert columns["campus_id"]["nullable"] is True
+
+
+def test_an_operational_row_without_a_campus_is_rejected(db, session: Session):
+    campus = _make_campus(db)
+    _ = campus  # the school/campus exists; a campus_id is still required
+    session.add(Class(name="Orphan"))
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()
 
 
 def test_users_carry_nullable_scope_columns(db):
@@ -352,18 +397,22 @@ def test_student_linked_template_foreign_key(db):
 
 
 def test_fee_template_defaults_to_not_archived(db, session: Session):
-    session.add(FeeTemplate(name="Standard", amount_cents=10000))
+    campus = _make_campus(db)
+    session.add(FeeTemplate(name="Standard", amount_cents=10000, campus_id=campus.id))
     session.commit()
 
     assert session.query(FeeTemplate).one().archived is False
 
 
 def test_class_default_template_round_trip(db, session: Session):
-    template = FeeTemplate(name="Standard", amount_cents=10000)
+    campus = _make_campus(db)
+    template = FeeTemplate(name="Standard", amount_cents=10000, campus_id=campus.id)
     session.add(template)
     session.commit()
     session.refresh(template)
-    school_class = Class(name="Grade 3", default_template_id=template.id)
+    school_class = Class(
+        name="Grade 3", campus_id=campus.id, default_template_id=template.id
+    )
     session.add(school_class)
     session.commit()
 
@@ -375,12 +424,16 @@ def test_class_default_template_round_trip(db, session: Session):
 def test_student_amount_change_stores_an_effective_dated_amount(
     db, session: Session
 ):
-    school_class = _make_class(db)
-    template = FeeTemplate(name="Standard", amount_cents=10000)
+    campus = _make_campus(db)
+    school_class = Class(name="Grade 3", campus_id=campus.id)
+    session.add(school_class)
+    session.flush()
+    template = FeeTemplate(name="Standard", amount_cents=10000, campus_id=campus.id)
     session.add(template)
     session.flush()
     student = Student(
         class_id=school_class.id,
+        campus_id=campus.id,
         first_name="Ada",
         last_name="Lovelace",
         fee_template_id=template.id,
@@ -388,7 +441,13 @@ def test_student_amount_change_stores_an_effective_dated_amount(
     session.add(student)
     session.flush()
     session.add(
-        StudentAmountChange(student_id=student.id, amount_cents=12000, month=4, year=2026)
+        StudentAmountChange(
+            student_id=student.id,
+            campus_id=campus.id,
+            amount_cents=12000,
+            month=4,
+            year=2026,
+        )
     )
     session.commit()
 

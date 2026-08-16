@@ -21,6 +21,11 @@ from app.students.service import StudentService
 PASSWORD = "correct horse battery staple"
 
 
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
+
+
 @pytest.fixture()
 def audit(db) -> AuditService:
     return AuditService(db)

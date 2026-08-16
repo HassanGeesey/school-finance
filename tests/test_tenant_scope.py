@@ -3,9 +3,8 @@
 Service-level tests with a seeded scope: the request scope resolves from the
 acting user (``RequestScope.for_user``) and filters reads and stamps writes on
 class and student operations. Two Campuses of one School, an Admin bound to
-each, and a bound Superadmin; legacy NULL-campus rows stay visible to every
-scope. Route concerns live in ``test_classes_routes.py`` /
-``test_students_routes.py``.
+each, and a bound Superadmin; every row carries a Campus (ticket 09). Route
+concerns live in ``test_classes_routes.py`` / ``test_students_routes.py``.
 """
 
 import pytest
@@ -81,11 +80,10 @@ def seed_tenant_world(session):
 
 
 def seed_classes_students(session, campus_a, campus_b):
-    """One class + student per campus, plus a legacy NULL-campus pair."""
+    """One class + student per campus."""
     cls_a = Class(name="Grade A", campus_id=campus_a.id)
     cls_b = Class(name="Grade B", campus_id=campus_b.id)
-    legacy_cls = Class(name="Legacy")
-    session.add_all([cls_a, cls_b, legacy_cls])
+    session.add_all([cls_a, cls_b])
     session.flush()
     student_a = Student(
         class_id=cls_a.id, campus_id=campus_a.id, first_name="Ada", last_name="Lovelace"
@@ -93,10 +91,9 @@ def seed_classes_students(session, campus_a, campus_b):
     student_b = Student(
         class_id=cls_b.id, campus_id=campus_b.id, first_name="Grace", last_name="Hopper"
     )
-    legacy_student = Student(class_id=legacy_cls.id, first_name="Alan", last_name="Turing")
-    session.add_all([student_a, student_b, legacy_student])
+    session.add_all([student_a, student_b])
     session.commit()
-    return cls_a, cls_b, legacy_cls, student_a, student_b, legacy_student
+    return cls_a, cls_b, student_a, student_b
 
 
 # ---------------------------------------------------------------------------
@@ -104,33 +101,31 @@ def seed_classes_students(session, campus_a, campus_b):
 # ---------------------------------------------------------------------------
 
 
-def test_campus_admin_lists_only_own_campus_and_legacy_classes(classes, session):
+def test_campus_admin_lists_only_own_campus_classes(classes, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    cls_a, cls_b, legacy_cls, *_ = seed_classes_students(session, campus_a, campus_b)
+    cls_a, cls_b, *_ = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         rows = classes.list_class_summaries()
 
-    assert {row.cls.id for row in rows} == {cls_a.id, legacy_cls.id}
+    assert {row.cls.id for row in rows} == {cls_a.id}
+    assert cls_b.id not in {row.cls.id for row in rows}
 
 
-def test_campus_admin_searches_only_own_campus_and_legacy_students(students, session):
+def test_campus_admin_searches_only_own_campus_students(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    _cls_a, _cls_b, _legacy_cls, student_a, student_b, legacy_student = seed_classes_students(
-        session, campus_a, campus_b
-    )
+    _cls_a, _cls_b, student_a, student_b = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         rows = students.search_students("")
 
-    assert {row.id for row in rows} == {student_a.id, legacy_student.id}
+    assert {row.id for row in rows} == {student_a.id}
+    assert student_b.id not in {row.id for row in rows}
 
 
 def test_campus_admin_list_students_only_sees_own_campus(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    cls_a, _cls_b, _legacy_cls, student_a, student_b, legacy_student = seed_classes_students(
-        session, campus_a, campus_b
-    )
+    cls_a, _cls_b, student_a, student_b = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         rows = students.list_students(cls_a.id)
@@ -140,19 +135,14 @@ def test_campus_admin_list_students_only_sees_own_campus(students, session):
 
 def test_campus_admin_student_counts_ignore_other_campus(classes, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    cls_a, _cls_b, legacy_cls, _student_a, _student_b, _legacy_student = seed_classes_students(
-        session, campus_a, campus_b
-    )
+    cls_a, _cls_b, _student_a, _student_b = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         counts = classes.student_counts()
         summaries = classes.list_class_summaries()
 
-    assert counts == {cls_a.id: 1, legacy_cls.id: 1}
-    assert {row.cls.id: row.student_count for row in summaries} == {
-        cls_a.id: 1,
-        legacy_cls.id: 1,
-    }
+    assert counts == {cls_a.id: 1}
+    assert {row.cls.id: row.student_count for row in summaries} == {cls_a.id: 1}
 
 
 # ---------------------------------------------------------------------------
@@ -162,9 +152,7 @@ def test_campus_admin_student_counts_ignore_other_campus(classes, session):
 
 def test_detail_lookups_of_another_campus_raise_not_found(classes, students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    cls_a, cls_b, legacy_cls, student_a, student_b, legacy_student = seed_classes_students(
-        session, campus_a, campus_b
-    )
+    cls_a, cls_b, student_a, student_b = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         with pytest.raises(ClassNotFound):
@@ -178,9 +166,7 @@ def test_detail_lookups_of_another_campus_raise_not_found(classes, students, ses
         with pytest.raises(StudentNotFound):
             students.get_student(student_b.id)
         assert classes.get_class(cls_a.id).id == cls_a.id
-        assert classes.get_class(legacy_cls.id).id == legacy_cls.id
         assert students.get_student(student_a.id).id == student_a.id
-        assert students.get_student(legacy_student.id).id == legacy_student.id
 
 
 # ---------------------------------------------------------------------------
@@ -200,9 +186,9 @@ def test_create_class_stamps_the_acting_campus(classes, session):
 
 def test_create_class_rejects_a_foreign_campus_template(classes, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
+    template_a = FeeTemplate(name="A Standard", amount_cents=10000, campus_id=campus_a.id)
     template_b = FeeTemplate(name="B Standard", amount_cents=10000, campus_id=campus_b.id)
-    legacy_template = FeeTemplate(name="Legacy Standard", amount_cents=10000)
-    session.add_all([template_b, legacy_template])
+    session.add_all([template_a, template_b])
     session.commit()
 
     with scope_context(RequestScope.for_user(admin_a)):
@@ -211,10 +197,10 @@ def test_create_class_rejects_a_foreign_campus_template(classes, session):
                 user=admin_a, name="Grade 1", default_template_id=template_b.id
             )
         cls = classes.create_class(
-            user=admin_a, name="Grade 1", default_template_id=legacy_template.id
+            user=admin_a, name="Grade 1", default_template_id=template_a.id
         )
 
-    assert cls.default_template_id == legacy_template.id
+    assert cls.default_template_id == template_a.id
 
 
 def test_set_default_template_rejects_a_foreign_campus_template(classes, session):
@@ -233,7 +219,7 @@ def test_set_default_template_rejects_a_foreign_campus_template(classes, session
 
 def test_cross_campus_class_mutations_raise(classes, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    _cls_a, cls_b, _legacy_cls, *_ = seed_classes_students(session, campus_a, campus_b)
+    _cls_a, cls_b, *_ = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         with pytest.raises(ClassNotFound):
@@ -248,7 +234,7 @@ def test_cross_campus_class_mutations_raise(classes, session):
 
 def test_add_student_stamps_the_acting_campus(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    cls_a, _cls_b, _legacy_cls, *_ = seed_classes_students(session, campus_a, campus_b)
+    cls_a, _cls_b, *_ = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         student = students.add_student(
@@ -268,7 +254,7 @@ def test_add_student_stamps_the_acting_campus(students, session):
 
 def test_add_student_to_a_foreign_campus_class_raises(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    _cls_a, cls_b, _legacy_cls, *_ = seed_classes_students(session, campus_a, campus_b)
+    _cls_a, cls_b, *_ = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         with pytest.raises(ClassNotFound):
@@ -283,10 +269,10 @@ def test_add_student_to_a_foreign_campus_class_raises(students, session):
 
 def test_add_student_rejects_a_foreign_campus_template(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    cls_a, _cls_b, _legacy_cls, *_ = seed_classes_students(session, campus_a, campus_b)
+    cls_a, _cls_b, *_ = seed_classes_students(session, campus_a, campus_b)
+    template_a = FeeTemplate(name="A Standard", amount_cents=10000, campus_id=campus_a.id)
     template_b = FeeTemplate(name="B Standard", amount_cents=10000, campus_id=campus_b.id)
-    legacy_template = FeeTemplate(name="Legacy Standard", amount_cents=10000)
-    session.add_all([template_b, legacy_template])
+    session.add_all([template_a, template_b])
     session.commit()
 
     with scope_context(RequestScope.for_user(admin_a)):
@@ -301,19 +287,17 @@ def test_add_student_rejects_a_foreign_campus_template(students, session):
         student = students.add_student(
             user=admin_a,
             class_id=cls_a.id,
-            fee_template_id=legacy_template.id,
+            fee_template_id=template_a.id,
             first_name="Ada",
             last_name="Lovelace",
         )
 
-    assert student.fee_template_id == legacy_template.id
+    assert student.fee_template_id == template_a.id
 
 
 def test_cross_campus_student_mutations_raise(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    _cls_a, _cls_b, _legacy_cls, _student_a, student_b, _legacy_student = seed_classes_students(
-        session, campus_a, campus_b
-    )
+    _cls_a, _cls_b, _student_a, student_b = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         with pytest.raises(StudentNotFound):
@@ -336,9 +320,7 @@ def test_cross_campus_student_mutations_raise(students, session):
 
 def test_change_amount_stamps_the_acting_campus(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    _cls_a, _cls_b, _legacy_cls, student_a, _student_b, _legacy_student = seed_classes_students(
-        session, campus_a, campus_b
-    )
+    _cls_a, _cls_b, student_a, _student_b = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         students.change_amount(
@@ -351,7 +333,7 @@ def test_change_amount_stamps_the_acting_campus(students, session):
 
 def test_import_stamps_the_acting_campus(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    cls_a, _cls_b, _legacy_cls, *_ = seed_classes_students(session, campus_a, campus_b)
+    cls_a, _cls_b, *_ = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         students.import_students_csv(
@@ -375,7 +357,7 @@ def test_import_stamps_the_acting_campus(students, session):
 
 def test_import_into_a_foreign_campus_class_raises(students, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    _cls_a, cls_b, _legacy_cls, *_ = seed_classes_students(session, campus_a, campus_b)
+    _cls_a, cls_b, *_ = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         with pytest.raises(ClassNotFound):
@@ -391,18 +373,15 @@ def test_import_into_a_foreign_campus_class_raises(students, session):
 
 def test_superadmin_sees_both_campuses(classes, students, session):
     _school, campus_a, campus_b, _admin_a, _admin_b, superadmin = seed_tenant_world(session)
-    cls_a, cls_b, legacy_cls, student_a, student_b, legacy_student = seed_classes_students(
-        session, campus_a, campus_b
-    )
+    cls_a, cls_b, student_a, student_b = seed_classes_students(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(superadmin)):
         rows = classes.list_class_summaries()
         searched = students.search_students("")
-        assert {row.cls.id for row in rows} == {cls_a.id, cls_b.id, legacy_cls.id}
+        assert {row.cls.id for row in rows} == {cls_a.id, cls_b.id}
         assert {row.id for row in searched} == {
             student_a.id,
             student_b.id,
-            legacy_student.id,
         }
         assert classes.get_class(cls_a.id).id == cls_a.id
         assert classes.get_class(cls_b.id).id == cls_b.id

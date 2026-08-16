@@ -10,13 +10,12 @@ waivers, configuration) call ``log`` at the same seam.
 scope's Campus at write time — campus-level actions (payments, expenses,
 students, classes, fee templates, waivers, closed months, branding) land under
 the Campus they happened in, while school-level actions (Campus creation, admin
-assignment, owner management, setup) carry a NULL Campus (MD-2). Browsing is
-scoped the same way as every operational table (:func:`scoped_campus_filter`):
-a Campus-bound scope sees its own Campus's entries plus the shared legacy/NULL
-bucket (system and school-level events), and a School-bound scope sees every
-Campus in its School plus that same bucket. In the single-school deployment
-every entry is visible either through the one implicit Campus or through the
-NULL bucket, so the audit page behaves exactly as before.
+assignment, owner management, setup) carry a NULL Campus (MD-2). Browsing uses
+:func:`audit_scope_filter`: a Campus-bound scope sees its own Campus's entries
+plus the shared NULL bucket (system and school-level events), and a School-bound
+scope sees every Campus in its School plus that same bucket. In the single-school
+deployment every entry is visible either through the one implicit Campus or
+through the NULL bucket, so the audit page behaves exactly as before.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..db import Database
 from ..models import AuditLogEntry, User
-from ..tenants.scope import campus_for_write, scope, scoped_campus_filter
+from ..tenants.scope import audit_scope_filter, scope
 
 
 class AuditActions:
@@ -89,6 +88,14 @@ class AuditActions:
     BACKUP_MANUAL = "backup_manual"
     SHUTDOWN = "shutdown"
 
+    # School level (ticket 08) — recorded school-wide (NULL campus, MD-2).
+    CAMPUS_CREATE = "campus_create"
+    CAMPUS_ARCHIVE = "campus_archive"
+    CAMPUS_ADMIN_ASSIGN = "campus_admin_assign"
+    OWNER_CREATE = "owner_create"
+    OWNER_DISABLE = "owner_disable"
+    OWNER_ENABLE = "owner_enable"
+
     LABELS = {
         SETUP: "Setup",
         LOGIN: "Login",
@@ -127,6 +134,12 @@ class AuditActions:
         BACKUP_AUTOMATIC: "Automatic backup",
         BACKUP_MANUAL: "Manual backup",
         SHUTDOWN: "App shut down",
+        CAMPUS_CREATE: "Campus created",
+        CAMPUS_ARCHIVE: "Campus archived",
+        CAMPUS_ADMIN_ASSIGN: "Campus admin assigned",
+        OWNER_CREATE: "Owner account created",
+        OWNER_DISABLE: "Owner account disabled",
+        OWNER_ENABLE: "Owner account enabled",
     }
 
 
@@ -164,11 +177,13 @@ class AuditService:
         if not summary:
             raise AuditError("A summary is required.")
 
+        cur = scope()
         entry = AuditLogEntry(
             user_id=user.id if user is not None else None,
             # The acting scope's Campus: campus-level actions are tagged to the
-            # Campus they happened in; school-level and system actions stay NULL.
-            campus_id=campus_for_write(scope()),
+            # Campus they happened in; school-level and system actions (and any
+            # write outside a request scope) stay NULL (MD-2).
+            campus_id=cur.campus_id if cur is not None else None,
             action=action,
             summary=summary,
         )
@@ -212,7 +227,7 @@ class AuditService:
             cur = scope()
             if cur is not None:
                 query = query.filter(
-                    scoped_campus_filter(session, cur, AuditLogEntry.campus_id)
+                    audit_scope_filter(session, cur, AuditLogEntry.campus_id)
                 )
             if action:
                 query = query.filter(AuditLogEntry.action == action)
@@ -230,7 +245,7 @@ class AuditService:
             cur = scope()
             if cur is not None:
                 query = query.filter(
-                    scoped_campus_filter(session, cur, AuditLogEntry.campus_id)
+                    audit_scope_filter(session, cur, AuditLogEntry.campus_id)
                 )
             if action:
                 query = query.filter(AuditLogEntry.action == action)
@@ -243,7 +258,7 @@ class AuditService:
             cur = scope()
             if cur is not None:
                 query = query.filter(
-                    scoped_campus_filter(session, cur, AuditLogEntry.campus_id)
+                    audit_scope_filter(session, cur, AuditLogEntry.campus_id)
                 )
             rows = query.distinct().all()
             return sorted(row[0] for row in rows)

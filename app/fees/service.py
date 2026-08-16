@@ -42,7 +42,7 @@ from ..models import (
 from ..tenants.scope import (
     campus_for_write,
     in_scope,
-    scope,
+    require_scope,
     scoped_campus_filter,
 )
 from ..money import (
@@ -116,7 +116,7 @@ class TemplateService:
         template = session.get(FeeTemplate, template_id)
         if template is None:
             raise TemplateNotFound(f"No fee template with id {template_id} exists.")
-        cur = scope()
+        cur = require_scope()
         if cur is not None and not in_scope(session, cur, template.campus_id):
             raise TemplateNotFound(f"No fee template with id {template_id} exists.")
         return template
@@ -178,7 +178,7 @@ class TemplateService:
             template = FeeTemplate(
                 name=name,
                 amount_cents=amount_cents,
-                campus_id=campus_for_write(scope()),
+                campus_id=campus_for_write(require_scope()),
             )
             session.add(template)
             session.commit()
@@ -278,7 +278,7 @@ class TemplateService:
         link is normally refused at creation, but a corrupt row must not leak
         amount changes across Campuses).
         """
-        cur = scope()
+        cur = require_scope()
         query = session.query(Student).filter(Student.fee_template_id == template_id)
         if cur is not None:
             query = query.filter(
@@ -353,7 +353,7 @@ class TemplateService:
         archived — both by name."""
         with self._session() as session:
             query = session.query(FeeTemplate)
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(
                     scoped_campus_filter(session, cur, FeeTemplate.campus_id)
@@ -367,7 +367,7 @@ class TemplateService:
         """Only non-archived templates, for the class/student pickers."""
         with self._session() as session:
             query = session.query(FeeTemplate).filter(FeeTemplate.archived.is_(False))
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(
                     scoped_campus_filter(session, cur, FeeTemplate.campus_id)
@@ -384,7 +384,7 @@ class TemplateService:
             query = session.query(Student.fee_template_id, func.count(Student.id)).filter(
                 Student.fee_template_id.isnot(None)
             )
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
             rows = query.group_by(Student.fee_template_id).all()
@@ -458,7 +458,7 @@ class WaiverService:
             student = session.get(Student, student_id)
             if student is None:
                 raise WaiverError("Choose a student.")
-            cur = scope()
+            cur = require_scope()
             if cur is not None and not in_scope(session, cur, student.campus_id):
                 raise WaiverError("Choose a student.")
             waiver = Waiver(
@@ -524,7 +524,7 @@ class ClosedMonthService:
     ) -> ClosedMonth:
         month, year = self._validate_period(month, year)
         with self._session() as session:
-            cur = scope()
+            cur = require_scope()
             query = session.query(ClosedMonth).filter(
                 ClosedMonth.month == month, ClosedMonth.year == year
             )
@@ -562,7 +562,7 @@ class ClosedMonthService:
             query = session.query(ClosedMonth).filter(
                 ClosedMonth.month == month, ClosedMonth.year == year
             )
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(
                     scoped_campus_filter(session, cur, ClosedMonth.campus_id)
@@ -584,7 +584,7 @@ class ClosedMonthService:
         """Every closed month visible to the acting Campus, newest first."""
         with self._session() as session:
             query = session.query(ClosedMonth)
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(
                     scoped_campus_filter(session, cur, ClosedMonth.campus_id)
@@ -601,7 +601,7 @@ class ClosedMonthService:
         ``(month, year)`` pairs."""
         with self._session() as session:
             query = session.query(ClosedMonth.month, ClosedMonth.year)
-            cur = scope()
+            cur = require_scope()
             if cur is not None:
                 query = query.filter(
                     scoped_campus_filter(session, cur, ClosedMonth.campus_id)

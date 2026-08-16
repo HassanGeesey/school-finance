@@ -27,7 +27,11 @@ def login_finance_client(mini_client):
 
 
 def create_template(client, name="Standard", amount="100.00"):
-    return client.app.state.fees.create_template(user=None, name=name, amount=amount)
+    from tests.helpers import in_admin_scope
+
+    return in_admin_scope(
+        client, lambda: client.app.state.fees.create_template(user=None, name=name, amount=amount)
+    )
 
 
 def create_class(client, name="Grade 1", default_template_id=""):
@@ -86,9 +90,11 @@ def test_new_class_form_lists_active_template_options(mini_client):
 
 
 def test_new_class_form_excludes_archived_templates(mini_client):
+    from tests.helpers import in_admin_scope
+
     client = authenticated_mini_client(mini_client)
     template = create_template(client, name="Old")
-    client.app.state.fees.archive_template(user=None, template_id=template.id)
+    in_admin_scope(client, lambda: client.app.state.fees.archive_template(user=None, template_id=template.id))
 
     response = client.get("/classes/new")
 
@@ -142,9 +148,11 @@ def test_create_class_rejects_an_invalid_template(mini_client):
 
 
 def test_create_class_rejects_an_archived_template(mini_client):
+    from tests.helpers import in_admin_scope
+
     client = authenticated_mini_client(mini_client)
     template = create_template(client)
-    client.app.state.fees.archive_template(user=None, template_id=template.id)
+    in_admin_scope(client, lambda: client.app.state.fees.archive_template(user=None, template_id=template.id))
 
     response = create_class(client, name="Grade 1", default_template_id=str(template.id))
 

@@ -40,7 +40,11 @@ def create_class_id(client, name="Grade 1", status="active"):
 
 
 def create_template(client, name="Standard", amount="50.00"):
-    return client.app.state.fees.create_template(user=None, name=name, amount=amount)
+    from tests.helpers import in_admin_scope
+
+    return in_admin_scope(
+        client, lambda: client.app.state.fees.create_template(user=None, name=name, amount=amount)
+    )
 
 
 def add_student(

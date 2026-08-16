@@ -11,6 +11,7 @@ import json
 import pytest
 
 from app.models import FeeTemplate
+from tests.helpers import in_admin_scope
 
 
 def authenticated_mini_client(mini_client):
@@ -29,13 +30,21 @@ def login_finance_client(mini_client):
 
 
 def create_template(client, name="Standard", amount="100.00"):
+    from tests.helpers import in_admin_scope
+
     service = client.app.state.fees
-    return service.create_template(user=None, name=name, amount=amount)
+    return in_admin_scope(
+        client, lambda: service.create_template(user=None, name=name, amount=amount)
+    )
 
 
 def add_closed_month(client, month=7, year=2026):
+    from tests.helpers import in_admin_scope
+
     service = client.app.state.fees_closed
-    return service.add_closed_month(user=None, month=month, year=year)
+    return in_admin_scope(
+        client, lambda: service.add_closed_month(user=None, month=month, year=year)
+    )
 
 
 def htmx_headers() -> dict[str, str]:
@@ -397,7 +406,7 @@ def test_add_closed_month_via_htmx(mini_client):
     assert response.status_code == 200
     trigger = json.loads(response.headers["HX-Trigger"])
     assert trigger["toast"]["message"] == "July 2026 closed."
-    assert client.app.state.fees_closed.closed_month_set() == {(7, 2026)}
+    assert in_admin_scope(client, client.app.state.fees_closed.closed_month_set) == {(7, 2026)}
 
 
 def test_add_closed_month_via_plain_redirect(mini_client):
@@ -436,7 +445,7 @@ def test_add_duplicate_closed_month_shows_an_error(mini_client):
 
     assert response.status_code == 200
     assert "already closed" in response.text
-    assert client.app.state.fees_closed.closed_month_set() == {(7, 2026)}
+    assert in_admin_scope(client, client.app.state.fees_closed.closed_month_set) == {(7, 2026)}
 
 
 def test_add_closed_month_rejects_an_invalid_period(mini_client):
@@ -465,7 +474,7 @@ def test_remove_closed_month_via_htmx(mini_client):
     assert response.status_code == 200
     trigger = json.loads(response.headers["HX-Trigger"])
     assert trigger["toast"]["message"] == "July 2026 reopened."
-    assert client.app.state.fees_closed.closed_month_set() == set()
+    assert in_admin_scope(client, client.app.state.fees_closed.closed_month_set) == set()
 
 
 def test_remove_closed_month_that_is_not_closed_shows_an_error(mini_client):

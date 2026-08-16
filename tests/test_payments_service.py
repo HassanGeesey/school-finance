@@ -25,8 +25,14 @@ from app.payments.service import (
     PaymentService,
 )
 from app.students.service import StudentNotFound, StudentService
+from app.tenants.scope import scope
 
 PASSWORD = "correct horse battery staple"
+
+
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
 
 
 @pytest.fixture()
@@ -219,7 +225,7 @@ def test_a_payment_tagged_to_a_future_month_is_recorded_as_credit(
 def test_a_payment_tagged_to_a_closed_month_becomes_credit(
     payments, students, classes, admin, session
 ):
-    session.add(ClosedMonth(month=6, year=2026))
+    session.add(ClosedMonth(month=6, year=2026, campus_id=scope().campus_id))
     session.commit()
     student = make_student(students, classes, admin)
 

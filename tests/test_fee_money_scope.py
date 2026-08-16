@@ -4,9 +4,8 @@ Service-level tests with a seeded scope, following ticket 03's pattern: the
 request scope resolves from the acting user and filters reads and stamps writes
 on fee templates, closed months, expense categories, waivers, payments/credits,
 and expenses. Two Campuses of one School each hold their own policy and money
-rows; legacy NULL-campus rows stay visible to every scope. Cross-campus ids are
-refused or return empty, never data. Route concerns live in
-``test_fee_money_routes.py``.
+rows; every row carries a Campus (ticket 09). Cross-campus ids are refused or
+return empty, never data. Route concerns live in ``test_fee_money_routes.py``.
 """
 
 from datetime import date
@@ -17,7 +16,6 @@ from app.audit.service import AuditService
 from app.classes.service import ClassService
 from app.expenses.service import (
     CategoryNotFound,
-    DuplicateCategoryName,
     ExpenseService,
 )
 from app.fees.service import (
@@ -90,20 +88,18 @@ def expenses(db, audit) -> ExpenseService:
 
 
 def seed_fee_world(session, campus_a, campus_b):
-    """A template + class + student per campus, plus a legacy NULL-campus set.
+    """A template + class + student per campus.
 
     Students are linked to their campus's template and enroll today (the model
     default), so the current month is their only owed month.
     """
     class_a = Class(name="Grade A", campus_id=campus_a.id)
     class_b = Class(name="Grade B", campus_id=campus_b.id)
-    legacy_class = Class(name="Legacy")
-    session.add_all([class_a, class_b, legacy_class])
+    session.add_all([class_a, class_b])
     session.flush()
     template_a = FeeTemplate(name="Standard A", amount_cents=10000, campus_id=campus_a.id)
     template_b = FeeTemplate(name="Standard B", amount_cents=10000, campus_id=campus_b.id)
-    legacy_template = FeeTemplate(name="Legacy Standard", amount_cents=10000)
-    session.add_all([template_a, template_b, legacy_template])
+    session.add_all([template_a, template_b])
     session.flush()
     student_a = Student(
         class_id=class_a.id,
@@ -119,24 +115,15 @@ def seed_fee_world(session, campus_a, campus_b):
         last_name="Hopper",
         fee_template_id=template_b.id,
     )
-    legacy_student = Student(
-        class_id=legacy_class.id,
-        first_name="Alan",
-        last_name="Turing",
-        fee_template_id=legacy_template.id,
-    )
-    session.add_all([student_a, student_b, legacy_student])
+    session.add_all([student_a, student_b])
     session.commit()
     return (
         template_a,
         template_b,
-        legacy_template,
         class_a,
         class_b,
-        legacy_class,
         student_a,
         student_b,
-        legacy_student,
     )
 
 
@@ -145,14 +132,14 @@ def seed_fee_world(session, campus_a, campus_b):
 # ---------------------------------------------------------------------------
 
 
-def test_campus_admin_lists_only_own_campus_and_legacy_templates(templates, session):
+def test_campus_admin_lists_only_own_campus_templates(templates, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    template_a, template_b, legacy_template, *_ = seed_fee_world(session, campus_a, campus_b)
+    template_a, template_b, *_ = seed_fee_world(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         rows = templates.list_templates()
 
-    assert {row.id for row in rows} == {template_a.id, legacy_template.id}
+    assert {row.id for row in rows} == {template_a.id}
     assert template_b.id not in {row.id for row in rows}
 
 
@@ -168,7 +155,7 @@ def test_create_template_stamps_the_acting_campus(templates, session):
 
 def test_a_template_of_another_campus_is_invisible(templates, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    _template_a, template_b, _legacy, *_ = seed_fee_world(session, campus_a, campus_b)
+    _template_a, template_b, *_ = seed_fee_world(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         with pytest.raises(TemplateNotFound):
@@ -190,7 +177,7 @@ def test_amount_change_propagates_only_to_own_campus_linked_students(
     templates, session
 ):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    template_a, _template_b, _legacy, _class_a, _class_b, _legacy_class, student_a, student_b, _ls = (
+    template_a, _template_b, _class_a, _class_b, student_a, student_b = (
         seed_fee_world(session, campus_a, campus_b)
     )
     # A Campus-B student corruptly linked to A's template: propagation must not
@@ -251,8 +238,6 @@ def test_closed_months_are_per_campus(closed_months, session):
 
 def test_closed_months_are_visible_only_in_scope(closed_months, session):
     _school, campus_a, campus_b, admin_a, admin_b, _sa = seed_tenant_world(session)
-    session.add(ClosedMonth(month=9, year=2025))  # legacy, NULL campus
-    session.commit()
     with scope_context(RequestScope.for_user(admin_a)):
         closed_months.add_closed_month(user=admin_a, month=7, year=2026)
     with scope_context(RequestScope.for_user(admin_b)):
@@ -263,18 +248,8 @@ def test_closed_months_are_visible_only_in_scope(closed_months, session):
     with scope_context(RequestScope.for_user(admin_b)):
         visible_b = {row.month for row in closed_months.list_closed_months()}
 
-    assert visible_a == {9, 7}
-    assert visible_b == {9, 8}
-
-
-def test_a_legacy_closed_month_conflicts_within_every_scope(closed_months, session):
-    _school, campus_a, _campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    session.add(ClosedMonth(month=7, year=2026))  # legacy, NULL campus
-    session.commit()
-
-    with scope_context(RequestScope.for_user(admin_a)):
-        with pytest.raises(DuplicateClosedMonth):
-            closed_months.add_closed_month(user=admin_a, month=7, year=2026)
+    assert visible_a == {7}
+    assert visible_b == {8}
 
 
 def test_remove_closed_month_refuses_another_campuses_month(closed_months, session):
@@ -332,17 +307,6 @@ def test_a_category_of_another_campus_is_invisible(expenses, session):
             expenses.remove_category(user=admin_a, category_id=category_b.id)
 
 
-def test_a_legacy_category_conflicts_within_every_scope(expenses, session):
-    _school, campus_a, _campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    session.add(ExpenseCategory(name="Transport"))  # legacy, NULL campus
-    session.commit()
-
-    with scope_context(RequestScope.for_user(admin_a)):
-        assert [c.name for c in expenses.list_categories()] == ["Transport"]
-        with pytest.raises(DuplicateCategoryName):
-            expenses.create_category(user=admin_a, name="transport")
-
-
 # ---------------------------------------------------------------------------
 # Waivers
 # ---------------------------------------------------------------------------
@@ -350,7 +314,7 @@ def test_a_legacy_category_conflicts_within_every_scope(expenses, session):
 
 def test_waiver_stamps_the_acting_campus(waivers, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    *_, student_a, _student_b, _ls = seed_fee_world(session, campus_a, campus_b)
+    *_, student_a, _student_b = seed_fee_world(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         waivers.add_waiver(
@@ -369,7 +333,7 @@ def test_waiver_stamps_the_acting_campus(waivers, session):
 
 def test_waiver_on_a_foreign_campus_student_is_refused(waivers, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    *_, _student_a, student_b, _ls = seed_fee_world(session, campus_a, campus_b)
+    *_, _student_a, student_b = seed_fee_world(session, campus_a, campus_b)
 
     with scope_context(RequestScope.for_user(admin_a)):
         with pytest.raises(WaiverError):
@@ -390,7 +354,7 @@ def test_waiver_on_a_foreign_campus_student_is_refused(waivers, session):
 
 def test_payment_stamps_the_acting_campus(payments, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    *_, student_a, _student_b, _ls = seed_fee_world(session, campus_a, campus_b)
+    *_, student_a, _student_b = seed_fee_world(session, campus_a, campus_b)
     today = date.today()
 
     with scope_context(RequestScope.for_user(admin_a)):
@@ -413,7 +377,7 @@ def test_payment_stamps_the_acting_campus(payments, session):
 
 def test_a_payment_on_a_foreign_campus_student_is_refused(payments, session):
     _school, campus_a, campus_b, admin_a, _admin_b, _sa = seed_tenant_world(session)
-    *_, _student_a, student_b, _ls = seed_fee_world(session, campus_a, campus_b)
+    *_, _student_a, student_b = seed_fee_world(session, campus_a, campus_b)
     today = date.today()
 
     with scope_context(RequestScope.for_user(admin_a)):
@@ -433,7 +397,7 @@ def test_a_payment_on_a_foreign_campus_student_is_refused(payments, session):
 
 def test_get_payment_of_another_campus_raises(payments, session):
     _school, campus_a, campus_b, admin_a, admin_b, _sa = seed_tenant_world(session)
-    *_, _student_a, student_b, _ls = seed_fee_world(session, campus_a, campus_b)
+    *_, _student_a, student_b = seed_fee_world(session, campus_a, campus_b)
     today = date.today()
     with scope_context(RequestScope.for_user(admin_b)):
         payment_b = payments.record_payment(
@@ -453,7 +417,7 @@ def test_get_payment_of_another_campus_raises(payments, session):
 
 def test_list_recent_payments_shows_only_own_campus(payments, session):
     _school, campus_a, campus_b, admin_a, admin_b, superadmin = seed_tenant_world(session)
-    *_, student_a, student_b, _ls = seed_fee_world(session, campus_a, campus_b)
+    *_, student_a, student_b = seed_fee_world(session, campus_a, campus_b)
     today = date.today()
     with scope_context(RequestScope.for_user(admin_a)):
         payments.record_payment(
@@ -484,7 +448,7 @@ def test_list_recent_payments_shows_only_own_campus(payments, session):
 
 def test_closed_months_are_per_campus_for_the_account_view(payments, closed_months, session):
     _school, campus_a, campus_b, admin_a, admin_b, _sa = seed_tenant_world(session)
-    *_, student_a, student_b, _ls = seed_fee_world(session, campus_a, campus_b)
+    *_, student_a, student_b = seed_fee_world(session, campus_a, campus_b)
     today = date.today()
 
     with scope_context(RequestScope.for_user(admin_a)):

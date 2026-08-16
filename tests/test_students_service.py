@@ -32,6 +32,11 @@ from app.models import (
 PASSWORD = "correct horse battery staple"
 
 
+@pytest.fixture(autouse=True)
+def _scoped(world):
+    return world
+
+
 @pytest.fixture()
 def audit(db) -> AuditService:
     return AuditService(db)
@@ -66,8 +71,8 @@ def grade1(classes, admin) -> Class:
 
 
 @pytest.fixture()
-def template(session) -> FeeTemplate:
-    fee_template = FeeTemplate(name="Standard", amount_cents=10000)
+def template(campus_id, session) -> FeeTemplate:
+    fee_template = FeeTemplate(name="Standard", amount_cents=10000, campus_id=campus_id)
     session.add(fee_template)
     session.commit()
     return fee_template
