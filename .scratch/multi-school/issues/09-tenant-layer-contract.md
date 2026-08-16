@@ -48,4 +48,4 @@
 contract tests), `mypy app` clean for all touched modules (5 remaining errors
 are in the in-progress `app/schools/` / `app/main.py` work, not this ticket).
 
-**Commit:** (pending)
+**Commit:** `1548785`
