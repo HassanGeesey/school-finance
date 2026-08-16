@@ -16,8 +16,9 @@ from sqlalchemy.orm import Session
 from ..audit.service import AuditActions, AuditService
 from ..config import settings
 from ..db import Database
-from ..models import AuthSession, User, UserRoles, utcnow
+from ..models import AuthSession, School, User, UserRoles, utcnow
 from ..profile.service import ProfileService
+from ..tenants.service import ensure_bootstrap_on
 
 
 class AuthError(Exception):
@@ -99,14 +100,15 @@ class AuthService:
     def _has_users(session: Session) -> bool:
         return session.query(User).count() > 0
 
-    def setup_first_admin(
-        self, *, name: str, username: str, password: str, school_name: str = ""
-    ) -> User:
-        """Create the first Admin account and the school profile.
+    @staticmethod
+    def _validate_setup_inputs(
+        *, name: str, username: str, password: str, school_name: str
+    ) -> tuple[str, str, str, str]:
+        """Strip the wizard's fields and enforce the first-run requirements.
 
-        The school name is required here: the wizard is the first time the
-        school's identity is captured, so it is recorded via the profile
-        service. Raises when users already exist.
+        Shared by the offline and cloud setup paths so their validation cannot
+        drift apart. Returns the cleaned values; the password is not stripped —
+        an empty password is the only one rejected.
         """
         name = (name or "").strip()
         username = (username or "").strip()
@@ -117,15 +119,35 @@ class AuthService:
             raise AuthError("A password is required.")
         if not school_name:
             raise AuthError("A school name is required.")
+        return name, username, password, school_name
+
+    def setup_first_admin(
+        self, *, name: str, username: str, password: str, school_name: str = ""
+    ) -> User:
+        """Create the first Admin account and the school profile.
+
+        The Admin is bound to the implicit School + Campus (multi-school ticket
+        01): ``ensure_bootstrap_on`` creates exactly one of each in the same
+        session, and the Admin is stamped with their ids before the commit. The
+        school name is required here: the wizard is the first time the school's
+        identity is captured, so it is recorded via the profile service. Raises
+        when users already exist.
+        """
+        name, username, password, school_name = self._validate_setup_inputs(
+            name=name, username=username, password=password, school_name=school_name
+        )
 
         with self._session() as session:
             if self._has_users(session):
                 raise SetupNotAvailable("An admin account already exists.")
+            school, campus = ensure_bootstrap_on(session)
             user = User(
                 name=name,
                 username=username,
                 password_hash=hash_password(password),
                 role=UserRoles.ADMIN,
+                school_id=school.id,
+                campus_id=campus.id,
             )
             session.add(user)
             session.commit()
@@ -137,6 +159,49 @@ class AuthService:
             summary=(
                 f"Created the first Admin account: {name} ({username}); "
                 f"school profile set up as {school_name}"
+            ),
+        )
+        return user
+
+    def setup_school_superadmin(
+        self, *, name: str, username: str, password: str, school_name: str = ""
+    ) -> User:
+        """Create the School and its Superadmin account (cloud path, UR-17).
+
+        First-run provisioning on the cloud path: the wizard names the School
+        and creates its owner at the top in one step. No Campus is created here
+        — the Superadmin creates campuses later from the School Dashboard
+        (ticket 05). The school name is also recorded on the legacy profile so
+        branding keeps working. Raises when users already exist.
+        """
+        name, username, password, school_name = self._validate_setup_inputs(
+            name=name, username=username, password=password, school_name=school_name
+        )
+
+        with self._session() as session:
+            if self._has_users(session):
+                raise SetupNotAvailable("An admin account already exists.")
+            school = School(name=school_name)
+            session.add(school)
+            session.flush()
+            user = User(
+                name=name,
+                username=username,
+                password_hash=hash_password(password),
+                role=UserRoles.SUPERADMIN,
+                school_id=school.id,
+                campus_id=None,
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+        self._profile.update_profile(user=user, school_name=school_name)
+        self._log(
+            user=None,
+            action=AuditActions.SETUP,
+            summary=(
+                f"Created the first Superadmin account: {name} ({username}); "
+                f"school set up as {school_name}"
             ),
         )
         return user

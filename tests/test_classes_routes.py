@@ -276,3 +276,60 @@ def test_edit_class_missing_class_404s(mini_client):
     )
 
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Two-campus scoping
+# ---------------------------------------------------------------------------
+
+
+def _bind_implicit_admin_and_seed_campus_b(client):
+    """Bind the setup wizard's admin to the implicit Campus and create a second
+    Campus with its own Admin and one class, all via the DB (ticket 03)."""
+    from app.auth.service import hash_password
+    from app.models import Campus, Class, School, User, UserRoles
+
+    with client.app.state.db.session() as session:
+        school = session.query(School).first()
+        campus_a = session.query(Campus).first()
+        admin = session.query(User).filter_by(username="admin").one()
+        admin.school_id = school.id
+        admin.campus_id = campus_a.id
+        campus_b = Campus(school_id=school.id, name="Campus B")
+        session.add(campus_b)
+        session.flush()
+        class_b = Class(name="Grade B", campus_id=campus_b.id)
+        session.add(class_b)
+        session.flush()
+        session.add(
+            User(
+                username="admin_b",
+                name="Admin B",
+                password_hash=hash_password("password b"),
+                role=UserRoles.ADMIN,
+                school_id=school.id,
+                campus_id=campus_b.id,
+            )
+        )
+        session.commit()
+        return class_b.id
+
+
+def test_classes_are_scoped_to_the_acting_campus(mini_client):
+    from tests.helpers import login
+
+    client = authenticated_mini_client(mini_client)
+    class_b_id = _bind_implicit_admin_and_seed_campus_b(client)
+    class_a_id = int(create_class(client, name="Grade A").headers["location"].split("/")[-1].split("?")[0])
+
+    page = client.get("/classes")
+    assert "Grade A" in page.text
+    assert "Grade B" not in page.text
+    assert client.get(f"/classes/{class_b_id}").status_code == 404
+
+    client.post("/logout", follow_redirects=False)
+    login(client, username="admin_b", password="password b")
+    page = client.get("/classes")
+    assert "Grade B" in page.text
+    assert "Grade A" not in page.text
+    assert client.get(f"/classes/{class_a_id}").status_code == 404

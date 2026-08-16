@@ -7,10 +7,11 @@ rules themselves are covered in ``test_auth_service.py``.
 from app.auth.service import verify_password
 from app.config import settings
 from app.main import create_app
-from app.models import User, UserRoles
+from app.models import School, User, UserRoles
 from tests.helpers import (
     NAME,
     PASSWORD,
+    SCHOOL_NAME,
     USERNAME,
     add_finance_user,
     authenticated_admin,
@@ -53,6 +54,57 @@ def test_setup_rejects_missing_fields(client):
     assert response.status_code == 400
     assert "required" in response.text
     assert response.headers.get("set-cookie") is None
+
+
+def test_cloud_setup_creates_school_and_superadmin(client, monkeypatch):
+    monkeypatch.setattr(settings, "CLOUD_MODE", True)
+
+    response = client.get("/setup")
+    assert response.status_code == 200
+    assert "Create admin account" in response.text
+
+    response = client.post(
+        "/setup",
+        data={
+            "school_name": SCHOOL_NAME,
+            "name": NAME,
+            "username": USERNAME,
+            "password": PASSWORD,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+    with client.app.state.db.session() as session:
+        school = session.query(School).filter_by(name=SCHOOL_NAME).one()
+        assert school.name == SCHOOL_NAME
+        user = session.query(User).one()
+        assert user.username == USERNAME
+        assert user.role == UserRoles.SUPERADMIN
+        assert user.school_id == school.id
+        assert user.campus_id is None
+
+    login(client)
+
+
+def test_cloud_setup_refused_once_a_user_exists(client, monkeypatch):
+    monkeypatch.setattr(settings, "CLOUD_MODE", True)
+    response = client.post(
+        "/setup",
+        data={
+            "school_name": SCHOOL_NAME,
+            "name": NAME,
+            "username": USERNAME,
+            "password": PASSWORD,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    response = client.get("/setup", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
 
 
 def test_login_and_logout_round_trip(client):

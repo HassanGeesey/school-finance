@@ -42,5 +42,19 @@ class Settings:
         "yes",
     )
 
+    # Multi-school cloud path (MD-1/UR-15): the cloud deployment targets a
+    # central Postgres DB while the .exe stays on local SQLite. The setup
+    # wizard branches on this — cloud creates the named School + its Superadmin
+    # in one step, offline creates the one Admin bound to the implicit School +
+    # Campus. Deriving from the DB URL scheme cannot misfire (SQLite is always
+    # the offline path); ``SCHOOL_FINANCE_CLOUD`` overrides it for tests and
+    # edge deployments.
+    _cloud_env = os.environ.get("SCHOOL_FINANCE_CLOUD", "").lower()
+    CLOUD_MODE = (
+        _cloud_env in ("1", "true", "yes")
+        if _cloud_env
+        else DATABASE_URL.startswith(("postgres://", "postgresql://"))
+    )
+
 
 settings = Settings()

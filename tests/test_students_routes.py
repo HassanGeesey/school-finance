@@ -713,3 +713,77 @@ def test_account_page_404s_for_a_missing_student(client):
     create_class(client)
 
     assert client.get("/students/999/account").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Two-campus scoping
+# ---------------------------------------------------------------------------
+
+
+def test_campus_scoping_isolates_classes_and_students(client):
+    from app.auth.service import hash_password
+    from app.models import Campus, Class, School, Student, User, UserRoles
+    from tests.helpers import login
+
+    authenticated_admin(client)
+    with client.app.state.db.session() as session:
+        school = session.query(School).first()
+        campus_a = session.query(Campus).first()
+        admin = session.query(User).filter_by(username="admin").one()
+        admin.school_id = school.id
+        admin.campus_id = campus_a.id
+        campus_b = Campus(school_id=school.id, name="Campus B")
+        session.add(campus_b)
+        session.flush()
+        class_a = Class(name="Grade A", campus_id=campus_a.id)
+        class_b = Class(name="Grade B", campus_id=campus_b.id)
+        session.add_all([class_a, class_b])
+        session.flush()
+        session.add_all(
+            [
+                Student(
+                    class_id=class_a.id,
+                    campus_id=campus_a.id,
+                    first_name="Ada",
+                    last_name="Lovelace",
+                ),
+                Student(
+                    class_id=class_b.id,
+                    campus_id=campus_b.id,
+                    first_name="Grace",
+                    last_name="Hopper",
+                ),
+            ]
+        )
+        session.add(
+            User(
+                username="admin_b",
+                name="Admin B",
+                password_hash=hash_password("password b"),
+                role=UserRoles.ADMIN,
+                school_id=school.id,
+                campus_id=campus_b.id,
+            )
+        )
+        session.commit()
+        class_a_id, class_b_id = class_a.id, class_b.id
+
+    # The implicit admin sees only their own campus's class and student.
+    detail = client.get(f"/classes/{class_a_id}")
+    assert "Ada Lovelace" in detail.text
+    assert "Grace Hopper" not in detail.text
+    search = client.get("/students?q=hopper")
+    assert "Grace Hopper" not in search.text
+    assert "No students found" in search.text
+    assert add_student(client, class_id=class_b_id).status_code == 404
+
+    # The second-campus admin sees only theirs; the other campus is 404.
+    client.post("/logout", follow_redirects=False)
+    login(client, username="admin_b", password="password b")
+    assert add_student(client, class_id=class_a_id).status_code == 404
+    detail = client.get(f"/classes/{class_b_id}")
+    assert "Grace Hopper" in detail.text
+    assert "Ada Lovelace" not in detail.text
+    search = client.get("/students?q=lovelace")
+    assert "Ada Lovelace" not in search.text
+    assert "No students found" in search.text

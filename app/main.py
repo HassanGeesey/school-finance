@@ -43,6 +43,7 @@ from .students.service import StudentService
 from .system.routes import router as system_router
 from .system.service import BackupService, SystemService, uvicorn_stop
 from .templating import build_templates
+from .tenants.scope import RequestScope, scope_context
 from .tenants.service import TenantService
 
 
@@ -121,7 +122,11 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db.create_all()
-        tenants.ensure_bootstrap()
+        # The offline path gets its implicit School + Campus silently; the
+        # cloud path skips it because the setup wizard creates the one named
+        # School (its Superadmin binds to it), so no phantom "" School appears.
+        if not settings.CLOUD_MODE:
+            tenants.ensure_bootstrap()
         system.backup_on_startup()
         yield
 
@@ -154,7 +159,11 @@ def create_app(
         if token:
             request.state.user = auth.user_for_token(token)
         request.state.school_profile = profile.get_profile()
-        return await call_next(request)
+        # The request's tenant scope lives in a context variable so sync route
+        # handlers and the services they call can read it (multi-school ticket
+        # 03). Anonymous requests resolve to None = unscoped.
+        with scope_context(RequestScope.for_user(request.state.user)):
+            return await call_next(request)
 
     app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
     app.include_router(auth_router)

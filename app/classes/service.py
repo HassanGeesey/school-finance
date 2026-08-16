@@ -28,6 +28,7 @@ from ..audit.service import AuditActions, AuditService
 from ..db import Database
 from ..models import Class, ClassStatus, FeeTemplate, Student, User
 from ..money import Money
+from ..tenants.scope import campus_for_write, in_scope, scope, scoped_campus_filter
 
 CLASS_STATUS_LABELS = {
     ClassStatus.ACTIVE: "Active",
@@ -79,6 +80,9 @@ class ClassService:
         cls = session.get(Class, class_id)
         if cls is None:
             raise ClassNotFound(f"No class with id {class_id} exists.")
+        cur = scope()
+        if cur is not None and not in_scope(session, cur, cls.campus_id):
+            raise ClassNotFound(f"No class with id {class_id} exists.")
         return cls
 
     def _get_class_with_template(self, session: Session, class_id: int) -> Class:
@@ -90,6 +94,9 @@ class ClassService:
         )
         if cls is None:
             raise ClassNotFound(f"No class with id {class_id} exists.")
+        cur = scope()
+        if cur is not None and not in_scope(session, cur, cls.campus_id):
+            raise ClassNotFound(f"No class with id {class_id} exists.")
         return cls
 
     @staticmethod
@@ -97,6 +104,9 @@ class ClassService:
         """Resolve a posted template id to a live template, or reject it."""
         template = session.get(FeeTemplate, template_id)
         if template is None or template.archived:
+            raise ClassError("Choose a valid fee template.")
+        cur = scope()
+        if cur is not None and not in_scope(session, cur, template.campus_id):
             raise ClassError("Choose a valid fee template.")
         return template
 
@@ -130,6 +140,7 @@ class ClassService:
         status = self._validate_status(status)
 
         with self._session() as session:
+            cur = scope()
             template = (
                 self._template_option(session, default_template_id)
                 if default_template_id is not None
@@ -138,6 +149,7 @@ class ClassService:
             cls = Class(
                 name=name,
                 status=status,
+                campus_id=campus_for_write(cur),
                 default_template_id=template.id if template is not None else None,
             )
             session.add(cls)
@@ -233,30 +245,39 @@ class ClassService:
         """One class with its student count and the default monthly fee."""
         with self._session() as session:
             cls = self._get_class_with_template(session, class_id)
-            student_count = (
-                session.query(func.count(Student.id)).filter(Student.class_id == class_id).scalar()
-                or 0
+            cur = scope()
+            count_query = (
+                session.query(func.count(Student.id)).filter(Student.class_id == class_id)
             )
+            if cur is not None:
+                count_query = count_query.filter(
+                    scoped_campus_filter(session, cur, Student.campus_id)
+                )
+            student_count = count_query.scalar() or 0
             return self._to_summary(cls, int(student_count))
 
     def list_class_summaries(self) -> list[ClassSummary]:
-        """Every class with its summary, oldest first."""
+        """Every class in scope with its summary, oldest first."""
         with self._session() as session:
+            cur = scope()
             classes = (
                 session.query(Class)
                 .options(joinedload(Class.default_template))
                 .order_by(Class.created_at, Class.id)
-                .all()
             )
-            counts: dict[int, int] = {
-                class_id: int(count)
-                for class_id, count in (
-                    session.query(Student.class_id, func.count(Student.id))
-                    .group_by(Student.class_id)
-                    .all()
+            if cur is not None:
+                classes = classes.filter(scoped_campus_filter(session, cur, Class.campus_id))
+            counts_query = (
+                session.query(Student.class_id, func.count(Student.id)).group_by(Student.class_id)
+            )
+            if cur is not None:
+                counts_query = counts_query.filter(
+                    scoped_campus_filter(session, cur, Student.campus_id)
                 )
+            counts: dict[int, int] = {
+                class_id: int(count) for class_id, count in counts_query.all()
             }
-            return [self._to_summary(cls, counts.get(cls.id, 0)) for cls in classes]
+            return [self._to_summary(cls, counts.get(cls.id, 0)) for cls in classes.all()]
 
     @staticmethod
     def _to_summary(cls: Class, student_count: int) -> ClassSummary:
@@ -269,11 +290,13 @@ class ClassService:
         )
 
     def student_counts(self) -> dict[int, int]:
-        """How many students belong to each class id."""
+        """How many students in scope belong to each class id."""
         with self._session() as session:
-            rows = (
-                session.query(Student.class_id, func.count(Student.id))
-                .group_by(Student.class_id)
-                .all()
+            cur = scope()
+            query = session.query(Student.class_id, func.count(Student.id)).group_by(
+                Student.class_id
             )
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
+            rows = query.all()
         return {class_id: int(count) for class_id, count in rows}

@@ -67,9 +67,14 @@ def setup_submit(
 ) -> Response:
     auth = _auth(request)
     try:
-        auth.setup_first_admin(
-            school_name=school_name, name=name, username=username, password=password
-        )
+        if settings.CLOUD_MODE:
+            auth.setup_school_superadmin(
+                school_name=school_name, name=name, username=username, password=password
+            )
+        else:
+            auth.setup_first_admin(
+                school_name=school_name, name=name, username=username, password=password
+            )
     except AuthError as exc:
         return _templates(request).TemplateResponse(
             request=request,

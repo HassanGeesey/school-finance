@@ -34,16 +34,27 @@ class TenantService:
         Campus added. Existing tenants are never duplicated or rewritten.
         """
         with self._session() as session:
-            school = session.query(School).first()
-            if school is None:
-                school = School(name="")
-                session.add(school)
-                session.flush()
-            has_campus = (
-                session.query(Campus).filter(Campus.school_id == school.id).count() > 0
-            )
-            if not has_campus:
-                session.add(Campus(school_id=school.id, name=""))
+            school, _campus = ensure_bootstrap_on(session)
             session.commit()
             session.refresh(school)
             return school
+
+
+def ensure_bootstrap_on(session: Session) -> tuple[School, Campus]:
+    """Create the implicit School and its first Campus inside an open session.
+
+    The caller commits. Used by the tenant service (its own unit of work) and
+    by the setup wizard, which needs the implicit School + Campus to bind the
+    first Admin to them in the same transaction.
+    """
+    school = session.query(School).first()
+    if school is None:
+        school = School(name="")
+        session.add(school)
+        session.flush()
+    campus = session.query(Campus).filter(Campus.school_id == school.id).first()
+    if campus is None:
+        campus = Campus(school_id=school.id, name="")
+        session.add(campus)
+        session.flush()
+    return school, campus

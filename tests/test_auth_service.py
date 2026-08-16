@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from app.audit.service import AuditActions, AuditService
 from app.auth.service import (
     AuthError,
     AuthService,
@@ -15,7 +16,15 @@ from app.auth.service import (
     safe_post_login_target,
     verify_password,
 )
-from app.models import AuthSession, SchoolProfile, User, UserRoles
+from app.models import (
+    AuditLogEntry,
+    AuthSession,
+    Campus,
+    School,
+    SchoolProfile,
+    User,
+    UserRoles,
+)
 from app.profile.service import ProfileService
 
 PASSWORD = "correct horse battery staple"
@@ -24,7 +33,7 @@ SCHOOL_NAME = "Sunrise Primary School"
 
 @pytest.fixture()
 def auth(db) -> AuthService:
-    return AuthService(db, profile=ProfileService(db))
+    return AuthService(db, audit=AuditService(db), profile=ProfileService(db))
 
 
 def test_fresh_database_has_no_users(auth):
@@ -82,6 +91,70 @@ def test_setup_first_admin_creates_the_school_profile(auth, session):
     profile = session.query(SchoolProfile).one()
     assert profile.id == 1
     assert profile.school_name == SCHOOL_NAME
+
+
+def test_setup_first_admin_binds_the_admin_to_the_implicit_school_and_campus(auth, session):
+    user = auth.setup_first_admin(
+        name="Head Teacher", username="admin", password=PASSWORD, school_name=SCHOOL_NAME
+    )
+
+    assert user.school_id is not None
+    assert user.campus_id is not None
+    assert session.query(School).count() == 1
+    assert session.query(Campus).count() == 1
+    school = session.query(School).one()
+    campus = session.query(Campus).one()
+    assert user.school_id == school.id
+    assert user.campus_id == campus.id
+    assert campus.school_id == school.id
+
+
+def test_setup_school_superadmin_creates_the_school_and_superadmin(auth, session):
+    user = auth.setup_school_superadmin(
+        name="Superadmin", username="superadmin", password=PASSWORD, school_name=SCHOOL_NAME
+    )
+
+    school = session.query(School).one()
+    assert school.name == SCHOOL_NAME
+    assert session.query(Campus).count() == 0
+    stored = session.query(User).one()
+    assert stored.id == user.id
+    assert stored.name == "Superadmin"
+    assert stored.role == UserRoles.SUPERADMIN
+    assert stored.school_id == school.id
+    assert stored.campus_id is None
+    assert stored.password_hash != PASSWORD
+    assert verify_password(PASSWORD, stored.password_hash) is True
+
+    entry = session.query(AuditLogEntry).one()
+    assert entry.action == AuditActions.SETUP
+    assert entry.user_id is None
+    assert "Superadmin" in entry.summary
+    assert "superadmin" in entry.summary
+
+
+def test_setup_school_superadmin_refuses_when_users_already_exist(auth, session):
+    auth.setup_first_admin(name="A", username="admin", password=PASSWORD, school_name=SCHOOL_NAME)
+
+    with pytest.raises(SetupNotAvailable):
+        auth.setup_school_superadmin(
+            name="B", username="superadmin", password=PASSWORD, school_name="Another School"
+        )
+    assert session.query(User).count() == 1
+    assert session.query(School).count() == 1
+
+
+def test_setup_school_superadmin_requires_all_fields(auth):
+    with pytest.raises(AuthError):
+        auth.setup_school_superadmin(
+            name="", username="superadmin", password=PASSWORD, school_name=SCHOOL_NAME
+        )
+    with pytest.raises(AuthError):
+        auth.setup_school_superadmin(
+            name="A", username="superadmin", password="", school_name=SCHOOL_NAME
+        )
+    with pytest.raises(AuthError):
+        auth.setup_school_superadmin(name="A", username="superadmin", password=PASSWORD)
 
 
 def test_authenticate_returns_the_user_for_valid_credentials(auth):
