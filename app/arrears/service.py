@@ -37,6 +37,7 @@ from ..fees.account import student_account
 from ..fees.service import period_label
 from ..models import ClosedMonth, Student
 from ..money import Money
+from ..tenants.scope import scope, scoped_campus_filter
 
 LATE_THRESHOLD_DAYS = 30
 OVERDUE_THRESHOLD_DAYS = 60
@@ -96,7 +97,13 @@ class ArrearsService:
 
     @staticmethod
     def _closed_months(session: Session) -> set[tuple[int, int]]:
-        rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+        query = session.query(ClosedMonth.month, ClosedMonth.year)
+        cur = scope()
+        if cur is not None:
+            query = query.filter(
+                scoped_campus_filter(session, cur, ClosedMonth.campus_id)
+            )
+        rows = query.all()
         return {(month, year) for month, year in rows}
 
     def arrears_report(self, *, today: date | None = None) -> list[ArrearsLine]:
@@ -109,10 +116,15 @@ class ArrearsService:
         """
         today = today or date.today()
         with self._session() as session:
-            students = (
+            query = (
                 session.query(Student)
                 .options(joinedload(Student.school_class))
-                .order_by(Student.last_name, Student.first_name, Student.id)
+            )
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
+            students = (
+                query.order_by(Student.last_name, Student.first_name, Student.id)
                 .all()
             )
             closed = self._closed_months(session)

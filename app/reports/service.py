@@ -52,6 +52,7 @@ from ..models import (
 )
 from ..money import Money
 from ..payments.service import PAYMENT_METHOD_LABELS
+from ..tenants.scope import in_scope, scope, scoped_campus_filter
 
 
 DASHBOARD_MONTHS = 6
@@ -255,7 +256,13 @@ class ReportService:
 
     @staticmethod
     def _closed_months(session: Session) -> set[tuple[int, int]]:
-        rows = session.query(ClosedMonth.month, ClosedMonth.year).all()
+        query = session.query(ClosedMonth.month, ClosedMonth.year)
+        cur = scope()
+        if cur is not None:
+            query = query.filter(
+                scoped_campus_filter(session, cur, ClosedMonth.campus_id)
+            )
+        rows = query.all()
         return {(month, year) for month, year in rows}
 
     @staticmethod
@@ -291,6 +298,11 @@ class ReportService:
     ) -> dict[tuple[int, int], int]:
         with self._session() as session:
             query = session.query(Payment.paid_on, Payment.amount_cents)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, Payment.campus_id)
+                )
             if start is not None:
                 query = query.filter(Payment.paid_on >= start)
             rows = query.all()
@@ -301,6 +313,11 @@ class ReportService:
     ) -> dict[tuple[int, int], int]:
         with self._session() as session:
             query = session.query(Expense.occurred_on, Expense.amount_cents)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, Expense.campus_id)
+                )
             if start is not None:
                 query = query.filter(Expense.occurred_on >= start)
             rows = query.all()
@@ -308,33 +325,51 @@ class ReportService:
 
     def _credits_total(self) -> Money:
         with self._session() as session:
-            total = session.query(func.coalesce(func.sum(Credit.amount_cents), 0)).scalar()
+            query = session.query(func.coalesce(func.sum(Credit.amount_cents), 0))
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Credit.campus_id))
+            total = query.scalar()
         return int(total or 0)
 
     def _active_student_count(self) -> int:
         with self._session() as session:
-            return int(
-                session.query(func.count(Student.id))
-                .filter(Student.status == StudentStatus.ACTIVE)
-                .scalar()
+            query = session.query(func.count(Student.id)).filter(
+                Student.status == StudentStatus.ACTIVE
             )
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, Student.campus_id)
+                )
+            return int(query.scalar())
 
     def _recent_payments(self, limit: int = 5) -> list[Payment]:
         with self._session() as session:
+            query = session.query(Payment).options(
+                joinedload(Payment.student).joinedload(Student.school_class)
+            )
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, Payment.campus_id)
+                )
             return (
-                session.query(Payment)
-                .options(joinedload(Payment.student).joinedload(Student.school_class))
-                .order_by(Payment.created_at.desc(), Payment.id.desc())
+                query.order_by(Payment.created_at.desc(), Payment.id.desc())
                 .limit(limit)
                 .all()
             )
 
     def _recent_expenses(self, limit: int = 5) -> list[Expense]:
         with self._session() as session:
+            query = session.query(Expense).options(joinedload(Expense.category))
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, Expense.campus_id)
+                )
             return (
-                session.query(Expense)
-                .options(joinedload(Expense.category))
-                .order_by(Expense.created_at.desc(), Expense.id.desc())
+                query.order_by(Expense.created_at.desc(), Expense.id.desc())
                 .limit(limit)
                 .all()
             )
@@ -344,12 +379,16 @@ class ReportService:
 
     # -- Owed-month helpers ---------------------------------------------------
 
-    def _owed_months_across_school(
+    def _owed_months_across_scope(
         self, session: Session, closed: set[tuple[int, int]], today: date
     ) -> set[tuple[int, int]]:
-        """Every month any student is currently owed, for the period dropdowns."""
+        """Every month any student visible to the scope is owed, for the dropdowns."""
+        query = session.query(Student)
+        cur = scope()
+        if cur is not None:
+            query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
         periods: set[tuple[int, int]] = set()
-        for student in session.query(Student).all():
+        for student in query.all():
             periods.update(owed_months(student, closed, today))
         return periods
 
@@ -363,6 +402,9 @@ class ReportService:
         class_id: int | None = None,
     ) -> list[Student]:
         query = session.query(Student).options(joinedload(Student.school_class))
+        cur = scope()
+        if cur is not None:
+            query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
         if class_id is not None:
             query = query.filter(Student.class_id == class_id)
         return [
@@ -381,19 +423,28 @@ class ReportService:
         today = date.today()
         with self._session() as session:
             closed = self._closed_months(session)
-            periods = self._owed_months_across_school(session, closed, today)
+            periods = self._owed_months_across_scope(session, closed, today)
+            cur = scope()
+            payment_query = session.query(Payment.month, Payment.year)
+            if cur is not None:
+                payment_query = payment_query.filter(
+                    scoped_campus_filter(session, cur, Payment.campus_id)
+                )
             periods.update(
                 (month, year)
-                for month, year in session.query(Payment.month, Payment.year).distinct().all()
+                for month, year in payment_query.distinct().all()
             )
+            expense_query = session.query(
+                func.strftime("%m", Expense.occurred_on),
+                func.strftime("%Y", Expense.occurred_on),
+            )
+            if cur is not None:
+                expense_query = expense_query.filter(
+                    scoped_campus_filter(session, cur, Expense.campus_id)
+                )
             periods.update(
                 (int(month), int(year))
-                for month, year in session.query(
-                    func.strftime("%m", Expense.occurred_on),
-                    func.strftime("%Y", Expense.occurred_on),
-                )
-                .distinct()
-                .all()
+                for month, year in expense_query.distinct().all()
             )
         return sorted(periods, reverse=True)
 
@@ -401,6 +452,9 @@ class ReportService:
     def _class_name(session: Session, class_id: int) -> str:
         cls = session.get(Class, class_id)
         if cls is None:
+            raise ClassNotFound(f"No class with id {class_id} exists.")
+        cur = scope()
+        if cur is not None and not in_scope(session, cur, cls.campus_id):
             raise ClassNotFound(f"No class with id {class_id} exists.")
         return cls.name
 
@@ -421,16 +475,22 @@ class ReportService:
         """A month's income (payments) and expenses, and the net."""
         first, last = _period_bounds(year, month)
         with self._session() as session:
-            payments = (
-                session.query(Payment)
-                .filter(Payment.paid_on >= first, Payment.paid_on < last)
-                .all()
-            )
-            expenses = (
-                session.query(Expense)
-                .filter(Expense.occurred_on >= first, Expense.occurred_on < last)
-                .all()
-            )
+            payment_query = session.query(Payment)
+            expense_query = session.query(Expense)
+            cur = scope()
+            if cur is not None:
+                payment_query = payment_query.filter(
+                    scoped_campus_filter(session, cur, Payment.campus_id)
+                )
+                expense_query = expense_query.filter(
+                    scoped_campus_filter(session, cur, Expense.campus_id)
+                )
+            payments = payment_query.filter(
+                Payment.paid_on >= first, Payment.paid_on < last
+            ).all()
+            expenses = expense_query.filter(
+                Expense.occurred_on >= first, Expense.occurred_on < last
+            ).all()
         income_cents = sum(p.amount_cents for p in payments)
         expenses_cents = sum(e.amount_cents for e in expenses)
         return IncomeExpenseReport(
@@ -457,6 +517,11 @@ class ReportService:
         filtered = month is not None and year is not None
         with self._session() as session:
             query = session.query(Expense).options(joinedload(Expense.category))
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, Expense.campus_id)
+                )
             if filtered:
                 first, last = _period_bounds(year, month)  # type: ignore[arg-type]
                 query = query.filter(
@@ -570,10 +635,16 @@ class ReportService:
         today = date.today()
         with self._session() as session:
             closed = self._closed_months(session)
-            periods = self._owed_months_across_school(session, closed, today)
+            periods = self._owed_months_across_scope(session, closed, today)
+            query = session.query(Payment.month, Payment.year)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, Payment.campus_id)
+                )
             periods.update(
                 (month, year)
-                for month, year in session.query(Payment.month, Payment.year).distinct().all()
+                for month, year in query.distinct().all()
             )
         return sorted(periods, reverse=True)
 
@@ -662,6 +733,9 @@ class ReportService:
                 self._class_name(session, class_id) if class_id is not None else None
             )
             query = session.query(Student).options(joinedload(Student.school_class))
+            cur = scope()
+            if cur is not None:
+                query = query.filter(scoped_campus_filter(session, cur, Student.campus_id))
             if class_id is not None:
                 query = query.filter(Student.class_id == class_id)
             students = query.all()
