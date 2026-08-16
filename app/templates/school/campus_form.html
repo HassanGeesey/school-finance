@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import page_header, card, btn, alert, form_field %}
+
+{% block title %}New campus — {{ school_name() }}{% endblock %}
+{% block topbar_title %}New campus{% endblock %}
+
+{% block content %}
+{% set user = current_user() %}
+<div class="space-y-6">
+  {{ page_header("New campus", "Create a branch of the School. You can assign its Campus admin now or later.", actions=btn(href="/school", label="Back to dashboard", icon="arrow-left", variant="outline", size="sm")) }}
+
+  {% if error %}
+  <div>{{ alert("error", error) }}</div>
+  {% endif %}
+
+  {% call card(title="Campus details") %}
+    <form method="post" action="/school/campuses" class="grid gap-4">
+      <div class="grid gap-4 sm:grid-cols-2">
+        {{ form_field("name", "Campus name", value=form.get("name", ""), required=true, placeholder="e.g. Sunrise Branch") }}
+        {{ form_field("address", "Address", value=form.get("address", "")) }}
+        {{ form_field("phone", "Phone", value=form.get("phone", "")) }}
+        {{ form_field("email", "Email", value=form.get("email", "")) }}
+        {{ form_field("website", "Website", value=form.get("website", "")) }}
+      </div>
+
+      <div class="mt-2 border-t border-base-300 pt-4">
+        <p class="text-sm font-semibold text-base-content">First Campus admin <span class="font-normal text-base-content/50">(optional)</span></p>
+        <p class="mt-1 text-xs text-base-content/60">Leave blank to assign an admin later from the dashboard.</p>
+        <div class="mt-3 grid gap-4 sm:grid-cols-3">
+          {{ form_field("admin_name", "Admin name", value=form.get("admin_name", ""), placeholder="e.g. Jane Head") }}
+          {{ form_field("admin_username", "Admin username", value=form.get("admin_username", ""), placeholder="e.g. jane") }}
+          {{ form_field("admin_password", "Temporary password", type="password", value="") }}
+        </div>
+      </div>
+
+      <div class="mt-2">
+        {{ btn(label="Create campus", icon="plus", variant="primary", type="submit") }}
+      </div>
+    </form>
+  {% endcall %}
+</div>
+{% endblock %}

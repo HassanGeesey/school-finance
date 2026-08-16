@@ -47,6 +47,21 @@
     </div>
 
     <nav class="index-nav px-3 pb-4">
+      {% if user and user.role in ("superadmin", "owner") %}
+      <p class="nav-group-label mt-4 px-3">School</p>
+      <div class="mt-1">
+        {{ nav_item("/school", "School dashboard", "building-office-2", path.startswith("/school")) }}
+        {% if user.role == "superadmin" %}
+        {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
+        {% endif %}
+      </div>
+      {% if path.startswith("/campuses/") %}
+      <p class="nav-group-label mt-5 px-3">Viewing campus</p>
+      <div class="mt-1">
+        {{ nav_item("/school", "Back to School dashboard", "arrow-left", false) }}
+      </div>
+      {% endif %}
+      {% else %}
       <p class="nav-group-label mt-4 px-3">School</p>
       <div class="mt-1">
         {{ nav_item("/", "Dashboard", "home", path == "/") }}
@@ -67,14 +82,13 @@
         {{ nav_item("/reports", "Reports", "chart-bar", path.startswith("/reports")) }}
       </div>
 
-      {% if user and user.role in ("admin", "superadmin") %}
+      {% if user and user.role == "admin" %}
       <p class="nav-group-label mt-5 px-3">System</p>
       <div class="mt-1">
         {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
-        {% if user.role == "admin" %}
         {{ nav_item("/admin", "Settings", "cog-6-tooth", path == "/admin") }}
-        {% endif %}
       </div>
+      {% endif %}
       {% endif %}
     </nav>
 
@@ -89,12 +103,14 @@
         {{ icon("menu", "h-5 w-5") }}
       </button>
       <p class="topbar-title min-w-0 flex-1 truncate">{% block topbar_title %}{{ app_name }}{% endblock %}</p>
+      {% if not user or user.role not in ("superadmin", "owner") %}
       <form method="get" action="/students" class="hidden md:block">
         <label class="relative block">
           <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-base-content/40">{{ icon("magnifying-glass", "h-4 w-4") }}</span>
           <input name="q" type="search" placeholder="Search students…" class="input input-sm w-52 pl-9">
         </label>
       </form>
+      {% endif %}
       {% if user %}
       <div class="dropdown dropdown-end">
         <div tabindex="0" role="button" class="user">

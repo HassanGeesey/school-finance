@@ -130,14 +130,14 @@ def test_admin_can_create_a_user(client):
     assert len(audit_entries(client, AuditActions.USER_CREATE)) == 1
 
 
-def test_admin_can_create_an_admin_user(client):
+def test_a_campus_admin_cannot_create_an_admin_user(client):
     authenticated_admin(client)
 
     response = create_user(client, name="Deputy", username="deputy", role="admin")
 
     assert response.status_code == 200
-    (created,) = users(client)[1:]
-    assert created.role == UserRoles.ADMIN
+    assert "Campus admins can only create Finance officer accounts" in response.text
+    assert len(users(client)) == 1
 
 
 def test_creating_a_user_requires_all_fields(client):
@@ -295,13 +295,13 @@ def test_reset_password_requires_a_value(client):
 
 def test_settings_page_lists_users_and_roles(client):
     authenticated_admin(client)
-    create_user(client, name="Deputy Head", username="deputy", role="admin")
+    create_user(client, name="Deputy Cashier", username="deputy", role="finance")
 
     page = client.get("/admin")
 
     assert page.status_code == 200
     assert "Staff accounts" in page.text
-    assert "Deputy Head" in page.text
+    assert "Deputy Cashier" in page.text
     assert "jane" in page.text
     assert "Finance officer" in page.text
     assert "Database backups" in page.text

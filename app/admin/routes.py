@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..auth.deps import require_admin
 from ..config import settings
-from ..models import User
+from ..models import User, UserRoles
 from ..profile.routes import profile_context
 from .service import (
     USER_ROLE_LABELS,
@@ -54,9 +54,17 @@ def _toast_headers(message: str, tone: str = "success") -> dict[str, str]:
 def _users_context(
     request: Request, *, error: str = "", form: dict[str, str] | None = None
 ) -> dict[str, object]:
+    # A Campus-bound Admin manages only Finance officers (multi-school ticket
+    # 08), so the role picker offers just that role to them.
+    from ..tenants.scope import scope
+
+    cur = scope()
+    roles = USER_ROLE_LABELS
+    if cur is not None and cur.campus_id is not None:
+        roles = {UserRoles.FINANCE: USER_ROLE_LABELS[UserRoles.FINANCE]}
     return {
         "users": _service(request).list_users(),
-        "roles": USER_ROLE_LABELS,
+        "roles": roles,
         "error": error,
         "form": form or {},
     }

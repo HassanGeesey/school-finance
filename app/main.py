@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable
 
 from fastapi import Depends, FastAPI, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .admin.routes import router as admin_router
@@ -35,7 +35,7 @@ from .expenses.routes import router as expenses_router
 from .expenses.service import ExpenseService
 from .fees.routes import router as fees_router
 from .fees.service import ClosedMonthService, TemplateService, WaiverService
-from .models import User
+from .models import User, UserRoles
 from .profile.routes import router as profile_router
 from .profile.service import LogoStorage, ProfileService
 from .students.routes import router as students_router
@@ -119,6 +119,11 @@ def create_app(
         reports = ReportService(db, arrears=arrears)
         dashboard_builder = dashboard_context
 
+        from .schools.routes import router as school_router
+        from .schools.service import SchoolDashboardService
+
+        schools = SchoolDashboardService(db, audit=audit, reports=reports)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db.create_all()
@@ -149,6 +154,7 @@ def create_app(
         app.state.payments = payments
         app.state.arrears = arrears
         app.state.reports = reports
+        app.state.schools = schools
 
     @app.middleware("http")
     async def resolve_session(
@@ -165,6 +171,22 @@ def create_app(
         # acting user's Campus (per-Campus branding, ticket 07).
         with scope_context(RequestScope.for_user(request.state.user)):
             request.state.campus_profile = profile.get_profile()
+            # School-bound accounts (Superadmin/Owner) are strictly read-only
+            # outside the School surface (multi-school ticket 08): every other
+            # mutation is refused here so no Campus-scoped route can ever write
+            # for them. The School's own management routes start with /school.
+            # (A middleware return, not a raise: raised HTTPExceptions bypass
+            # the app's exception handlers and surface as 500s.)
+            user = request.state.user
+            if (
+                request.method in ("POST", "PUT", "PATCH", "DELETE")
+                and user is not None
+                and user.role in (UserRoles.SUPERADMIN, UserRoles.OWNER)
+                and not request.url.path.startswith(("/school", "/logout"))
+            ):
+                return PlainTextResponse(
+                    "School-level accounts are read-only.", status_code=403
+                )
             return await call_next(request)
 
     app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
@@ -181,9 +203,14 @@ def create_app(
         app.include_router(payments_router)
         app.include_router(arrears_router)
         app.include_router(reports_router)
+        app.include_router(school_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
+        # School-bound accounts (Superadmin/Owner) live on the School Dashboard
+        # (multi-school ticket 08); Campus-bound staff keep the Campus dashboard.
+        if request.state.user.role in (UserRoles.SUPERADMIN, UserRoles.OWNER):
+            return RedirectResponse("/school", status_code=303)
         context = dashboard_builder(request) if dashboard_builder is not None else {}
         context["database_url"] = url
         return templates.TemplateResponse(

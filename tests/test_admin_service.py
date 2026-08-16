@@ -17,10 +17,33 @@ from app.admin.service import (
 )
 from app.audit.service import AuditActions, AuditService
 from app.auth.service import AuthService, verify_password
-from app.models import AuditLogEntry, User, UserRoles
+from app.models import AuditLogEntry, Campus, School, User, UserRoles
 from app.profile.service import ProfileService
+from app.tenants.scope import RequestScope, require_scope, scope_context
 
 PASSWORD = "correct horse battery staple"
+
+
+@pytest.fixture()
+def school_world(db):
+    """A School-scoped context: the classic admin lifecycle (create Admins,
+    self-disable protection, last-admin protection) happens at the School level.
+    """
+    with db.session() as session:
+        school = School(name="School")
+        session.add(school)
+        session.flush()
+        campus = Campus(school_id=school.id, name="Campus")
+        session.add(campus)
+        session.commit()
+        scope_ = RequestScope(user=None, school_id=school.id, campus_id=None)
+    with scope_context(scope_):
+        yield scope_
+
+
+@pytest.fixture(autouse=True)
+def _scoped(school_world):
+    return school_world
 
 
 @pytest.fixture()
@@ -34,11 +57,14 @@ def auth(db) -> AuthService:
 
 
 def _actor(session, *, name="Head Teacher", username="admin", role=UserRoles.ADMIN) -> User:
+    sc = require_scope()
     user = User(
         name=name,
         username=username,
         password_hash="x",
         role=role,
+        school_id=sc.school_id,
+        campus_id=sc.campus_id,
     )
     session.add(user)
     session.commit()
@@ -80,6 +106,30 @@ def test_create_user_can_make_an_admin(admin, session):
     )
 
     assert created.role == UserRoles.ADMIN
+
+
+def test_a_campus_bound_admin_cannot_create_an_admin(db, admin, session):
+    # A Campus-scoped Admin manages only Finance officers (ticket 08): creating
+    # or promoting an Admin is the Superadmin's School-level job.
+    with db.session() as session:
+        school = School(name="School")
+        session.add(school)
+        session.flush()
+        campus = Campus(school_id=school.id, name="Campus A")
+        session.add(campus)
+        session.commit()
+        scope_ = RequestScope(user=None, school_id=school.id, campus_id=campus.id)
+    with scope_context(scope_):
+        with pytest.raises(AdminUserError):
+            admin.create_user(
+                actor=None, name="Deputy", username="deputy", password=PASSWORD, role=UserRoles.ADMIN
+            )
+        created = admin.create_user(
+            actor=None, name="Cashier", username="cashier", password=PASSWORD, role=UserRoles.FINANCE
+        )
+        assert created.role == UserRoles.FINANCE
+        assert created.campus_id == campus.id
+        assert created.school_id == school.id
 
 
 def test_create_user_requires_name_username_and_password(admin):

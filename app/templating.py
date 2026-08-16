@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from jinja2.runtime import Context
 
-from .admin.service import USER_ROLE_LABELS
+from .admin.service import ALL_ROLE_LABELS
 from .classes.service import CLASS_STATUS_LABELS
 from .config import settings
 from .models import User
@@ -31,7 +31,7 @@ def _register_template_globals(templates: Jinja2Templates) -> None:
         return getattr(request.state, "user", None)
 
     def role_label(role: str) -> str:
-        return USER_ROLE_LABELS.get(role, role)
+        return ALL_ROLE_LABELS.get(role, role)
 
     def class_status_label(status: str) -> str:
         return CLASS_STATUS_LABELS.get(status, status)

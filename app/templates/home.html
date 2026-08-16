@@ -7,9 +7,17 @@
 
 {% block content %}
 {% set user = current_user() %}
+{% if campus %}
+{% set report_base = "/campuses/" ~ campus.id ~ "/reports" %}
+{% set expenses_url = "/campuses/" ~ campus.id ~ "/expenses" %}
+{% else %}
+{% set report_base = "/reports" %}
+{% set expenses_url = "/expenses" %}
+{% endif %}
 <div class="space-y-6">
   {{ page_header("Welcome back" + (", " ~ user.name if user else ""), "School fee collection, expenses, and unpaid fees at a glance.") }}
 
+  {% if not read_only %}
   <div class="board">
     <div class="board-body">
       <div class="flex flex-wrap items-center gap-2">
@@ -21,6 +29,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
     {{ stat_card("Collected this month", money(dashboard.collected_cents), "banknotes", "success", hint="Payments recorded this month") }}
@@ -39,11 +48,11 @@
   </div>
 
   <div class="grid items-start gap-6 lg:grid-cols-2">
-    {% call card(title="Expenses by category", actions=btn(href="/reports/expense-category", label="View report", icon="arrow-right", variant="outline", size="sm")) %}
+    {% call card(title="Expenses by category", actions=btn(href=report_base ~ "/expense-category", label="View report", icon="arrow-right", variant="outline", size="sm")) %}
       <div class="relative h-64"><canvas id="chart-categories"></canvas></div>
     {% endcall %}
 
-    {% call card(title="Recent payments", actions=btn(href="/reports/paid-students", label="Paid students", icon="arrow-right", variant="outline", size="sm")) %}
+    {% call card(title="Recent payments", actions=btn(href=report_base ~ "/paid-students", label="Paid students", icon="arrow-right", variant="outline", size="sm")) %}
       <div class="overflow-x-auto">
         <table class="table">
           <thead><tr><th>Student</th><th>Date</th><th>Method</th><th class="text-right">Amount</th></tr></thead>
@@ -65,7 +74,7 @@
   </div>
 
   <div class="grid items-start gap-6">
-    {% call card(title="Recent expenses", actions=btn(href="/expenses", label="Expenses", icon="arrow-right", variant="outline", size="sm")) %}
+    {% call card(title="Recent expenses", actions=btn(href=expenses_url, label="Expenses", icon="arrow-right", variant="outline", size="sm")) %}
       <div class="overflow-x-auto">
         <table class="table">
           <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="text-right">Amount</th></tr></thead>
