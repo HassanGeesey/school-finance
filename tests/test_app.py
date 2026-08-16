@@ -5,6 +5,7 @@ from sqlalchemy import inspect
 
 from app.db import make_engine
 from app.main import create_app
+from app.models import Campus, School
 from tests.helpers import authenticated_admin, setup_admin
 
 
@@ -35,6 +36,17 @@ def test_startup_creates_schema():
     assert "users" in tables
     assert "fee_templates" in tables
     assert "closed_months" in tables
+
+
+def test_startup_bootstraps_one_school_with_one_campus():
+    app = create_app(database_url="sqlite://")
+    with TestClient(app) as client:
+        client.get("/")
+        with app.state.db.session() as session:
+            school = session.query(School).one()
+            campus = session.query(Campus).one()
+            assert campus.school_id == school.id
+            assert campus.archived is False
 
 
 def test_authenticated_pages_use_the_design_system_shell():

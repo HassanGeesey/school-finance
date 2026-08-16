@@ -43,6 +43,7 @@ from .students.service import StudentService
 from .system.routes import router as system_router
 from .system.service import BackupService, SystemService, uvicorn_stop
 from .templating import build_templates
+from .tenants.service import TenantService
 
 
 def create_app(
@@ -78,6 +79,7 @@ def create_app(
     waivers = WaiverService(db, audit=audit)
     expenses = ExpenseService(db, audit=audit)
     admin = AdminUserService(db, audit=audit)
+    tenants = TenantService(db)
     templates = build_templates(settings.TEMPLATES_DIR)
 
     # Backups only make sense against the real SQLite file. In-memory databases
@@ -119,6 +121,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db.create_all()
+        tenants.ensure_bootstrap()
         system.backup_on_startup()
         yield
 
@@ -135,6 +138,7 @@ def create_app(
     app.state.admin = admin
     app.state.profile = profile
     app.state.system = system
+    app.state.tenants = tenants
     app.state.templates = templates
     if include_billing:
         app.state.payments = payments

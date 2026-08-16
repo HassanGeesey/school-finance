@@ -13,13 +13,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Campus,
     Class,
     ClosedMonth,
     FeeTemplate,
     Payment,
+    School,
     Student,
     StudentAmountChange,
     User,
+    UserRoles,
     Waiver,
 )
 
@@ -38,6 +41,24 @@ EXPECTED_TABLES = {
     "expenses",
     "audit_log",
     "school_profile",
+    "schools",
+    "campuses",
+}
+
+# Every operational table is scoped by a nullable ``campus_id`` (MD-2). The
+# School is reached via the campus → school join, never a denormalized school_id.
+OPERATIONAL_TABLES = {
+    "classes",
+    "students",
+    "fee_templates",
+    "student_amount_changes",
+    "waivers",
+    "closed_months",
+    "payments",
+    "credits",
+    "expense_categories",
+    "expenses",
+    "audit_log",
 }
 
 REMOVED_TABLES = {
@@ -173,6 +194,101 @@ def test_round_trip_user_and_class(db, session: Session):
 
     assert session.query(User).count() == 1
     assert session.query(Class).one().name == "Grade 3"
+
+
+# ---------------------------------------------------------------------------
+# Tenant layer (multi-school ticket 01) — additive only
+# ---------------------------------------------------------------------------
+
+
+def test_user_roles_grow_to_four_values():
+    assert {
+        UserRoles.SUPERADMIN,
+        UserRoles.OWNER,
+        UserRoles.ADMIN,
+        UserRoles.FINANCE,
+    } == {"superadmin", "owner", "admin", "finance"}
+
+
+def test_campus_has_school_foreign_key_and_profile_shape(db):
+    columns = {column["name"] for column in inspect(db.engine).get_columns("campuses")}
+    assert {
+        "school_id",
+        "name",
+        "logo_filename",
+        "address",
+        "phone",
+        "email",
+        "website",
+        "archived",
+    } <= columns
+
+    foreign_keys = inspect(db.engine).get_foreign_keys("campuses")
+    assert any(
+        fk["constrained_columns"] == ["school_id"]
+        and fk["referred_table"] == "schools"
+        for fk in foreign_keys
+    )
+
+
+def test_campus_archived_is_a_soft_delete_flag(db, session: Session):
+    school = School(name="Sunrise Primary")
+    session.add(school)
+    session.commit()
+    session.refresh(school)
+    session.add(Campus(school_id=school.id, name="Main Campus"))
+    session.commit()
+
+    stored = session.query(Campus).one()
+    assert stored.school_id == school.id
+    assert stored.school.name == "Sunrise Primary"
+    assert stored.archived is False
+
+
+def test_every_operational_table_has_a_nullable_campus_id(db):
+    for table in OPERATIONAL_TABLES:
+        columns = {column["name"]: column for column in inspect(db.engine).get_columns(table)}
+        assert "campus_id" in columns, f"{table} missing campus_id"
+        assert columns["campus_id"]["nullable"] is True, f"{table} campus_id not nullable"
+        foreign_keys = inspect(db.engine).get_foreign_keys(table)
+        assert any(
+            fk["constrained_columns"] == ["campus_id"]
+            and fk["referred_table"] == "campuses"
+            for fk in foreign_keys
+        ), f"{table} campus_id does not reference campuses"
+
+
+def test_users_carry_nullable_scope_columns(db):
+    columns = {column["name"]: column for column in inspect(db.engine).get_columns("users")}
+    assert columns["school_id"]["nullable"] is True
+    assert columns["campus_id"]["nullable"] is True
+
+    foreign_keys = inspect(db.engine).get_foreign_keys("users")
+    assert any(
+        fk["constrained_columns"] == ["school_id"] and fk["referred_table"] == "schools"
+        for fk in foreign_keys
+    )
+    assert any(
+        fk["constrained_columns"] == ["campus_id"] and fk["referred_table"] == "campuses"
+        for fk in foreign_keys
+    )
+
+
+def test_operational_row_round_trips_a_campus(db, session: Session):
+    school = School(name="Sunrise Primary")
+    session.add(school)
+    session.flush()
+    campus = Campus(school_id=school.id, name="Main Campus")
+    session.add(campus)
+    session.flush()
+
+    school_class = Class(name="Grade 3", campus_id=campus.id)
+    session.add(school_class)
+    session.commit()
+
+    stored = session.query(Class).one()
+    assert stored.campus_id == campus.id
+    assert stored.campus.school.name == "Sunrise Primary"
 
 
 # ---------------------------------------------------------------------------

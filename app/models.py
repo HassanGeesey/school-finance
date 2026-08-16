@@ -13,6 +13,17 @@ tag for the expected-vs-paid comparison. Amounts are **effective-dated**
 (FW-20): a change carries an effective month, recorded as a per-student
 ``StudentAmountChange`` row, and a past month's amount is never rewritten.
 There are no charge rows and no generation step.
+
+Multi-school / multi-campus (cloud path): a School is the umbrella holding
+one or more Campuses, and the Campus is the fully self-contained operational
+unit (``docs/adr/0003``). Every operational table is scoped by a nullable
+``campus_id`` (MD-2) — the School is reached via the campus → school join —
+and the audit log carries a nullable campus for school-level actions. Users
+carry a scope: ``school_id`` for Superadmin/Owner, ``campus_id`` for
+Admin/Finance. The offline .exe keeps the single-school model: a fresh install
+bootstraps one implicit School + Campus silently, and the legacy single-row
+``school_profile`` stays read/written until the per-Campus branding ticket
+retires it (ticket 01 is additive only).
 """
 
 from __future__ import annotations
@@ -48,6 +59,8 @@ class Base(DeclarativeBase):
 class UserRoles:
     ADMIN = "admin"
     FINANCE = "finance"
+    SUPERADMIN = "superadmin"
+    OWNER = "owner"
 
 
 class ClassStatus:
@@ -87,6 +100,52 @@ class SchoolProfile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
 
+class School(Base):
+    """An organization the app serves — the umbrella one or more Campuses
+    belong to (``CONTEXT.md`` — "Schools & campuses").
+
+    On the offline path a fresh install bootstraps one School silently (with a
+    single Campus) so existing behavior is unchanged; the school name is
+    captured by the setup wizard on the legacy ``school_profile`` row until the
+    per-Campus branding ticket retires it (multi-school ticket 07).
+    """
+
+    __tablename__ = "schools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    campuses: Mapped[list[Campus]] = relationship(back_populates="school")
+
+
+class Campus(Base):
+    """A branch of a School (1..N) — the fully self-contained operational unit.
+
+    Owns the per-Campus profile shape (name, logo, contact) that the legacy
+    single-row ``school_profile`` carries today, plus the archive flag: an
+    archived Campus keeps its history but stops being active (soft delete — no
+    hard deletes anywhere in the tenant tables).
+    """
+
+    __tablename__ = "campuses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    school_id: Mapped[int] = mapped_column(
+        ForeignKey("schools.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    logo_filename: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    school: Mapped[School] = relationship(back_populates="campuses")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -96,6 +155,16 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default=UserRoles.FINANCE)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Tenant scope (MD-2): Superadmin and Owner scope by school; Admin and
+    # Finance scope by campus. One of the two is set per user. Both stay
+    # nullable while the single-school path scopes by nothing (ticket 01 is
+    # additive only).
+    school_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schools.id"), nullable=True, index=True
+    )
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
 
@@ -116,6 +185,9 @@ class Class(Base):
     __tablename__ = "classes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ClassStatus.ACTIVE)
     # The class's default FeeTemplate — the amount a newly added student is
@@ -127,12 +199,16 @@ class Class(Base):
 
     default_template: Mapped[FeeTemplate | None] = relationship()
     students: Mapped[list[Student]] = relationship(back_populates="school_class")
+    campus: Mapped[Campus | None] = relationship()
 
 
 class Student(Base):
     __tablename__ = "students"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False, index=True)
     first_name: Mapped[str] = mapped_column(String(120), nullable=False)
     last_name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -151,6 +227,7 @@ class Student(Base):
 
     school_class: Mapped[Class] = relationship(back_populates="students")
     fee_template: Mapped[FeeTemplate | None] = relationship(back_populates="students")
+    campus: Mapped[Campus | None] = relationship()
 
     @property
     def full_name(self) -> str:
@@ -171,12 +248,16 @@ class FeeTemplate(Base):
     __tablename__ = "fee_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     students: Mapped[list[Student]] = relationship(back_populates="fee_template")
+    campus: Mapped[Campus | None] = relationship()
 
 
 class StudentAmountChange(Base):
@@ -191,6 +272,9 @@ class StudentAmountChange(Base):
     __tablename__ = "student_amount_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -198,6 +282,7 @@ class StudentAmountChange(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
+    campus: Mapped[Campus | None] = relationship()
 
 
 class Waiver(Base):
@@ -211,6 +296,9 @@ class Waiver(Base):
     __tablename__ = "waivers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -220,6 +308,7 @@ class Waiver(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
+    campus: Mapped[Campus | None] = relationship()
 
 
 class ClosedMonth(Base):
@@ -232,9 +321,14 @@ class ClosedMonth(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    campus: Mapped[Campus | None] = relationship()
 
 
 class Payment(Base):
@@ -248,6 +342,9 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     method: Mapped[str] = mapped_column(String(20), nullable=False, default=PaymentMethods.CASH)
@@ -259,6 +356,7 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
+    campus: Mapped[Campus | None] = relationship()
 
 
 class Credit(Base):
@@ -267,27 +365,40 @@ class Credit(Base):
     __tablename__ = "credits"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    campus: Mapped[Campus | None] = relationship()
 
 
 class ExpenseCategory(Base):
     __tablename__ = "expense_categories"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     # Archiving is the "remove": the row and its expenses stay, but the category
     # stops appearing in the record dropdown (no hard deletes — see module docstring).
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
+    campus: Mapped[Campus | None] = relationship()
+
 
 class Expense(Base):
     __tablename__ = "expenses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     category_id: Mapped[int] = mapped_column(ForeignKey("expense_categories.id"), nullable=False, index=True)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -297,6 +408,7 @@ class Expense(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     category: Mapped[ExpenseCategory] = relationship()
+    campus: Mapped[Campus | None] = relationship()
 
 
 class AuditLogEntry(Base):
@@ -305,9 +417,15 @@ class AuditLogEntry(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Nullable: school-level actions (campus creation, admin assignment, owner
+    # management) are recorded school-wide, not under a single campus (MD-2).
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campuses.id"), nullable=True, index=True
+    )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     summary: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     user: Mapped[User | None] = relationship()
+    campus: Mapped[Campus | None] = relationship()
