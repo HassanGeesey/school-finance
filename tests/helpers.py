@@ -14,11 +14,13 @@ from fastapi.testclient import TestClient
 
 from app.auth.service import hash_password
 from app.models import (
+    Campus,
     Class,
     ClassStatus,
     Credit,
     FeeTemplate,
     Payment,
+    School,
     Student,
     StudentAmountChange,
     StudentStatus,
@@ -76,6 +78,45 @@ def add_finance_user(client: TestClient) -> None:
 def login_finance(client: TestClient) -> None:
     client.post("/logout", follow_redirects=False)
     login(client, username="cashier", password="long enough password")
+
+
+def login_as(
+    client: TestClient, username: str, password: str = "long enough password"
+) -> None:
+    client.post("/logout", follow_redirects=False)
+    login(client, username=username, password=password)
+
+
+def seed_second_campus(client: TestClient) -> tuple[int, int]:
+    """A second Campus of the implicit School, its Admin, and a Superadmin.
+
+    Returns ``(campus_b_id, superadmin_user_id)``. The School is the one the
+    offline setup already bootstrapped; the second Campus's Admin and the
+    School-bound Superadmin are created ready to log in.
+    """
+    with cast(FastAPI, client.app).state.db.session() as session:
+        school = session.query(School).one()
+        campus_b = Campus(school_id=school.id, name="Campus B")
+        session.add(campus_b)
+        session.flush()
+        admin_b = User(
+            name="Admin B",
+            username="admin_b",
+            password_hash=hash_password("long enough password"),
+            role=UserRoles.ADMIN,
+            school_id=school.id,
+            campus_id=campus_b.id,
+        )
+        superadmin = User(
+            name="Super",
+            username="super",
+            password_hash=hash_password("long enough password"),
+            role=UserRoles.SUPERADMIN,
+            school_id=school.id,
+        )
+        session.add_all([admin_b, superadmin])
+        session.commit()
+        return campus_b.id, superadmin.id
 
 
 # -- Derived-billing fixtures (ticket 07/08 service tests) ---------------------

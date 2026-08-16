@@ -17,13 +17,16 @@ from fastapi.testclient import TestClient
 
 from app.audit.service import AuditActions
 from app.main import create_app
-from app.models import AuditLogEntry, SchoolProfile
+from app.models import AuditLogEntry, Campus
 
 from tests.helpers import (
     SCHOOL_NAME,
+    PASSWORD,
     add_finance_user,
     authenticated_admin,
+    login_as,
     login_finance,
+    seed_second_campus,
     setup_admin,
 )
 
@@ -51,9 +54,15 @@ def audit_entries(client, action: str) -> list[AuditLogEntry]:
         )
 
 
-def profile(client) -> SchoolProfile:
+def profile(client) -> Campus:
+    """The implicit Campus the offline setup bootstrapped (its profile)."""
     with cast(FastAPI, client.app).state.db.session() as session:
-        return session.query(SchoolProfile).one()
+        return session.query(Campus).one()
+
+
+def campus_by_name(client, name: str) -> Campus:
+    with cast(FastAPI, client.app).state.db.session() as session:
+        return session.query(Campus).filter(Campus.name == name).one()
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +80,7 @@ def test_setup_requires_a_school_name(client):
     assert "school name is required" in response.text.lower()
 
 
-def test_setup_creates_the_school_profile(client):
+def test_setup_names_the_implicit_campus(client):
     response = client.post(
         "/setup",
         data={
@@ -84,7 +93,7 @@ def test_setup_creates_the_school_profile(client):
     )
 
     assert response.status_code == 303
-    assert profile(client).school_name == SCHOOL_NAME
+    assert profile(client).name == SCHOOL_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +151,7 @@ def test_admin_can_update_the_profile(profile_app):
     assert response.status_code == 200
     assert "toast" in response.headers["HX-Trigger"]
     stored = profile(client)
-    assert stored.school_name == "Sunrise Primary School"
+    assert stored.name == "Sunrise Primary School"
     assert stored.address == "123 Main St"
     assert stored.website == "https://school.example"
     entries = audit_entries(client, AuditActions.PROFILE_UPDATE)
@@ -311,6 +320,73 @@ def test_login_page_keeps_the_product_name(client):
 
     assert page.status_code == 200
     assert "School Finance" in page.text
+
+
+# ---------------------------------------------------------------------------
+# Per-Campus isolation (multi-school ticket 07)
+# ---------------------------------------------------------------------------
+
+
+def test_campus_admins_edit_isolated_identities(profile_app):
+    client, _tmp = profile_app
+    authenticated_admin(client)
+    seed_second_campus(client)
+
+    client.post(
+        "/profile",
+        data={"school_name": "Campus A Academy", "phone": "111-1111"},
+        headers={"HX-Request": "true"},
+    )
+    login_as(client, "admin_b")
+    client.post(
+        "/profile",
+        data={"school_name": "Campus B Academy", "phone": "222-2222"},
+        headers={"HX-Request": "true"},
+    )
+
+    campus_a = campus_by_name(client, "Campus A Academy")
+    campus_b = campus_by_name(client, "Campus B Academy")
+    assert campus_a.phone == "111-1111"
+    assert campus_b.phone == "222-2222"
+
+
+def test_the_app_shell_shows_the_acting_campus_identity(profile_app):
+    client, _tmp = profile_app
+    authenticated_admin(client)
+    seed_second_campus(client)
+    client.post(
+        "/profile",
+        data={"school_name": "Campus A Academy"},
+        headers={"HX-Request": "true"},
+    )
+    login_as(client, "admin_b")
+    client.post(
+        "/profile",
+        data={"school_name": "Campus B Academy"},
+        headers={"HX-Request": "true"},
+    )
+
+    login_as(client, "admin", password=PASSWORD)
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "Campus A Academy" in page.text
+    assert "Campus B Academy" not in page.text
+
+
+def test_a_campus_admin_cannot_edit_the_other_campus_logo(profile_app):
+    client, tmp = profile_app
+    authenticated_admin(client)
+    seed_second_campus(client)
+    client.post(
+        "/profile/logo",
+        files={"logo": ("logo.png", PNG_LOGO, "image/png")},
+        headers={"HX-Request": "true"},
+    )
+
+    campus_a = campus_by_name(client, "Sunrise Primary School")
+    campus_b = campus_by_name(client, "Campus B")
+    assert campus_a.logo_filename == "logo.png"
+    assert campus_b.logo_filename is None
 
 
 # ---------------------------------------------------------------------------

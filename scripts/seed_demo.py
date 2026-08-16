@@ -21,7 +21,7 @@ Created data:
 - Expense categories and several months of expenses.
 
 ``--reset`` deletes all *domain* data (templates, classes, students, payments,
-credits, waivers, expenses, ...). It never touches users, the school profile,
+credits, waivers, expenses, ...). It never touches users, the campus identity,
 or the append-only audit log.
 """
 
@@ -42,6 +42,7 @@ from app.db import Database, make_engine
 from app.expenses.service import ExpenseService
 from app.fees.service import TemplateService, WaiverService
 from app.models import (
+    Campus,
     Class,
     ClosedMonth,
     Credit,
@@ -58,6 +59,7 @@ from app.models import (
 from app.payments.service import PaymentService
 from app.profile.service import ProfileService
 from app.students.service import StudentService
+from app.tenants.service import ensure_bootstrap_on
 
 ADMIN_LOGIN = ("admin", "admin123")
 FINANCE_LOGIN = ("finance", "finance123")
@@ -192,17 +194,29 @@ class Seeder:
             )
             print(f"Created finance login: {FINANCE_LOGIN[0]} / {FINANCE_LOGIN[1]}")
 
-        current = self.profile.get_profile()
-        if not current.school_name:
+        # The offline app's implicit School + Campus (the same bootstrap the
+        # setup wizard uses) is where the demo identity lives. The admin is
+        # bound to it so the scoped profile and operational services see it.
+        with self.db.session() as session:
+            _school, campus = ensure_bootstrap_on(session)
+            admin = session.get(User, admin.id)
+            if admin.school_id != _school.id or admin.campus_id != campus.id:
+                admin.school_id = _school.id
+                admin.campus_id = campus.id
+            session.commit()
+
+        current = self.profile.get_profile(campus=campus)
+        if not current or not current.name:
             self.profile.update_profile(
                 user=admin,
+                campus=campus,
                 school_name="Baidoa Bedrock Academy",
                 address="Tifan area, Baidoa",
                 phone="+252 61 555 1234",
                 email="accounts@baidoabedrock.edu",
                 website="https://baidoabedrock.edu",
             )
-            print("Created school profile: Baidoa Bedrock Academy")
+            print("Created campus profile: Baidoa Bedrock Academy")
         return admin
 
     # ------------------------------------------------------------------ domain

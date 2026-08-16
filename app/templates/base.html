@@ -67,11 +67,13 @@
         {{ nav_item("/reports", "Reports", "chart-bar", path.startswith("/reports")) }}
       </div>
 
-      {% if user and user.role == "admin" %}
+      {% if user and user.role in ("admin", "superadmin") %}
       <p class="nav-group-label mt-5 px-3">System</p>
       <div class="mt-1">
         {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
+        {% if user.role == "admin" %}
         {{ nav_item("/admin", "Settings", "cog-6-tooth", path == "/admin") }}
+        {% endif %}
       </div>
       {% endif %}
     </nav>

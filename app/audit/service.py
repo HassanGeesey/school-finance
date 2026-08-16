@@ -1,10 +1,22 @@
-"""Audit service layer: append-only entries and admin browsing.
+"""Audit service layer: append-only entries and scoped browsing.
 
 Every auditable action across the app is recorded through :meth:`AuditService.log`
 with the acting user, a timestamp, and a readable summary. The log is append-only
 by design: this service exposes no update or delete operations, and no route in
 the app offers one. Future features (payments, expenses, fee templates,
 waivers, configuration) call ``log`` at the same seam.
+
+**Campus scoping (multi-school ticket 06):** an entry is stamped with the acting
+scope's Campus at write time — campus-level actions (payments, expenses,
+students, classes, fee templates, waivers, closed months, branding) land under
+the Campus they happened in, while school-level actions (Campus creation, admin
+assignment, owner management, setup) carry a NULL Campus (MD-2). Browsing is
+scoped the same way as every operational table (:func:`scoped_campus_filter`):
+a Campus-bound scope sees its own Campus's entries plus the shared legacy/NULL
+bucket (system and school-level events), and a School-bound scope sees every
+Campus in its School plus that same bucket. In the single-school deployment
+every entry is visible either through the one implicit Campus or through the
+NULL bucket, so the audit page behaves exactly as before.
 """
 
 from __future__ import annotations
@@ -13,6 +25,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..db import Database
 from ..models import AuditLogEntry, User
+from ..tenants.scope import campus_for_write, scope, scoped_campus_filter
 
 
 class AuditActions:
@@ -153,6 +166,9 @@ class AuditService:
 
         entry = AuditLogEntry(
             user_id=user.id if user is not None else None,
+            # The acting scope's Campus: campus-level actions are tagged to the
+            # Campus they happened in; school-level and system actions stay NULL.
+            campus_id=campus_for_write(scope()),
             action=action,
             summary=summary,
         )
@@ -185,9 +201,19 @@ class AuditService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[AuditLogEntry]:
-        """Browse entries, most recent first, optionally filtered by action."""
+        """Browse entries the acting scope may see, most recent first.
+
+        A Campus-bound scope sees its own Campus's entries plus the NULL-campus
+        bucket (system and school-level events); a School-bound scope sees every
+        Campus in its School plus that bucket. Optionally filtered by action.
+        """
         with self._session() as session:
             query = session.query(AuditLogEntry).options(joinedload(AuditLogEntry.user))
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, AuditLogEntry.campus_id)
+                )
             if action:
                 query = query.filter(AuditLogEntry.action == action)
             return (
@@ -198,15 +224,26 @@ class AuditService:
             )
 
     def count(self, *, action: str | None = None) -> int:
-        """Total matching entries, used for pagination."""
+        """Total matching entries the acting scope may see, for pagination."""
         with self._session() as session:
             query = session.query(AuditLogEntry)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, AuditLogEntry.campus_id)
+                )
             if action:
                 query = query.filter(AuditLogEntry.action == action)
             return query.count()
 
     def list_actions(self) -> list[str]:
-        """Distinct action names present in the log, sorted (filter dropdown)."""
+        """Distinct action names the acting scope may see, sorted (dropdown)."""
         with self._session() as session:
-            rows = session.query(AuditLogEntry.action).distinct().all()
+            query = session.query(AuditLogEntry.action)
+            cur = scope()
+            if cur is not None:
+                query = query.filter(
+                    scoped_campus_filter(session, cur, AuditLogEntry.campus_id)
+                )
+            rows = query.distinct().all()
             return sorted(row[0] for row in rows)

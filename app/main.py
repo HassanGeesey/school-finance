@@ -158,11 +158,13 @@ def create_app(
         token = request.cookies.get(settings.SESSION_COOKIE)
         if token:
             request.state.user = auth.user_for_token(token)
-        request.state.school_profile = profile.get_profile()
         # The request's tenant scope lives in a context variable so sync route
         # handlers and the services they call can read it (multi-school ticket
-        # 03). Anonymous requests resolve to None = unscoped.
+        # 03). Anonymous requests resolve to None = unscoped. The Campus
+        # identity for branding is resolved inside the scope so it follows the
+        # acting user's Campus (per-Campus branding, ticket 07).
         with scope_context(RequestScope.for_user(request.state.user)):
+            request.state.campus_profile = profile.get_profile()
             return await call_next(request)
 
     app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")

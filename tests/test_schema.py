@@ -41,7 +41,6 @@ EXPECTED_TABLES = {
     "expense_categories",
     "expenses",
     "audit_log",
-    "school_profile",
     "schools",
     "campuses",
 }

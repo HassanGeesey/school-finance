@@ -21,7 +21,6 @@ from app.models import (
     AuthSession,
     Campus,
     School,
-    SchoolProfile,
     User,
     UserRoles,
 )
@@ -85,12 +84,12 @@ def test_setup_first_admin_requires_a_school_name(auth):
         auth.setup_first_admin(name="A", username="admin", password=PASSWORD, school_name="   ")
 
 
-def test_setup_first_admin_creates_the_school_profile(auth, session):
+def test_setup_first_admin_names_the_implicit_campus(auth, session):
     auth.setup_first_admin(name="A", username="admin", password=PASSWORD, school_name=SCHOOL_NAME)
 
-    profile = session.query(SchoolProfile).one()
-    assert profile.id == 1
-    assert profile.school_name == SCHOOL_NAME
+    campus = session.query(Campus).one()
+    assert campus.school_id is not None
+    assert campus.name == SCHOOL_NAME
 
 
 def test_setup_first_admin_binds_the_admin_to_the_implicit_school_and_campus(auth, session):

@@ -1,9 +1,12 @@
-"""School profile service layer: the school's identity, its editor, and logos.
+"""Campus profile service layer: the acting Campus's identity and logos.
 
-The school's identity is a single-row ``school_profile`` record: the required
-school name plus optional contact details (address, phone, email, website) and
-the uploaded logo's filename. Business rules live here — routes are thin
-adapters (see ``app/profile/routes.py``).
+Each Campus owns its identity (multi-school ticket 07): the required campus
+name plus optional contact details (address, phone, email, website) and the
+uploaded logo's filename. ``ProfileService`` resolves the Campus it operates on
+from the request scope — a Campus-bound role edits exactly its own Campus — or
+from an explicit ``campus`` argument for non-request contexts (the setup
+wizard, the demo seeder). Business rules live here; routes are thin adapters
+(see ``app/profile/routes.py``).
 
 **Logos** — the uploaded file is stored next to the app data (per
 ``docs/adr/0001-logo-in-data-dir.md``) as ``logo.<ext>``. ``LogoStorage`` owns
@@ -19,7 +22,8 @@ from sqlalchemy.orm import Session
 
 from ..audit.service import AuditActions, AuditService
 from ..db import Database
-from ..models import SchoolProfile, User
+from ..models import Campus, User
+from ..tenants.scope import scope
 
 # "Accept any image" per decision S-5, but only as a real image extension so the
 # stored filename can never escape the data directory or mislead the browser.
@@ -107,15 +111,21 @@ class LogoStorage:
         return LOGO_MEDIA_TYPES.get(Path(filename).suffix.lower(), "application/octet-stream")
 
 
-def logo_url_for(profile: SchoolProfile) -> str:
-    """The serving URL for a profile's logo, or ``""`` when none is set."""
-    if not profile.logo_filename:
+def logo_url_for(campus: Campus) -> str:
+    """The serving URL for a Campus's logo, or ``""`` when none is set."""
+    if not campus.logo_filename:
         return ""
-    return f"/logos/{profile.logo_filename}"
+    return f"/logos/{campus.logo_filename}"
 
 
 class ProfileService:
-    """School profile business rules. Each method is one unit of work."""
+    """Campus profile business rules. Each method is one unit of work.
+
+    Every read/write resolves the target Campus from the request scope
+    (Campus-bound roles edit their own Campus only) unless an explicit
+    ``campus`` is passed. School-bound scopes (Superadmin/Owner) and unscoped
+    calls have no Campus, so reads return ``None`` and writes raise.
+    """
 
     def __init__(
         self,
@@ -134,17 +144,21 @@ class ProfileService:
         if self._audit is not None:
             self._audit.log(user=user, action=action, summary=summary)
 
-    def get_profile(self) -> SchoolProfile:
-        """The single profile row, creating the empty record on first use.
+    def _campus_for(
+        self, session: Session, *, campus: Campus | None = None
+    ) -> Campus | None:
+        """The Campus to operate on: the explicit one, else the scope's."""
+        if campus is not None:
+            return session.get(Campus, campus.id)
+        sc = scope()
+        if sc is None or sc.campus_id is None:
+            return None
+        return session.get(Campus, sc.campus_id)
 
-        Older databases (set up before the profile existed) get a row here, so
-        the settings page always has something to edit.
-        """
+    def get_profile(self, *, campus: Campus | None = None) -> Campus | None:
+        """The acting scope's Campus identity, or ``None`` when it has none."""
         with self._session() as session:
-            profile = self._get_or_create(session)
-            session.commit()
-            session.refresh(profile)
-            return profile
+            return self._campus_for(session, campus=campus)
 
     def update_profile(
         self,
@@ -155,17 +169,22 @@ class ProfileService:
         phone: str = "",
         email: str = "",
         website: str = "",
-    ) -> SchoolProfile:
-        """Save the profile fields. The school name can never be blank."""
+        campus: Campus | None = None,
+    ) -> Campus:
+        """Save the Campus's profile fields. The name can never be blank."""
         school_name = (school_name or "").strip()
         if not school_name:
             raise ProfileError("A school name is required.")
 
         with self._session() as session:
-            profile = self._get_or_create(session)
+            campus = self._campus_for(session, campus=campus)
+            if campus is None:
+                raise ProfileError(
+                    "No campus profile is available in this context."
+                )
             changed: list[str] = []
-            if (school_name or None) != profile.school_name:
-                profile.school_name = school_name
+            if (school_name or None) != campus.name:
+                campus.name = school_name
                 changed.append("school name")
             for label, new_value in (
                 ("address", address.strip()),
@@ -173,31 +192,44 @@ class ProfileService:
                 ("email", email.strip()),
                 ("website", website.strip()),
             ):
-                current = getattr(profile, label)
+                current = getattr(campus, label)
                 if (new_value or None) != current:
-                    setattr(profile, label, new_value or None)
+                    setattr(campus, label, new_value or None)
                     changed.append(label)
             session.commit()
-            session.refresh(profile)
-            name = profile.school_name
+            session.refresh(campus)
+            name = campus.name
         if not changed:
-            return profile
+            return campus
         self._log(
             user=user,
             action=AuditActions.PROFILE_UPDATE,
             summary=f"School profile updated ({', '.join(sorted(set(changed)))}): {name}",
         )
-        return profile
+        return campus
 
-    def save_logo(self, *, user: User | None, data: bytes, source_name: str) -> str:
+    def save_logo(
+        self,
+        *,
+        user: User | None,
+        data: bytes,
+        source_name: str,
+        campus: Campus | None = None,
+    ) -> str:
         """Store a new logo file and record it, replacing the previous one."""
         if self._logos is None:
             raise LogoError("Logo storage is not available for this instance.")
+        with self._session() as session:
+            campus = self._campus_for(session, campus=campus)
+            if campus is None:
+                raise LogoError("No campus profile is available in this context.")
+            old_filename = campus.logo_filename
+            campus_id = campus.id
         filename = self._logos.save(data, source_name=source_name)
         with self._session() as session:
-            profile = self._get_or_create(session)
-            old_filename = profile.logo_filename
-            profile.logo_filename = filename
+            target = session.get(Campus, campus_id)
+            assert target is not None
+            target.logo_filename = filename
             session.commit()
         if old_filename and old_filename != filename:
             self._logos.remove(old_filename)
@@ -208,14 +240,16 @@ class ProfileService:
         )
         return filename
 
-    def remove_logo(self, *, user: User | None) -> None:
+    def remove_logo(self, *, user: User | None, campus: Campus | None = None) -> None:
         """Clear the logo: delete the file and forget its filename."""
         if self._logos is None:
             raise LogoError("Logo storage is not available for this instance.")
         with self._session() as session:
-            profile = self._get_or_create(session)
-            filename = profile.logo_filename
-            profile.logo_filename = None
+            campus = self._campus_for(session, campus=campus)
+            if campus is None:
+                raise LogoError("No campus profile is available in this context.")
+            filename = campus.logo_filename
+            campus.logo_filename = None
             session.commit()
         if filename:
             self._logos.remove(filename)
@@ -225,26 +259,22 @@ class ProfileService:
             summary="Removed the school logo",
         )
 
-    def logo_path(self) -> Path | None:
-        """The on-disk path of the current logo, or ``None`` when unset."""
-        filename = self.get_profile().logo_filename
-        if self._logos is None or not filename:
+    def logo_path(self, *, campus: Campus | None = None) -> Path | None:
+        """The on-disk path of the scope's logo, or ``None`` when unset."""
+        if self._logos is None:
             return None
-        return self._logos.path(filename)
+        with self._session() as session:
+            campus = self._campus_for(session, campus=campus)
+            if campus is None or not campus.logo_filename:
+                return None
+            return self._logos.path(campus.logo_filename)
 
-    def logo_media_type(self) -> str:
-        """The content type for serving the current logo."""
+    def logo_media_type(self, *, campus: Campus | None = None) -> str:
+        """The content type for serving the scope's logo."""
         if self._logos is None:
             return "application/octet-stream"
-        filename = self.get_profile().logo_filename
-        if not filename:
-            return "application/octet-stream"
-        return self._logos.media_type(filename)
-
-    @staticmethod
-    def _get_or_create(session: Session) -> SchoolProfile:
-        profile = session.get(SchoolProfile, 1)
-        if profile is None:
-            profile = SchoolProfile(id=1)
-            session.add(profile)
-        return profile
+        with self._session() as session:
+            campus = self._campus_for(session, campus=campus)
+            if campus is None or not campus.logo_filename:
+                return "application/octet-stream"
+            return self._logos.media_type(campus.logo_filename)

@@ -21,9 +21,10 @@ unit (``docs/adr/0003``). Every operational table is scoped by a nullable
 and the audit log carries a nullable campus for school-level actions. Users
 carry a scope: ``school_id`` for Superadmin/Owner, ``campus_id`` for
 Admin/Finance. The offline .exe keeps the single-school model: a fresh install
-bootstraps one implicit School + Campus silently, and the legacy single-row
-``school_profile`` stays read/written until the per-Campus branding ticket
-retires it (ticket 01 is additive only).
+bootstraps one implicit School + Campus silently. The Campus owns the identity
+(per-Campus branding, multi-school ticket 07): name, logo, and contact fields
+live on the ``campuses`` row, and the legacy single-row ``school_profile`` has
+been retired from the model.
 """
 
 from __future__ import annotations
@@ -80,34 +81,15 @@ class PaymentMethods:
     OTHER = "other"
 
 
-class SchoolProfile(Base):
-    """The school's identity — a single row (id always 1).
-
-    ``school_name`` is always required; the contact fields are optional free
-    text. ``logo_filename`` names the uploaded logo file, which lives next to
-    the app data (see docs/adr/0001-logo-in-data-dir.md).
-    """
-
-    __tablename__ = "school_profile"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    school_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
-    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    website: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    logo_filename: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-
-
 class School(Base):
     """An organization the app serves — the umbrella one or more Campuses
     belong to (``CONTEXT.md`` — "Schools & campuses").
 
     On the offline path a fresh install bootstraps one School silently (with a
-    single Campus) so existing behavior is unchanged; the school name is
-    captured by the setup wizard on the legacy ``school_profile`` row until the
-    per-Campus branding ticket retires it (multi-school ticket 07).
+    single Campus) so existing behavior is unchanged; the setup wizard names
+    that implicit Campus, which carries the school's identity (multi-school
+    ticket 07). The cloud setup wizard names the School itself; its Superadmin
+    creates Campuses later from the School Dashboard (ticket 05).
     """
 
     __tablename__ = "schools"
@@ -122,10 +104,11 @@ class School(Base):
 class Campus(Base):
     """A branch of a School (1..N) — the fully self-contained operational unit.
 
-    Owns the per-Campus profile shape (name, logo, contact) that the legacy
-    single-row ``school_profile`` carries today, plus the archive flag: an
-    archived Campus keeps its history but stops being active (soft delete — no
-    hard deletes anywhere in the tenant tables).
+    Owns the per-Campus profile shape (multi-school ticket 07): name, logo, and
+    contact fields are the identity rendered on receipts, statements, the
+    sidebar, the tab title, and the footer. Plus the archive flag: an archived
+    Campus keeps its history but stops being active (soft delete — no hard
+    deletes anywhere in the tenant tables).
     """
 
     __tablename__ = "campuses"

@@ -38,35 +38,37 @@ def _register_template_globals(templates: Jinja2Templates) -> None:
 
     @pass_context
     def school_name(context: Context) -> str:
-        """The school's name for the app shell, falling back to the product name.
+        """The acting Campus's name for the app shell, falling back to the product name.
 
         Setup and login override their title/brand explicitly with ``app_name``;
-        everywhere else the school identity wins.
+        everywhere else the Campus identity wins (per-Campus branding, ticket
+        07). School-bound scopes (Superadmin/Owner) have no Campus yet and fall
+        back to the product name.
         """
         request = context.get("request")
-        profile = getattr(request.state, "school_profile", None) if request is not None else None
-        if profile is not None and profile.school_name:
-            return profile.school_name
+        profile = getattr(request.state, "campus_profile", None) if request is not None else None
+        if profile is not None and profile.name:
+            return profile.name
         return settings.APP_NAME
 
     @pass_context
     def logo_url(context: Context) -> str:
-        """The serving URL for the current school logo, or "" when unset."""
+        """The serving URL for the acting Campus's logo, or "" when unset."""
         request = context.get("request")
-        profile = getattr(request.state, "school_profile", None) if request is not None else None
+        profile = getattr(request.state, "campus_profile", None) if request is not None else None
         if profile is None:
             return ""
         return logo_url_for(profile)
 
     @pass_context
     def school_contact(context: Context) -> list[str]:
-        """The profile's non-empty contact fields, in display order.
+        """The Campus's non-empty contact fields, in display order.
 
         Printed documents render only the fields that are actually set; blank
         contact fields never print (decision S-3/S-4).
         """
         request = context.get("request")
-        profile = getattr(request.state, "school_profile", None) if request is not None else None
+        profile = getattr(request.state, "campus_profile", None) if request is not None else None
         if profile is None:
             return []
         return [

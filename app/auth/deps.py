@@ -32,3 +32,20 @@ def require_admin(request: Request, user: User = Depends(require_login)) -> User
     if user.role != UserRoles.ADMIN:
         raise HTTPException(status_code=403, detail="This area requires the Admin role.")
     return user
+
+
+def require_admin_or_superadmin(
+    request: Request, user: User = Depends(require_login)
+) -> User:
+    """Gate: management/browse surfaces need the Admin or Superadmin role.
+
+    The Campus Admin and the Superadmin both carry accountability over the
+    audit trail (multi-school tickets 06): each browses the entries their scope
+    allows. Finance Officers and Owners never reach these pages.
+    """
+    if user.role not in (UserRoles.ADMIN, UserRoles.SUPERADMIN):
+        raise HTTPException(
+            status_code=403,
+            detail="This area requires the Admin or Superadmin role.",
+        )
+    return user

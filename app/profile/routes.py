@@ -60,6 +60,10 @@ def profile_context(
     """Context for the profile partial — shared with the Settings page."""
     service = _service(request)
     profile = service.get_profile()
+    if profile is None:
+        raise HTTPException(
+            status_code=403, detail="No campus profile is available in this context."
+        )
     return {
         "profile": profile,
         "current_logo_url": logo_url_for(profile),
@@ -174,7 +178,7 @@ def logo_file(filename: str, request: Request) -> Response:
     """Serve the current logo file. Only the stored filename is exposed."""
     service = _service(request)
     profile = service.get_profile()
-    if profile.logo_filename != filename:
+    if profile is None or profile.logo_filename != filename:
         raise HTTPException(status_code=404, detail="Not found")
     path = service.logo_path()
     if path is None or not path.is_file():

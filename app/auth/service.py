@@ -124,14 +124,15 @@ class AuthService:
     def setup_first_admin(
         self, *, name: str, username: str, password: str, school_name: str = ""
     ) -> User:
-        """Create the first Admin account and the school profile.
+        """Create the first Admin account and name the implicit Campus.
 
         The Admin is bound to the implicit School + Campus (multi-school ticket
         01): ``ensure_bootstrap_on`` creates exactly one of each in the same
         session, and the Admin is stamped with their ids before the commit. The
         school name is required here: the wizard is the first time the school's
-        identity is captured, so it is recorded via the profile service. Raises
-        when users already exist.
+        identity is captured, so it is recorded on the implicit Campus via the
+        profile service (per-Campus branding, ticket 07). Raises when users
+        already exist.
         """
         name, username, password, school_name = self._validate_setup_inputs(
             name=name, username=username, password=password, school_name=school_name
@@ -152,7 +153,7 @@ class AuthService:
             session.add(user)
             session.commit()
             session.refresh(user)
-        self._profile.update_profile(user=user, school_name=school_name)
+        self._profile.update_profile(user=user, campus=campus, school_name=school_name)
         self._log(
             user=None,
             action=AuditActions.SETUP,
@@ -171,8 +172,8 @@ class AuthService:
         First-run provisioning on the cloud path: the wizard names the School
         and creates its owner at the top in one step. No Campus is created here
         — the Superadmin creates campuses later from the School Dashboard
-        (ticket 05). The school name is also recorded on the legacy profile so
-        branding keeps working. Raises when users already exist.
+        (ticket 05), and the School's own ``name`` row carries the school's
+        identity until then. Raises when users already exist.
         """
         name, username, password, school_name = self._validate_setup_inputs(
             name=name, username=username, password=password, school_name=school_name
@@ -195,7 +196,6 @@ class AuthService:
             session.add(user)
             session.commit()
             session.refresh(user)
-        self._profile.update_profile(user=user, school_name=school_name)
         self._log(
             user=None,
             action=AuditActions.SETUP,

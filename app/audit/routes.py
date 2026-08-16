@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..auth.deps import require_admin
+from ..auth.deps import require_admin_or_superadmin
 from ..models import User
 from .service import AuditActions, AuditService
 
@@ -34,7 +34,7 @@ def _templates(request: Request) -> Jinja2Templates:
 @router.get("/audit", response_class=HTMLResponse)
 def audit_log(
     request: Request,
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_superadmin),
     action: str | None = None,
     page: int = 1,
 ) -> HTMLResponse:
