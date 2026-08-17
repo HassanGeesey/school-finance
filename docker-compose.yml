@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     environment:
+      DATABASE_URL: ${DATABASE_URL}
       SCHOOL_FINANCE_DATA: /data
       SCHOOL_FINANCE_DISABLE_SHUTDOWN: "1"
     volumes:
