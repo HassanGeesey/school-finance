@@ -18,11 +18,19 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import Database, make_engine
 from app.main import create_app
 from app.models import Campus, School
 from app.tenants.scope import RequestScope, scope_context
 from tests.mini_app import build_mini_app
+
+# Tests always run against in-memory SQLite, never the real cloud DB.
+# The .env file may set DATABASE_URL to Postgres; force the settings singleton
+# back to SQLite so every test fixture sees the in-memory database.
+_TEST_SQLITE_URL = "sqlite://"
+settings.DATABASE_URL = _TEST_SQLITE_URL
+settings.CLOUD_MODE = False
 
 
 @pytest.fixture()

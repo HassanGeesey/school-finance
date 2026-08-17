@@ -34,9 +34,11 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -116,7 +118,7 @@ class Campus(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     school_id: Mapped[int] = mapped_column(
-        ForeignKey("schools.id"), nullable=False, index=True
+        ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -144,10 +146,10 @@ class User(Base):
     # nullable while the single-school path scopes by nothing (ticket 01 is
     # additive only).
     school_id: Mapped[int | None] = mapped_column(
-        ForeignKey("schools.id"), nullable=True, index=True
+        ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True
     )
     campus_id: Mapped[int | None] = mapped_column(
-        ForeignKey("campuses.id"), nullable=True, index=True
+        ForeignKey("campuses.id", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
@@ -159,7 +161,7 @@ class AuthSession(Base):
     __tablename__ = "sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -170,14 +172,14 @@ class Class(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ClassStatus.ACTIVE)
     # The class's default FeeTemplate — the amount a newly added student is
     # expected to pay each month (replaces the old per-class fee items, FW-7).
     default_template_id: Mapped[int | None] = mapped_column(
-        ForeignKey("fee_templates.id"), nullable=True
+        ForeignKey("fee_templates.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
@@ -191,9 +193,9 @@ class Student(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False, index=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name: Mapped[str] = mapped_column(String(120), nullable=False)
     last_name: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=StudentStatus.ACTIVE)
@@ -205,7 +207,7 @@ class Student(Base):
     # The linked FeeTemplate (FW-7): template amount raises propagate to every
     # student linked here. A null link means the student holds a custom amount.
     fee_template_id: Mapped[int | None] = mapped_column(
-        ForeignKey("fee_templates.id"), nullable=True, index=True
+        ForeignKey("fee_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
@@ -233,7 +235,7 @@ class FeeTemplate(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -257,9 +259,9 @@ class StudentAmountChange(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -281,14 +283,14 @@ class Waiver(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[str] = mapped_column(String(200), nullable=False)
-    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
@@ -310,7 +312,7 @@ class ClosedMonth(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -331,16 +333,16 @@ class Payment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     method: Mapped[str] = mapped_column(String(20), nullable=False, default=PaymentMethods.CASH)
     paid_on: Mapped[date] = mapped_column(Date, nullable=False)
     # The month tag — the clerk's entry on the record screen.
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
-    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     student: Mapped[Student] = relationship()
@@ -354,11 +356,11 @@ class Credit(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    student_id: Mapped[int] = mapped_column(ForeignKey("students.id"), nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id"), nullable=True)
+    payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     campus: Mapped[Campus] = relationship()
@@ -372,7 +374,7 @@ class ExpenseCategory(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     # Archiving is the "remove": the row and its expenses stay, but the category
@@ -388,14 +390,14 @@ class Expense(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     campus_id: Mapped[int] = mapped_column(
-        ForeignKey("campuses.id"), nullable=False, index=True
+        ForeignKey("campuses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    category_id: Mapped[int] = mapped_column(ForeignKey("expense_categories.id"), nullable=False, index=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("expense_categories.id", ondelete="CASCADE"), nullable=False, index=True)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     method: Mapped[str] = mapped_column(String(20), nullable=False, default=PaymentMethods.CASH)
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
-    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     category: Mapped[ExpenseCategory] = relationship()
@@ -410,8 +412,8 @@ class AuditLogEntry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Nullable: school-level actions (campus creation, admin assignment, owner
     # management) are recorded school-wide, not under a single campus (MD-2).
-    campus_id: Mapped[int | None] = mapped_column(ForeignKey("campuses.id"), nullable=True, index=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    campus_id: Mapped[int | None] = mapped_column(ForeignKey("campuses.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     summary: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

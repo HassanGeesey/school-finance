@@ -435,8 +435,8 @@ class ReportService:
                 for month, year in payment_query.distinct().all()
             )
             expense_query = session.query(
-                func.strftime("%m", Expense.occurred_on),
-                func.strftime("%Y", Expense.occurred_on),
+                func.extract("month", Expense.occurred_on),
+                func.extract("year", Expense.occurred_on),
             )
             if cur is not None:
                 expense_query = expense_query.filter(

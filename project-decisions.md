@@ -250,3 +250,33 @@ Grilling session log. Updated as decisions are made.
 | I-1 | How does the app know it is on the cloud path (wizard branches on it)? | **DB URL scheme + env override.** `DATABASE_URL` starting `postgres://`/`postgresql://` = cloud path (wizard creates the named School + Superadmin); SQLite = offline (wizard creates the one Admin bound to the implicit School + Campus). `SCHOOL_FINANCE_CLOUD=1` overrides for tests and edge deployments. Can't misfire because the .exe is always SQLite (C-5, UR-15). Recorded after the user opened `.env` (Supabase project provisioned) and said "proceed". |
 | I-2 | How is tenant scope threaded into services without changing every route signature? | **Request-scope context variable** (`app/tenants/scope.py`). The session middleware resolves the authenticated user into a `RequestScope` and sets it in a context variable; services read it to filter reads and stamp `campus_id` on writes. Unset outside HTTP (service tests, setup path) = unscoped legacy behavior. NULL-campus rows are legacy rows and stay visible to every scope until the hardening ticket (09) makes the columns non-nullable. Propagation into sync handlers/services validated by a throwaway probe test. |
 | I-3 | Who runs tickets 02 and 03, in what order? | **Shared seam first, then two sub-agents in parallel.** The scope machinery + middleware + `CLOUD_MODE` land first (foundation); sub-agent A implements ticket 02 (auth/wizard) and sub-agent B ticket 03 (classes/students scoping) concurrently on disjoint file sets. |
+
+## Deployment round (wayfinder charting)
+
+> Q2 re-opened during the deployment-round planning session. The user moved off the central-DB model: **each school runs its own copy of the app AND its own database**.
+
+| # | Question | Answer |
+|---|----------|--------|
+| DEP-1 | DB topology (supersedes MD-1) | **Per-school Supabase Postgres.** Each school has its own app container (C-4) and its own Supabase project/database. `school_id` is constant per DB; `campus_id` scopes campuses within the school (MD-2 stands). Cross-school leakage impossible by construction; the "one central Postgres holds all schools" line from spec.md dies. Per-school storage billing natural (C-6). |
+| DEP-2 | Per-school provisioning | **Operator-provisioned.** At signup the operator (the user) creates the school's Supabase project and drops its `DATABASE_URL` into that school's container env on Dokploy; the app's first-run wizard then creates the School + Superadmin inside it (I-1 unchanged). No code beyond the runbook. Scripted creation via Supabase Management API is a future ticket (fog). |
+| DEP-3 | Backups on the cloud path (amended by user) | **Manual downloadable backups.** The cloud path gets a "Backup now → download" on the settings page producing a downloadable dump (pg_dump-based). Automatic startup file-copy backups are disabled on cloud (there is no SQLite file to copy). Restore stays manual (Supabase dashboard / out of scope). Supabase managed backups are NOT the only story — an in-app downloadable backup is required. |
+| DEP-4 | Destination of the deployment round | **Live end-to-end.** One school's cloud deployment running on Dokploy against its own Supabase Postgres, tenant layer live (wizard creates School + Superadmin, per-campus scoping), manual downloadable backup, plus a runbook for provisioning further schools. This round carries execution, not just decisions. |
+| DEP-5 | School identity on a shared DB (moot, but locked) | **Interactive first-run wizard** creates the School + Superadmin in the school's own DB (I-1 unchanged). |
+| DEP-6 | Schema provisioning | **Keep `Base.metadata.create_all` on startup**; no Alembic this round. |
+| DEP-7 | Postgres RLS | **Out of scope** (C-3 follow-up ticket). Per-school DBs make cross-school RLS moot anyway. |
+| DEP-8 | Deploy target | **Dokploy** (C-4), one container per school; the first school is deployed live this round. |
+
+## Deployment round — backup & runtime (tickets 03/04)
+
+| # | Question | Answer |
+|---|----------|--------|
+| DEP-9 | Backup format (ticket 03) | **`pg_dump` only.** Gzipped SQL via `postgresql-client` in the Docker image. No app-level CSV/JSON export — it loses schema and is a false safety net. One button, one format, one restore path. |
+| DEP-10 | Backup location (ticket 03) | **Settings page.** The "Database backups" card on `GET /admin` gets a cloud branch: pg_dump download instead of file copy. The admin's config surface. |
+| DEP-11 | Backup scope (ticket 03) | **Database only.** Logo files are small and re-uploadable. A two-part download (SQL + tar) adds unnecessary complexity. |
+| DEP-12 | pg_dump invocation (ticket 03) | **`Popen` + `StreamingResponse`.** `subprocess.Popen(["pg_dump", ...], stdout=PIPE)` streams directly to the browser. No temp file, no disk pressure. |
+| DEP-13 | Backup filename (ticket 03) | **`school_finance-YYYYMMDD-HHMMSS.sql.gz`** — matches the existing SQLite backup naming convention, different extension. |
+| DEP-14 | Env contract (ticket 04) | **Three vars:** `DATABASE_URL` (required, Supabase Postgres), `SCHOOL_FINANCE_DATA=/data` (Docker volume), `SCHOOL_FINANCE_DISABLE_SHUTDOWN=1` (optional). `SCHOOL_FINANCE_CLOUD` auto-inferred from URL prefix (I-1). |
+| DEP-15 | Dockerfile additions (ticket 04) | **`postgresql-client` + `HEALTHCHECK` + `EXPOSE 8000`.** No timezone (app uses UTC), no non-root (Dokploy manages). Minimal. |
+| DEP-16 | Healthcheck endpoint (ticket 04) | **New `GET /health`** returning `{"status": "ok"}`. One line, clean contract for Docker/LB. |
+| DEP-17 | Cloud backup UI (ticket 04) | **Hide file backup UI on cloud.** The settings page shows the pg_dump download button instead. No dead buttons, no error paths. The offline path is untouched. |
+| DEP-18 | docker-compose.yml changes (ticket 04) | **None.** `DATABASE_URL` is injected via Dokploy's env UI, not hardcoded in the file. Compose stays as-is. |

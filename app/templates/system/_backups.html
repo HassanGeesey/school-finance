@@ -5,7 +5,15 @@
 <div class="mb-4">{{ alert("error", error) }}</div>
 {% endif %}
 
-{% if backup_available %}
+{% if cloud_mode %}
+<div class="flex flex-wrap items-center gap-3">
+  <p class="text-sm text-base-content/60">Database backup via pg_dump (PostgreSQL).</p>
+  <form method="post" action="/system/backup-cloud"
+        hx-post="/system/backup-cloud" hx-swap="none">
+    {{ btn(label="Download backup", icon="arrow-down-tray", variant="outline", size="sm", type="submit") }}
+  </form>
+</div>
+{% elif backup_available %}
 <div class="flex flex-wrap items-center justify-between gap-3">
   <p class="text-sm text-base-content/60">Keeping the newest {{ backup_keep }} backups.</p>
   <form method="post" action="/system/backup"

@@ -8,6 +8,9 @@ on startup and on demand ("Backup now"), keeping the newest ~30 copies
 (the single testing seam for rotation/ordering); ``SystemService`` wires it to
 the audit log. Restore stays manual in v1 (copy a backup file back) per the spec.
 
+On the cloud path, ``SystemService.backup_cloud_now()`` streams a ``pg_dump``
+gzipped SQL backup directly to the browser (no temp file).
+
 **Shutdown** — an Admin can stop the running server from the UI. The request is
 audited first (so the entry is durable before the process stops), then the
 registered ``stopper`` callable is invoked. The default stopper asks the running
@@ -17,9 +20,11 @@ own. Tests inject a recording stopper so they never stop the test runner.
 
 from __future__ import annotations
 
+import gzip
 import os
 import shutil
 import signal
+import subprocess
 import threading
 import time
 from dataclasses import dataclass
@@ -30,6 +35,7 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from ..audit.service import AuditActions, AuditService
+from ..config import settings
 from ..db import Database
 from ..models import User
 
@@ -163,6 +169,41 @@ class SystemService:
                 summary=f"Automatic backup created on startup: {path.name}",
             )
         return path
+
+    def backup_cloud_now(self, *, user: User | None) -> tuple[str, Callable[[], None], subprocess.Popen[bytes]]:
+        """Stream a pg_dump gzipped SQL backup to the browser.
+
+        Returns (filename, cleanup_callback, process). The caller streams the
+        process stdout and calls cleanup when done. The audit entry is written
+        before streaming starts so the request is durable.
+        """
+        if not settings.CLOUD_MODE:
+            raise BackupError("Cloud backup is only available in cloud mode.")
+
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        filename = f"school_finance-{stamp}.sql.gz"
+
+        self._log(
+            user=user,
+            action=AuditActions.BACKUP_MANUAL,
+            summary=f"Cloud backup download started: {filename}",
+        )
+
+        database_url = settings.DATABASE_URL
+        proc = subprocess.Popen(
+            ["pg_dump", f"--dbname={database_url}", "--no-owner", "--no-privileges"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        def cleanup() -> None:
+            if proc.stdout is not None:
+                proc.stdout.close()
+            if proc.stderr is not None:
+                proc.stderr.close()
+            proc.wait()
+
+        return filename, cleanup, proc
 
     def list_backups(self) -> list[BackupInfo]:
         """The recent backups (newest first) for the settings page."""

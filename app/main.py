@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable
 
 from fastapi import Depends, FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .admin.routes import router as admin_router
@@ -132,7 +132,7 @@ def create_app(
         # School (its Superadmin binds to it), so no phantom "" School appears.
         if not settings.CLOUD_MODE:
             tenants.ensure_bootstrap()
-        system.backup_on_startup()
+            system.backup_on_startup()
         yield
 
     app = FastAPI(title=settings.APP_NAME, version=settings.VERSION, lifespan=lifespan)
@@ -204,6 +204,10 @@ def create_app(
         app.include_router(arrears_router)
         app.include_router(reports_router)
         app.include_router(school_router)
+
+    @app.get("/health", response_class=JSONResponse, include_in_schema=False)
+    def health() -> JSONResponse:
+        return JSONResponse(content={"status": "ok"})
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:

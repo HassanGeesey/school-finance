@@ -11,11 +11,13 @@ and templates.
 
 from __future__ import annotations
 
+import gzip
 import json
+from collections.abc import Generator
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from ..auth.deps import require_admin
@@ -52,6 +54,7 @@ def _backups_context(request: Request, *, error: str = "") -> dict[str, object]:
         "backups": system.list_backups(),
         "backup_available": system.backups_available,
         "backup_keep": settings.BACKUP_KEEP,
+        "cloud_mode": settings.CLOUD_MODE,
         "error": error,
     }
 
@@ -106,3 +109,36 @@ def shutdown(
         name="system/shutdown.html",
         context={},
     )
+
+
+@router.post("/system/backup-cloud", response_model=None)
+def backup_cloud(
+    request: Request,
+    user: User = Depends(require_admin),
+) -> StreamingResponse | RedirectResponse:
+    """Stream a pg_dump gzipped SQL backup to the browser (DEP-12/DEP-13)."""
+    system = _system(request)
+    try:
+        filename, cleanup, proc = system.backup_cloud_now(user=user)
+    except BackupError as exc:
+        return RedirectResponse(
+            f"/admin?{urlencode({'err': str(exc)})}", status_code=303
+        )
+
+    def stream() -> "Generator[bytes, None, None]":
+        try:
+            # pg_dump produces raw SQL; gzip it on the fly.
+            with gzip.GzipFile(fileobj=proc.stdout) as gz:
+                while True:
+                    chunk = gz.read(65536)
+                    if not chunk:
+                        break
+                    yield chunk
+        finally:
+            cleanup()
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Type": "application/gzip",
+    }
+    return StreamingResponse(stream(), headers=headers)

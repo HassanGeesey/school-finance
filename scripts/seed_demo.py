@@ -377,12 +377,13 @@ class Seeder:
 def reset_domain(db: Database) -> None:
     """Delete demo domain data (never users, profile, or audit)."""
     with db.session() as session:
+        # Children before parents to satisfy FK constraints (Postgres).
+        session.query(Expense).delete()
+        session.query(ExpenseCategory).delete()
         session.query(Waiver).delete()
         session.query(Credit).delete()
         session.query(Payment).delete()
         session.query(StudentAmountChange).delete()
-        session.query(Expense).delete()
-        session.query(ExpenseCategory).delete()
         session.query(Student).delete()
         session.query(ClosedMonth).delete()
         session.query(Class).delete()

@@ -11,6 +11,7 @@ import hmac
 import secrets
 from datetime import timedelta
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..audit.service import AuditActions, AuditService
@@ -209,7 +210,9 @@ class AuthService:
     def authenticate(self, username: str, password: str) -> User | None:
         """Return the user when credentials are valid and the account is active."""
         with self._session() as session:
-            user = session.query(User).filter(User.username == username).first()
+            user = session.query(User).filter(
+                func.lower(User.username) == username.lower()
+            ).first()
             if user is None:
                 return None
             if not user.is_active:
