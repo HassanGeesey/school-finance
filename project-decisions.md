@@ -280,3 +280,22 @@ Grilling session log. Updated as decisions are made.
 | DEP-16 | Healthcheck endpoint (ticket 04) | **New `GET /health`** returning `{"status": "ok"}`. One line, clean contract for Docker/LB. |
 | DEP-17 | Cloud backup UI (ticket 04) | **Hide file backup UI on cloud.** The settings page shows the pg_dump download button instead. No dead buttons, no error paths. The offline path is untouched. |
 | DEP-18 | docker-compose.yml changes (ticket 04) | **None.** `DATABASE_URL` is injected via Dokploy's env UI, not hardcoded in the file. Compose stays as-is. |
+
+## Interactive prototype design session (Impeccable)
+
+| # | Question | Answer |
+|---|----------|--------|
+| PROTO-1 | Surface & scope | **Full interactive prototype.** School Dashboard (multi-campus KPI overview) + Campus operational view (Payments, Arrears, Ledger) with live interactive switching and drill-down. |
+| PROTO-2 | Design direction & aesthetic | **Calm Slate SaaS.** Clean neutral slate palette (`slate-900`/`slate-50`), crisp borders (`slate-200`), emerald (`emerald-600`) collection accents, modern card-based hierarchy, tabular numeral precision. |
+| PROTO-3 | Deliverable location | **Standalone interactive HTML/JS prototype file** in `prototypes/` (`school-finance-interactive.html`), fully self-contained with simulated multi-tenant data, reactive modals, payment flow, and instant browser preview. |
+
+## UI round planning session (prototype + DESIGN.md → spec → tickets)
+
+| # | Question | Answer |
+|---|----------|--------|
+| UIR-1 | Scope of the UI round | **Whole-app re-skin.** Every screen adopts the Calm Slate SaaS system from DESIGN.md — shell, School Dashboard, campus ops, arrears, plus all existing campus-level pages. Not just the new multi-school screens. |
+| UIR-2 | Uncommitted `.sf-dashboard` "Private Office" experiment | **Commit it on master first**, then branch. History keeps the experiment; Calm Slate SaaS replaces it as the direction. |
+| UIR-3 | Testing seam | **HTTP route tests only** (existing TestClient seam). Assert behavior: role gating, read-only owners see no mutation controls, correct pages per role, regression suite stays green. Never assert pixel/CSS details. Visual fidelity is verified by the human against `prototypes/school-finance-interactive.html` in a browser. |
+| UIR-4 | Feature slug & branch | **`.scratch/ui-round/` for spec + tickets; branch `ui` off master.** Merge to master only after explicit human approval of the implemented UI. |
+
+

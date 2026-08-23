@@ -1,0 +1,1614 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>School Finance — Multi-Campus Interactive Prototype</title>
+  <!--
+    DIRECTION CONTRACT (Calm Slate SaaS)
+    THESIS: Clear financial truth through disciplined data hierarchy, zero clutter, and instantaneous tenant navigation.
+    OWN-WORLD: Slate-900 foundation, Slate-50 paper canvas, Slate-200 micro-borders, Emerald-600 collection pulses, tabular numerals.
+    STORY: A school owner or campus manager instantly diagnoses financial health, tracks collection rates, and records payments with 100% auditability.
+    FIRST VIEWPORT: Global executive portfolio metrics at top, followed by per-campus operational cards with live expected-vs-paid progress.
+    FORM: Modern Slate SaaS multi-role interactive console.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+  -->
+  <style>
+    @font-face {
+      font-family: 'Inter';
+      src: url('../app/static/fonts/inter-latin-400-normal.woff2') format('woff2');
+      font-weight: 400;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Inter';
+      src: url('../app/static/fonts/inter-latin-600-normal.woff2') format('woff2');
+      font-weight: 600;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Inter';
+      src: url('../app/static/fonts/inter-latin-700-normal.woff2') format('woff2');
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    :root {
+      --bg-canvas: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f1f5f9;
+      --bg-rail: #0f172a;
+      --bg-rail-hover: #1e293b;
+      --bg-rail-active: #334155;
+      
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --text-inverse: #f8fafc;
+      --text-inverse-muted: #94a3b8;
+
+      --border-subtle: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --border-focus: #0f172a;
+
+      --emerald-subtle: #ecfdf5;
+      --emerald-border: #a7f3d0;
+      --emerald-text: #065f46;
+      --emerald-base: #059669;
+
+      --amber-subtle: #fffbeb;
+      --amber-border: #fde68a;
+      --amber-text: #92400e;
+      --amber-base: #d97706;
+
+      --rose-subtle: #fff1f2;
+      --rose-border: #fecdd3;
+      --rose-text: #9f1239;
+      --rose-base: #e11d48;
+
+      --indigo-subtle: #eef2ff;
+      --indigo-border: #c7d2fe;
+      --indigo-text: #3730a3;
+      --indigo-base: #4f46e5;
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 20px;
+
+      --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.03);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .num {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+
+    /* Layout Shell */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Navigation */
+    .rail {
+      background: var(--bg-rail);
+      color: var(--text-inverse);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      border-right: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .rail-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 8px 24px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 20px;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: #3b82f6;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 700;
+      font-size: 14px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .brand-text h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: #ffffff;
+    }
+
+    .brand-text p {
+      font-size: 11px;
+      color: var(--text-inverse-muted);
+    }
+
+    .rail-nav-group {
+      margin-bottom: 24px;
+    }
+
+    .nav-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      padding: 0 10px 8px 10px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--text-inverse-muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      cursor: pointer;
+      margin-bottom: 2px;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-rail-hover);
+      color: #ffffff;
+    }
+
+    .nav-item.active {
+      background: var(--bg-rail-active);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .nav-item svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+
+    .nav-item.active svg {
+      opacity: 1;
+      color: #38bdf8;
+    }
+
+    .nav-badge {
+      margin-left: auto;
+      background: rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 99px;
+    }
+
+    .rail-footer {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .role-indicator {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .role-indicator span {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+    }
+
+    .role-indicator strong {
+      font-size: 12px;
+      color: #38bdf8;
+    }
+
+    /* Main Content Area */
+    .main-workspace {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    /* Top Utility Header */
+    .topbar {
+      height: 56px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .breadcrumb strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .campus-select-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .user-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      padding-left: 8px;
+      border-left: 1px solid var(--border-subtle);
+    }
+
+    .avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--bg-rail);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+    }
+
+    /* Work Area */
+    .viewport {
+      padding: 32px;
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* Page Intro */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 20px;
+      padding-bottom: 4px;
+    }
+
+    .page-title-wrap h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+
+    .page-title-wrap p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      line-height: 1;
+      height: 34px;
+    }
+
+    .btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .btn-primary {
+      background: var(--text-primary);
+      color: #ffffff;
+      border-color: var(--text-primary);
+    }
+    .btn-primary:hover {
+      background: #1e293b;
+      border-color: #1e293b;
+    }
+
+    .btn-secondary {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+    }
+    .btn-secondary:hover {
+      background: var(--bg-subtle);
+      border-color: #94a3b8;
+    }
+
+    .btn-emerald {
+      background: var(--emerald-base);
+      color: #ffffff;
+    }
+    .btn-emerald:hover {
+      background: #047857;
+    }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 11px;
+      height: 28px;
+    }
+
+    /* Metric Grid (Cards) */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .kpi-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .kpi-meta.positive {
+      color: var(--emerald-text);
+      font-weight: 600;
+    }
+
+    .kpi-meta.warning {
+      color: var(--amber-text);
+      font-weight: 600;
+    }
+
+    /* Section Cards */
+    .content-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+    }
+
+    .panel-title-area h2 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text-primary);
+    }
+
+    .panel-title-area p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .panel-body {
+      padding: 20px;
+    }
+
+    /* Multi-Campus Overview Grid */
+    .campus-deck {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    .campus-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: all 0.2s ease;
+    }
+
+    .campus-card:hover {
+      border-color: #cbd5e1;
+      box-shadow: var(--shadow-md);
+    }
+
+    .campus-card.archived {
+      opacity: 0.65;
+      background: #fcfcfc;
+    }
+
+    .campus-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .campus-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-emerald { background: var(--emerald-subtle); color: var(--emerald-text); border: 1px solid var(--emerald-border); }
+    .badge-amber { background: var(--amber-subtle); color: var(--amber-text); border: 1px solid var(--amber-border); }
+    .badge-slate { background: var(--bg-subtle); color: var(--text-secondary); border: 1px solid var(--border-subtle); }
+
+    .campus-admin-line {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .campus-stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 12px;
+      background: var(--bg-subtle);
+      border-radius: var(--radius-sm);
+    }
+
+    .c-stat-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .c-stat-val {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
+
+    /* Progress Bar */
+    .progress-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .progress-track {
+      height: 7px;
+      background: #e2e8f0;
+      border-radius: 99px;
+      overflow: hidden;
+      display: flex;
+    }
+
+    .progress-fill {
+      background: var(--emerald-base);
+      height: 100%;
+      width: 100%;
+      border-radius: 99px;
+      transform-origin: left;
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .campus-actions {
+      display: flex;
+      gap: 8px;
+      padding-top: 4px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Ledger Table */
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 12px;
+    }
+
+    .table th {
+      padding: 10px 16px;
+      background: var(--bg-subtle);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .table tr:hover td {
+      background: #fafafa;
+    }
+
+    .table td.primary-cell {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .table td.amount-cell {
+      text-align: right;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .table th.amount-head {
+      text-align: right;
+    }
+
+    /* Interactive Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(2px);
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal-box {
+      background: var(--bg-surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 520px;
+      border: 1px solid var(--border-subtle);
+      overflow: hidden;
+      animation: modalSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes modalSlide {
+      from { transform: translateY(12px) scale(0.98); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+    }
+    .modal-close:hover { background: var(--bg-subtle); color: var(--text-primary); }
+
+    .modal-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+
+    .form-input, .form-select {
+      width: 100%;
+      padding: 9px 12px;
+      font-size: 13px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: #ffffff;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .form-input:focus, .form-select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.1);
+    }
+
+    .modal-footer {
+      padding: 16px 20px;
+      background: var(--bg-subtle);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    /* Printable Receipt Simulator */
+    .receipt-slip {
+      border: 1px dashed var(--border-strong);
+      background: #ffffff;
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      margin-top: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .receipt-header {
+      text-align: center;
+      border-bottom: 1px dashed #cbd5e1;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 4px 0;
+    }
+
+    /* Floating Toolbar / Control Bar */
+    .prototype-bar {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-rail);
+      color: #ffffff;
+      padding: 8px 16px;
+      border-radius: 99px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: var(--shadow-lg);
+      z-index: 40;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .prototype-bar-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #38bdf8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-right: 1px solid rgba(255, 255, 255, 0.15);
+      padding-right: 12px;
+    }
+
+    .proto-btn {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f8fafc;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 5px 12px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .proto-btn:hover { background: rgba(255, 255, 255, 0.2); }
+    .proto-btn.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; font-weight: 700; }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 84px;
+      right: 32px;
+      background: var(--bg-rail);
+      color: #ffffff;
+      padding: 12px 18px;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+      z-index: 60;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .campus-deck { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 768px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .rail { display: none; }
+      .viewport { padding: 20px 16px; }
+      .kpi-grid { grid-template-columns: 1fr; }
+      .topbar { padding: 0 16px; }
+      .prototype-bar { width: 90%; justify-content: space-between; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- Sidebar Rail -->
+  <aside class="rail">
+    <div class="rail-brand">
+      <div class="brand-icon">SF</div>
+      <div class="brand-text">
+        <h1 id="sidebar-school-name">Sunrise Academies</h1>
+        <p>Finance & Governance</p>
+      </div>
+    </div>
+
+    <div class="rail-nav-group">
+      <div class="nav-label">School Multi-Campus</div>
+      <a class="nav-item active" onclick="switchView('school-dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        School Dashboard
+      </a>
+      <a class="nav-item" onclick="switchView('campus-view')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Campus Operations
+      </a>
+      <a class="nav-item" onclick="switchView('arrears-view')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Arrears & Follow-ups
+        <span class="nav-badge" id="arrears-count-badge">14</span>
+      </a>
+      <a class="nav-item" onclick="openPaymentModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Record Payment
+      </a>
+    </div>
+
+    <div class="rail-nav-group">
+      <div class="nav-label">Management</div>
+      <a class="nav-item" onclick="showToast('Audit log scoped to School & Campus')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Audit Trail
+      </a>
+      <a class="nav-item" onclick="showToast('Campus Fee templates loaded')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Fee Templates
+      </a>
+    </div>
+
+    <div class="rail-footer">
+      <div class="role-indicator">
+        <span>Logged in as</span>
+        <strong id="user-role-label">Superadmin (Dr. Farhan)</strong>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Workspace -->
+  <main class="main-workspace">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="breadcrumb">
+        <span>School Finance</span>
+        <span>/</span>
+        <strong id="topbar-current-view">School Dashboard</strong>
+      </div>
+      <div class="topbar-actions">
+        <div class="campus-select-pill" onclick="cycleCampus()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 7v14M21 7v14M6 7V3h12v4"/></svg>
+          <span id="active-campus-pill">Downtown Main Campus</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="user-pill">
+          <div class="avatar" id="user-avatar">FA</div>
+          <span id="user-display-name">Dr. Farhan</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container Content (Dynamic) -->
+    <div class="viewport" id="viewport-content">
+      <!-- Injected via JavaScript -->
+    </div>
+  </main>
+</div>
+
+<!-- Modal: Record Payment Flow -->
+<div class="modal-backdrop" id="payment-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Record Student Fee Payment</h3>
+      <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Campus</label>
+        <select class="form-select" id="pay-campus" onchange="updatePaymentFormStudents()">
+          <option value="c1">Downtown Main Campus</option>
+          <option value="c2">Westside Branch</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Select Student</label>
+        <select class="form-select" id="pay-student" onchange="calculateOwedPreview()">
+          <!-- Dynamic students -->
+        </select>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label class="form-label">Payment Amount (USD)</label>
+          <input type="number" class="form-input num" id="pay-amount" value="100" min="1" step="1" oninput="calculateOwedPreview()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Target Month</label>
+          <select class="form-select" id="pay-month">
+            <option value="2025-06">June 2025</option>
+            <option value="2025-07">July 2025</option>
+            <option value="2025-05">May 2025 (Overdue)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Payment Method</label>
+        <select class="form-select" id="pay-method">
+          <option value="cash">Cash in Office</option>
+          <option value="bank">Bank Transfer</option>
+          <option value="mobile">Mobile Money (Evc/Zaad)</option>
+        </select>
+      </div>
+      <!-- Live allocation slip preview -->
+      <div class="receipt-slip" id="live-receipt-preview">
+        <div class="receipt-header">
+          <strong>SUNRISE EDUCATION GROUP</strong><br>
+          Payment Allocation Simulator
+        </div>
+        <div class="receipt-row"><span>Student:</span><strong id="rcpt-student">Bilal Warsame</strong></div>
+        <div class="receipt-row"><span>Monthly Rate:</span><span id="rcpt-rate">$100.00</span></div>
+        <div class="receipt-row"><span>Amount Paid:</span><strong id="rcpt-paid" style="color:var(--emerald-text);">$100.00</strong></div>
+        <div class="receipt-row" id="rcpt-credit-row" style="display:none; color:var(--indigo-text);"><span>Rolled as Credit:</span><strong id="rcpt-credit">$0.00</strong></div>
+        <div class="receipt-row"><span>Status:</span><span id="rcpt-status">Cleared June 2025</span></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePaymentModal()">Cancel</button>
+      <button class="btn btn-emerald" onclick="submitPayment()">Confirm & Print Receipt</button>
+    </div>
+  </div>
+</div>
+
+<!-- Floating Control Bar -->
+<div class="prototype-bar">
+  <div class="prototype-bar-title">Prototype Views</div>
+  <button class="proto-btn active" id="btn-view-school" onclick="switchView('school-dashboard')">1. School Dashboard</button>
+  <button class="proto-btn" id="btn-view-campus" onclick="switchView('campus-view')">2. Campus Ledger</button>
+  <button class="proto-btn" id="btn-view-arrears" onclick="switchView('arrears-view')">3. Arrears Queue</button>
+  <button class="proto-btn" onclick="toggleRole()">Role: <strong id="proto-role-tag">Superadmin</strong></button>
+</div>
+
+<!-- Toast Container -->
+<div class="toast" id="toast-el">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toast-text">Action completed successfully</span>
+</div>
+
+<script>
+  // Simulated Multi-Tenant Data Store
+  const state = {
+    school: {
+      name: "Sunrise Academies",
+      currency: "USD",
+      activeMonth: "June 2025"
+    },
+    currentRole: "superadmin", // 'superadmin', 'owner', 'campus_admin', 'finance'
+    currentView: "school-dashboard",
+    activeCampusId: "c1",
+    campuses: [
+      {
+        id: "c1",
+        name: "Downtown Main Campus",
+        admin: "Amina Mohamed (amina_admin)",
+        activeStudents: 142,
+        expectedCents: 1420000, // $14,200
+        collectedCents: 1136000, // $11,360 (80%)
+        expensesCents: 412000,  // $4,120
+        arrearsCents: 284000,   // $2,840
+        archived: false,
+        recentPayments: [
+          { student: "Bilal Warsame", class: "Grade 6", amount: 100, month: "June 2025", time: "10 mins ago", method: "Cash" },
+          { student: "Hodan Ali", class: "Grade 3", amount: 80, month: "June 2025", time: "1 hour ago", method: "Bank" },
+          { student: "Yusuf Hassan", class: "Grade 8", amount: 120, month: "June 2025", time: "2 hours ago", method: "Mobile" },
+          { student: "Fatima Noor", class: "Grade 1", amount: 100, month: "May 2025", time: "Yesterday", method: "Cash" }
+        ],
+        arrears: [
+          { student: "Mohamed Jama", class: "Grade 7", balance: 240, months: "2 months (May, June)", contact: "+252 61 555 1234", flag: "Urgent" },
+          { student: "Asha Abdi", class: "Grade 4", balance: 100, months: "1 month (June)", contact: "+252 61 555 5678", flag: "Reminder" },
+          { student: "Khadra Shire", class: "Grade 2", balance: 160, months: "2 months (Partial)", contact: "+252 61 555 9012", flag: "Urgent" }
+        ]
+      },
+      {
+        id: "c2",
+        name: "Westside Branch",
+        admin: "Hassan Geesey (hgeesey)",
+        activeStudents: 98,
+        expectedCents: 980000,  // $9,800
+        collectedCents: 833000,  // $8,330 (85%)
+        expensesCents: 275000,  // $2,750
+        arrearsCents: 147000,   // $1,470
+        archived: false,
+        recentPayments: [
+          { student: "Maryam Adan", class: "Grade 5", amount: 100, month: "June 2025", time: "30 mins ago", method: "Mobile" },
+          { student: "Liban Farah", class: "Grade 4", amount: 100, month: "June 2025", time: "3 hours ago", method: "Cash" }
+        ],
+        arrears: [
+          { student: "Zahra Barre", class: "Grade 5", balance: 100, months: "1 month (June)", contact: "+252 61 777 3421", flag: "Reminder" },
+          { student: "Ali Warsame", class: "Grade 6", balance: 200, months: "2 months (May, June)", contact: "+252 61 777 9811", flag: "Urgent" }
+        ]
+      },
+      {
+        id: "c3",
+        name: "North Annex Campus",
+        admin: "Unassigned",
+        activeStudents: 0,
+        expectedCents: 0,
+        collectedCents: 0,
+        expensesCents: 0,
+        arrearsCents: 0,
+        archived: true,
+        recentPayments: [],
+        arrears: []
+      }
+    ]
+  };
+
+  function fmtMoney(cents) {
+    return '$' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function showToast(msg) {
+    const el = document.getElementById('toast-el');
+    document.getElementById('toast-text').textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  function switchView(viewName) {
+    state.currentView = viewName;
+    
+    // Update toolbar active states
+    document.querySelectorAll('.proto-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    
+    if (viewName === 'school-dashboard') {
+      document.getElementById('btn-view-school').classList.add('active');
+      document.getElementById('topbar-current-view').textContent = 'School Dashboard (Multi-Campus)';
+    } else if (viewName === 'campus-view') {
+      document.getElementById('btn-view-campus').classList.add('active');
+      document.getElementById('topbar-current-view').textContent = 'Campus Operations — ' + getActiveCampus().name;
+    } else if (viewName === 'arrears-view') {
+      document.getElementById('btn-view-arrears').classList.add('active');
+      document.getElementById('topbar-current-view').textContent = 'Arrears & Collection Queue';
+    }
+
+    renderCurrentView();
+  }
+
+  function getActiveCampus() {
+    return state.campuses.find(c => c.id === state.activeCampusId) || state.campuses[0];
+  }
+
+  function cycleCampus() {
+    const activeIndex = state.campuses.findIndex(c => c.id === state.activeCampusId);
+    const nextCampus = state.campuses[(activeIndex + 1) % 2]; // cycle between active campuses
+    state.activeCampusId = nextCampus.id;
+    document.getElementById('active-campus-pill').textContent = nextCampus.name;
+    showToast(`Switched active campus to: ${nextCampus.name}`);
+    renderCurrentView();
+  }
+
+  function toggleRole() {
+    const roles = ['superadmin', 'owner', 'campus_admin', 'finance'];
+    const idx = (roles.indexOf(state.currentRole) + 1) % roles.length;
+    state.currentRole = roles[idx];
+    
+    const roleLabels = {
+      superadmin: 'Superadmin (Full Control)',
+      owner: 'Owner (Read-Only)',
+      campus_admin: 'Campus Admin',
+      finance: 'Finance Officer'
+    };
+
+    document.getElementById('proto-role-tag').textContent = state.currentRole;
+    document.getElementById('user-role-label').textContent = roleLabels[state.currentRole];
+    showToast(`Switched active role to: ${state.currentRole.toUpperCase()}`);
+    renderCurrentView();
+  }
+
+  function renderCurrentView() {
+    const container = document.getElementById('viewport-content');
+
+    if (state.currentView === 'school-dashboard') {
+      renderSchoolDashboard(container);
+    } else if (state.currentView === 'campus-view') {
+      renderCampusView(container);
+    } else if (state.currentView === 'arrears-view') {
+      renderArrearsView(container);
+    }
+  }
+
+  // View 1: School Multi-Campus Dashboard
+  function renderSchoolDashboard(container) {
+    const totalExpected = state.campuses.reduce((acc, c) => acc + c.expectedCents, 0);
+    const totalCollected = state.campuses.reduce((acc, c) => acc + c.collectedCents, 0);
+    const totalExpenses = state.campuses.reduce((acc, c) => acc + c.expensesCents, 0);
+    const totalArrears = state.campuses.reduce((acc, c) => acc + c.arrearsCents, 0);
+    const overallRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0;
+    const netOperating = totalCollected - totalExpenses;
+
+    container.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <h1>School Executive Dashboard</h1>
+          <p>Portfolio overview across all operating campuses for ${state.school.activeMonth}.</p>
+        </div>
+        <div class="button-group">
+          ${state.currentRole === 'superadmin' ? `
+            <button class="btn btn-secondary" onclick="showToast('Exporting school-wide financial summary (CSV)...')">Export Summary</button>
+            <button class="btn btn-primary" onclick="showToast('New Campus Provisioning wizard opened')">+ New Campus</button>
+          ` : `
+            <span class="badge badge-slate">Viewing as ${state.currentRole.toUpperCase()} (Read-only)</span>
+          `}
+        </div>
+      </div>
+
+      <!-- KPI Summary -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Collections</div>
+          <div class="kpi-value num">${fmtMoney(totalCollected)}</div>
+          <div class="kpi-meta positive">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+            ${overallRate}% of expected (${fmtMoney(totalExpected)})
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Net Operating Flow</div>
+          <div class="kpi-value num">${fmtMoney(netOperating)}</div>
+          <div class="kpi-meta positive">After all campus expenses</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Outstanding Arrears</div>
+          <div class="kpi-value num" style="color:var(--amber-base);">${fmtMoney(totalArrears)}</div>
+          <div class="kpi-meta warning">14 families with past dues</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total Operating Campuses</div>
+          <div class="kpi-value num">2 <span style="font-size:14px;color:var(--text-muted);font-weight:normal;">/ 1 archived</span></div>
+          <div class="kpi-meta">240 active students total</div>
+        </div>
+      </div>
+
+      <!-- Multi-Campus Comparison Cards -->
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h2 style="font-size:15px; font-weight:700;">Campus Financial Health</h2>
+          <span style="font-size:12px; color:var(--text-muted);">Independent operational tenant units</span>
+        </div>
+
+        <div class="campus-deck">
+          ${state.campuses.map(campus => {
+            const percent = campus.expectedCents > 0 ? Math.round((campus.collectedCents / campus.expectedCents) * 100) : 0;
+            return `
+              <div class="campus-card ${campus.archived ? 'archived' : ''}">
+                <div class="campus-card-head">
+                  <div>
+                    <div class="campus-name">
+                      ${campus.name}
+                      ${campus.archived ? '<span class="badge badge-slate">Archived</span>' : '<span class="badge badge-emerald">Active</span>'}
+                    </div>
+                    <div class="campus-admin-line">
+                      Manager: <strong>${campus.admin}</strong>
+                    </div>
+                  </div>
+                  ${!campus.archived ? `
+                    <button class="btn btn-secondary btn-sm" onclick="state.activeCampusId='${campus.id}'; switchView('campus-view');">
+                      Enter Campus &rarr;
+                    </button>
+                  ` : ''}
+                </div>
+
+                ${!campus.archived ? `
+                  <div class="campus-stats-row">
+                    <div>
+                      <div class="c-stat-label">Collected</div>
+                      <div class="c-stat-val num">${fmtMoney(campus.collectedCents)}</div>
+                    </div>
+                    <div>
+                      <div class="c-stat-label">Expenses</div>
+                      <div class="c-stat-val num">${fmtMoney(campus.expensesCents)}</div>
+                    </div>
+                    <div>
+                      <div class="c-stat-label">Arrears</div>
+                      <div class="c-stat-val num" style="color:var(--amber-base);">${fmtMoney(campus.arrearsCents)}</div>
+                    </div>
+                  </div>
+
+                  <div class="progress-wrap">
+                    <div class="progress-meta">
+                      <span>Collection Progress</span>
+                      <span><strong>${fmtMoney(campus.collectedCents)}</strong> of ${fmtMoney(campus.expectedCents)} (${percent}%)</span>
+                    </div>
+                    <div class="progress-track">
+                      <div class="progress-fill" style="transform: scaleX(${Math.min(percent, 100) / 100})"></div>
+                    </div>
+                  </div>
+                ` : `
+                  <p style="font-size:12px; color:var(--text-muted); padding:16px 0;">This campus has been soft-archived. Historical student and financial records are preserved read-only.</p>
+                `}
+
+                <div class="campus-actions">
+                  <button class="btn btn-secondary btn-sm" onclick="state.activeCampusId='${campus.id}'; switchView('campus-view');">Overview</button>
+                  <button class="btn btn-secondary btn-sm" onclick="state.activeCampusId='${campus.id}'; switchView('arrears-view');">Arrears (${campus.arrears.length})</button>
+                  ${state.currentRole === 'superadmin' && !campus.archived ? `
+                    <button class="btn btn-secondary btn-sm" style="margin-left:auto; color:var(--rose-base);" onclick="showToast('Campus archive modal opened')">Archive</button>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // View 2: Campus Operations & Daily Ledger
+  function renderCampusView(container) {
+    const campus = getActiveCampus();
+    const percent = Math.round((campus.collectedCents / campus.expectedCents) * 100);
+
+    container.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h1>${campus.name}</h1>
+            <span class="badge badge-emerald">Campus Operations</span>
+          </div>
+          <p>Managed by ${campus.admin} &bull; Active billing for ${state.school.activeMonth}</p>
+        </div>
+        <div class="button-group">
+          <button class="btn btn-secondary" onclick="switchView('arrears-view')">View Arrears Queue</button>
+          <button class="btn btn-primary" onclick="openPaymentModal()">+ Record Fee Payment</button>
+        </div>
+      </div>
+
+      <!-- Campus KPI strip -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Month Collections</div>
+          <div class="kpi-value num">${fmtMoney(campus.collectedCents)}</div>
+          <div class="kpi-meta positive">${percent}% of ${fmtMoney(campus.expectedCents)} expected</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Recorded Expenses</div>
+          <div class="kpi-value num">${fmtMoney(campus.expensesCents)}</div>
+          <div class="kpi-meta">Utilities, supplies & staff</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Outstanding Balance</div>
+          <div class="kpi-value num" style="color:var(--amber-base);">${fmtMoney(campus.arrearsCents)}</div>
+          <div class="kpi-meta warning">${campus.arrears.length} students behind</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Active Enrollment</div>
+          <div class="kpi-value num">${campus.activeStudents}</div>
+          <div class="kpi-meta">Across 6 grade classes</div>
+        </div>
+      </div>
+
+      <!-- Real-time Payments Ledger -->
+      <div class="content-panel">
+        <div class="panel-header">
+          <div class="panel-title-area">
+            <h2>Recent Month-Tagged Fee Collections</h2>
+            <p>Every payment automatically tagged to an owed month with instant receipt generation.</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="showToast('Exporting campus ledger CSV...')">Export CSV</button>
+        </div>
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Student Name</th>
+                <th>Class</th>
+                <th>Tagged Month</th>
+                <th>Payment Method</th>
+                <th>Time Recorded</th>
+                <th class="amount-head">Amount Paid</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${campus.recentPayments.map(p => `
+                <tr>
+                  <td class="primary-cell">${p.student}</td>
+                  <td>${p.class}</td>
+                  <td><span class="badge badge-slate">${p.month}</span></td>
+                  <td>${p.method}</td>
+                  <td style="color:var(--text-muted);">${p.time}</td>
+                  <td class="amount-cell" style="color:var(--emerald-text); font-weight:700;">$${p.amount}.00</td>
+                  <td style="text-align:right;">
+                    <button class="btn btn-secondary btn-sm" onclick="showToast('Reprinting receipt for ${p.student}...')">Receipt</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // View 3: Arrears & Collection Queue
+  function renderArrearsView(container) {
+    const campus = getActiveCampus();
+
+    container.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-wrap">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h1>Arrears & Collections Queue</h1>
+            <span class="badge badge-amber">${campus.name}</span>
+          </div>
+          <p>Prioritized action list of families with past-due tuition for direct follow-up.</p>
+        </div>
+        <div class="button-group">
+          <button class="btn btn-secondary" onclick="showToast('Preparing automated WhatsApp payment reminders...')">Batch Reminders</button>
+          <button class="btn btn-primary" onclick="openPaymentModal()">+ Record Settlement</button>
+        </div>
+      </div>
+
+      <div class="content-panel">
+        <div class="panel-header">
+          <div class="panel-title-area">
+            <h2>Outstanding Student Balances (${campus.arrears.length} Pending)</h2>
+            <p>Calculated derived amounts from active enrollment dates minus approved waivers.</p>
+          </div>
+          <div class="button-group">
+            <span class="badge badge-amber">Total Unpaid: ${fmtMoney(campus.arrearsCents)}</span>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Student & Guardian</th>
+                <th>Class</th>
+                <th>Overdue Months</th>
+                <th>Guardian Contact</th>
+                <th>Urgency</th>
+                <th class="amount-head">Balance Due</th>
+                <th style="text-align:right;">Follow-up Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${campus.arrears.map(a => `
+                <tr>
+                  <td class="primary-cell">
+                    <div>${a.student}</div>
+                    <div style="font-size:11px;color:var(--text-muted);font-weight:normal;">Family Account</div>
+                  </td>
+                  <td>${a.class}</td>
+                  <td><span class="badge badge-slate">${a.months}</span></td>
+                  <td>${a.contact}</td>
+                  <td>
+                    <span class="badge ${a.flag === 'Urgent' ? 'badge-amber' : 'badge-slate'}">${a.flag}</span>
+                  </td>
+                  <td class="amount-cell" style="color:var(--rose-base); font-size:14px; font-weight:700;">
+                    $${a.balance}.00
+                  </td>
+                  <td style="text-align:right;">
+                    <button class="btn btn-secondary btn-sm" onclick="showToast('SMS reminder queued for ${a.contact}')">SMS</button>
+                    <button class="btn btn-emerald btn-sm" onclick="quickPay('${a.student}', ${a.balance})">Clear Fee</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // Payment Modal Functions
+  function openPaymentModal() {
+    updatePaymentFormStudents();
+    calculateOwedPreview();
+    document.getElementById('payment-modal').classList.add('open');
+  }
+
+  function closePaymentModal() {
+    document.getElementById('payment-modal').classList.remove('open');
+  }
+
+  function updatePaymentFormStudents() {
+    const campus = getActiveCampus();
+    const select = document.getElementById('pay-student');
+    const studentList = [
+      { name: "Bilal Warsame", defaultRate: 100 },
+      { name: "Mohamed Jama", defaultRate: 120 },
+      { name: "Asha Abdi", defaultRate: 100 },
+      { name: "Khadra Shire", defaultRate: 80 },
+      { name: "Yusuf Hassan", defaultRate: 120 }
+    ];
+
+    select.innerHTML = studentList.map(s => `
+      <option value="${s.name}" data-rate="${s.defaultRate}">${s.name} ($${s.defaultRate}/mo)</option>
+    `).join('');
+  }
+
+  function calculateOwedPreview() {
+    const select = document.getElementById('pay-student');
+    const opt = select.options[select.selectedIndex];
+    const studentName = opt ? opt.value : 'Student';
+    const rate = opt ? parseFloat(opt.dataset.rate || 100) : 100;
+    const paidAmount = parseFloat(document.getElementById('pay-amount').value || 0);
+
+    document.getElementById('rcpt-student').textContent = studentName;
+    document.getElementById('rcpt-rate').textContent = `$${rate.toFixed(2)}`;
+    document.getElementById('rcpt-paid').textContent = `$${paidAmount.toFixed(2)}`;
+
+    const creditRow = document.getElementById('rcpt-credit-row');
+    if (paidAmount > rate) {
+      const credit = paidAmount - rate;
+      creditRow.style.display = 'flex';
+      document.getElementById('rcpt-credit').textContent = `$${credit.toFixed(2)}`;
+      document.getElementById('rcpt-status').textContent = 'Paid in Full + Credit Forwarded';
+    } else if (paidAmount < rate) {
+      creditRow.style.display = 'none';
+      document.getElementById('rcpt-status').textContent = `Partial Payment (Remaining: $${(rate - paidAmount).toFixed(2)})`;
+    } else {
+      creditRow.style.display = 'none';
+      document.getElementById('rcpt-status').textContent = 'Cleared in Full';
+    }
+  }
+
+  function quickPay(studentName, amount) {
+    openPaymentModal();
+    const select = document.getElementById('pay-student');
+    for (let i = 0; i < select.options.length; i++) {
+      if (select.options[i].value === studentName) {
+        select.selectedIndex = i;
+        break;
+      }
+    }
+    document.getElementById('pay-amount').value = amount;
+    calculateOwedPreview();
+  }
+
+  function submitPayment() {
+    const student = document.getElementById('pay-student').value;
+    const amount = parseFloat(document.getElementById('pay-amount').value || 100);
+    const month = document.getElementById('pay-month').options[document.getElementById('pay-month').selectedIndex].text;
+    const method = document.getElementById('pay-method').options[document.getElementById('pay-method').selectedIndex].text;
+
+    const campus = getActiveCampus();
+    
+    // Push into recent payments
+    campus.recentPayments.unshift({
+      student: student,
+      class: "Grade " + (Math.floor(Math.random() * 8) + 1),
+      amount: amount,
+      month: month,
+      time: "Just now",
+      method: method
+    });
+
+    // Update campus counters
+    campus.collectedCents += (amount * 100);
+    if (campus.arrearsCents >= (amount * 100)) {
+      campus.arrearsCents -= (amount * 100);
+    }
+
+    // Remove from arrears if present
+    const arrIdx = campus.arrears.findIndex(a => a.student === student);
+    if (arrIdx !== -1) {
+      campus.arrears.splice(arrIdx, 1);
+    }
+
+    closePaymentModal();
+    showToast(`Payment of $${amount} recorded for ${student}. Receipt generated!`);
+    renderCurrentView();
+  }
+
+  // Keyboard shortcut listener
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === '1') switchView('school-dashboard');
+    if (e.key === '2') switchView('campus-view');
+    if (e.key === '3') switchView('arrears-view');
+    if (e.key === 'p' || e.key === 'P') openPaymentModal();
+    if (e.key === 'r' || e.key === 'R') toggleRole();
+    if (e.key === 'Escape') closePaymentModal();
+  });
+
+  // Initial render
+  renderCurrentView();
+</script>
+</body>
+</html>
