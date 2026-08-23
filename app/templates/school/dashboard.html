@@ -7,7 +7,7 @@
 
 {% block content %}
 {% set user = current_user() %}
-<div class="space-y-6">
+<div class="sf-dashboard space-y-6">
   {{ page_header("School dashboard", "Every Campus side by side" + (", with read-only access" if not is_superadmin else "") + ".", actions=btn(href="/school/campuses/new", label="New campus", icon="plus", variant="primary", size="sm") if is_superadmin else "") }}
 
   {% if msg %}
@@ -25,10 +25,10 @@
   </div>
   {% endif %}
 
-  <div class="grid items-start gap-6 lg:grid-cols-2">
+  <div class="sf-campus-list grid items-start gap-6">
     {% for summary in campuses %}
     {% set c = summary.campus %}
-    <section class="board {{ 'opacity-70' if c.archived }}">
+    <section class="sf-campus-row board {{ 'opacity-70' if c.archived }}">
       <div class="board-head">
         <div class="board-title-wrap min-w-0">
           <span class="pin"></span>
@@ -51,7 +51,7 @@
       <div class="board-body">
         {% if has_reporting and summary.kpi %}
         {% set kpi = summary.kpi %}
-        <div class="grid grid-cols-2 gap-3">
+        <div class="sf-kpi-strip grid grid-cols-2 gap-3">
           <div class="rounded-box bg-base-200/60 p-3">
             <p class="stat-label">Collected (this month)</p>
             <p class="stat-value num text-sm">{{ money(kpi.collected_cents) }}</p>
@@ -74,7 +74,7 @@
             <span>Expected vs paid</span>
             <span>{{ money(kpi.paid_cents) }} of {{ money(kpi.expected_cents) }} ({{ kpi.collected_percent }}%)</span>
           </div>
-          <progress class="progress progress-success w-full" value="{{ kpi.collected_percent }}" max="100"></progress>
+          <progress class="sf-progress progress progress-success w-full" value="{{ kpi.collected_percent }}" max="100"></progress>
         </div>
         {% elif not has_reporting %}
         <p class="text-sm text-base-content/60">Reporting is not available in this build.</p>
