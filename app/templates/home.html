@@ -1,42 +1,122 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import card, btn, badge, empty_state %}
 {% from "components/icons.html" import icon %}
-{% from "components/ui.html" import page_header, card, btn, stat_card, empty_state %}
 
 {% block title %}Dashboard — {{ school_name() }}{% endblock %}
 {% block topbar_title %}Dashboard{% endblock %}
 
 {% block content %}
-{% set user = current_user() %}
-{% if campus %}
-{% set report_base = "/campuses/" ~ campus.id ~ "/reports" %}
-{% set expenses_url = "/campuses/" ~ campus.id ~ "/expenses" %}
-{% else %}
-{% set report_base = "/reports" %}
-{% set expenses_url = "/expenses" %}
-{% endif %}
+{% set campus_title = campus.name if campus else school_name() %}
+{% set report_base = ("/campuses/" ~ campus.id ~ "/reports") if campus else "/reports" %}
+{% set expenses_url = ("/campuses/" ~ campus.id ~ "/expenses") if campus else "/expenses" %}
 <div class="space-y-6">
-  {{ page_header("Welcome back" + (", " ~ user.name if user else ""), "School fee collection, expenses, and unpaid fees at a glance.") }}
 
-  {% if not read_only %}
-  <div class="board">
-    <div class="board-body">
+  {# -- Page header: the Campus, its billing month, obvious way back --------- #}
+  <div class="page-head">
+    <div>
       <div class="flex flex-wrap items-center gap-2">
-        <span class="mr-1 font-semibold text-[13px]">Quick actions</span>
-        {{ btn(href="/payments", label="Record payment", icon="banknotes", variant="primary", size="sm") }}
-        {{ btn(href="/expenses", label="Record expense", icon="arrow-up-tray", variant="outline", size="sm") }}
-        {{ btn(href="/reports", label="All reports", icon="chart-bar", variant="outline", size="sm") }}
-        {{ btn(href="/classes", label="Manage classes", icon="rectangle-stack", variant="outline", size="sm") }}
+        <h1 class="page-title">{{ campus_title }}</h1>
+        <span class="badge badge-emerald">Campus operations</span>
+        {% if campus and campus.archived %}<span class="badge badge-slate">Archived</span>{% endif %}
       </div>
+      <p class="page-sub">
+        Active billing month <strong class="num">{{ '%02d'|format(dashboard.month) }}/{{ dashboard.year }}</strong>
+        &middot; collections, expenses, and arrears for this Campus.
+      </p>
     </div>
+    <div class="page-actions">
+      {% if campus %}
+      {{ btn(href="/school", label="Back to School dashboard", icon="arrow-left", variant="secondary", size="sm") }}
+      {% endif %}
+      {% if not read_only %}
+      {{ btn(href="/payments", label="Record payment", icon="banknotes", variant="primary", size="sm") }}
+      {{ btn(href="/arrears", label="View arrears queue", icon="exclamation-triangle", variant="secondary", size="sm") }}
+      {% endif %}
+      {{ btn(href=report_base, label="All reports", icon="chart-bar", variant="outline", size="sm") }}
+    </div>
+  </div>
+
+  {% if read_only %}
+  <div class="alert alert-info">
+    {{ icon("eye", "w-5 h-5 shrink-0") }}
+    <span>Read-only view — you are monitoring {{ campus_title }}. Nothing can be recorded or changed here.</span>
   </div>
   {% endif %}
 
+  {# -- Campus KPI strip ------------------------------------------------------ #}
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    {{ stat_card("Collected this month", money(dashboard.collected_cents), "banknotes", "success", hint="Payments recorded this month") }}
-    {{ stat_card("Outstanding unpaid fees", money(dashboard.arrears_cents), "exclamation-triangle", "error" if dashboard.arrears_cents > 0 else "neutral", hint="Across all students") }}
-    {{ stat_card("Active students", dashboard.active_student_count, "user-group", "neutral", hint="Enrolled in a class") }}
-    {{ stat_card("Expenses this month", money(dashboard.expenses_cents), "arrow-up-tray", "error", hint="Recorded this month") }}
+    <div class="kpi-card">
+      <p class="kpi-label">Month Collections</p>
+      <p class="kpi-value num">{{ money(dashboard.collected_cents) }}</p>
+      <p class="kpi-meta positive">Payments recorded this month</p>
+    </div>
+    <div class="kpi-card">
+      <p class="kpi-label">Recorded Expenses</p>
+      <p class="kpi-value num">{{ money(dashboard.expenses_cents) }}</p>
+      <p class="kpi-meta">Utilities, supplies &amp; staff costs</p>
+    </div>
+    <div class="kpi-card">
+      <p class="kpi-label">Outstanding Balance</p>
+      <p class="kpi-value num amber">{{ money(dashboard.arrears_cents) }}</p>
+      <p class="kpi-meta warning">
+        <span class="num">{{ dashboard.arrears_band_counts.get('overdue', 0) }}</span>&nbsp;over 60 days &middot;
+        <span class="num">{{ dashboard.arrears_band_counts.get('late', 0) }}</span>&nbsp;31&ndash;60 days &middot;
+        <span class="num">{{ dashboard.arrears_band_counts.get('current', 0) }}</span>&nbsp;current
+      </p>
+    </div>
+    <div class="kpi-card">
+      <p class="kpi-label">Active Enrollment</p>
+      <p class="kpi-value num">{{ dashboard.active_student_count }}</p>
+      <p class="kpi-meta">Enrolled in a class</p>
+    </div>
   </div>
+
+  {# -- Recent Month-tagged Payments ledger ----------------------------------- #}
+  <section class="content-panel">
+    <div class="panel-header">
+      <div class="panel-title-area min-w-0">
+        <h2>Recent Month-tagged Fee Collections</h2>
+        <p>Every payment is tagged to an owed month; receipts reprint instantly.</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        {{ btn(href=report_base ~ "/paid-students", label="Paid students", icon="arrow-right", variant="outline", size="sm") }}
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Class</th>
+            <th>Tagged month</th>
+            <th>Method</th>
+            <th>Time recorded</th>
+            <th class="amount-head">Amount</th>
+            <th class="amount-head">Receipt</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for payment in dashboard.recent_payments %}
+          <tr>
+            <td class="primary-cell">{{ payment.student.full_name }}</td>
+            <td>{{ payment.student.school_class.name if payment.student.school_class else "—" }}</td>
+            <td><span class="badge badge-slate num">{{ '%02d'|format(payment.month) }}/{{ payment.year }}</span></td>
+            <td>{{ payment_method_labels.get(payment.method, payment.method) }}</td>
+            <td>{{ payment.created_at.strftime("%d %b %Y, %H:%M") }}</td>
+            <td class="amount-cell num" style="color: var(--sf-emerald-text);">{{ money(payment.amount_cents) }}</td>
+            <td class="text-right">
+              <a href="/payments/{{ payment.id }}/receipt" class="btn btn-ghost btn-xs">
+                {{ icon("printer", "w-3.5 h-3.5") }} Reprint
+              </a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="py-0">{{ empty_state("No payments yet", "Recorded payments will appear here.", "banknotes") }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <div class="grid items-start gap-6 lg:grid-cols-3">
     {% call card(title="Income vs expenses — last 6 months", class="lg:col-span-2") %}
@@ -52,39 +132,26 @@
       <div class="relative h-64"><canvas id="chart-categories"></canvas></div>
     {% endcall %}
 
-    {% call card(title="Recent payments", actions=btn(href=report_base ~ "/paid-students", label="Paid students", icon="arrow-right", variant="outline", size="sm")) %}
-      <div class="overflow-x-auto">
-        <table class="table">
-          <thead><tr><th>Student</th><th>Date</th><th>Method</th><th class="text-right">Amount</th></tr></thead>
-          <tbody>
-          {% for payment in dashboard.recent_payments %}
-            <tr>
-              <td class="font-medium">{{ payment.student.full_name }}</td>
-              <td>{{ payment.paid_on }}</td>
-              <td>{{ payment_method_labels.get(payment.method, payment.method) }}</td>
-              <td class="text-right font-semibold text-success">{{ money(payment.amount_cents) }}</td>
-            </tr>
-          {% else %}
-            <tr><td colspan="4" class="py-0">{{ empty_state("No payments yet", "Recorded payments will appear here.", "banknotes") }}</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
+    <section class="content-panel">
+      <div class="panel-header">
+        <div class="panel-title-area min-w-0">
+          <h2>Recent expenses</h2>
+          <p>Money recorded out of this Campus.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+          {{ btn(href=expenses_url, label="Expenses", icon="arrow-right", variant="outline", size="sm") }}
+        </div>
       </div>
-    {% endcall %}
-  </div>
-
-  <div class="grid items-start gap-6">
-    {% call card(title="Recent expenses", actions=btn(href=expenses_url, label="Expenses", icon="arrow-right", variant="outline", size="sm")) %}
       <div class="overflow-x-auto">
         <table class="table">
-          <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="text-right">Amount</th></tr></thead>
+          <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="amount-head">Amount</th></tr></thead>
           <tbody>
           {% for expense in dashboard.recent_expenses %}
             <tr>
               <td>{{ expense.occurred_on }}</td>
-              <td>{{ expense.category.name }}</td>
+              <td class="primary-cell">{{ expense.category.name }}</td>
               <td>{{ expense.description }}</td>
-              <td class="text-right font-semibold text-error">{{ money(expense.amount_cents) }}</td>
+              <td class="amount-cell num" style="color: var(--sf-rose-text);">{{ money(expense.amount_cents) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="4" class="py-0">{{ empty_state("No expenses yet", "Recorded expenses will appear here.", "arrow-up-tray") }}</td></tr>
@@ -92,7 +159,7 @@
           </tbody>
         </table>
       </div>
-    {% endcall %}
+    </section>
   </div>
 </div>
 {% endblock %}
@@ -101,17 +168,26 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     if (typeof Chart === "undefined") return;
+    var rootStyle = getComputedStyle(document.documentElement);
+    var token = function (name, fallback) {
+      var value = rootStyle.getPropertyValue(name).trim();
+      return value || fallback;
+    };
     var moneyTick = function (value) {
       return "$" + Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
     };
+    var emerald = token("--sf-emerald-base", "#059669");
+    var rose = token("--sf-rose-base", "#e11d48");
+    var amber = token("--sf-amber-base", "#d97706");
+    var indigo = token("--sf-indigo-base", "#4f46e5");
 
     new Chart(document.getElementById("chart-monthly"), {
       type: "line",
       data: {
         labels: {{ chart_labels | tojson }},
         datasets: [
-          { label: "Income", data: {{ chart_income | tojson }}, borderColor: "#1e7d4b", backgroundColor: "#1e7d4b", fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 },
-          { label: "Expenses", data: {{ chart_expenses | tojson }}, borderColor: "#b23a2e", backgroundColor: "#b23a2e", fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 }
+          { label: "Income", data: {{ chart_income | tojson }}, borderColor: emerald, backgroundColor: emerald, fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 },
+          { label: "Expenses", data: {{ chart_expenses | tojson }}, borderColor: rose, backgroundColor: rose, fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 }
         ]
       },
       options: {
@@ -127,7 +203,7 @@
       type: "doughnut",
       data: {
         labels: {{ chart_bands | map(attribute="label") | list | tojson }},
-        datasets: [{ data: {{ chart_bands | map(attribute="count") | list | tojson }}, backgroundColor: ["#1e7d4b", "#b57f14", "#b23a2e"], borderWidth: 0, hoverOffset: 6 }]
+        datasets: [{ data: {{ chart_bands | map(attribute="count") | list | tojson }}, backgroundColor: [emerald, amber, rose], borderWidth: 0, hoverOffset: 6 }]
       },
       options: {
         responsive: true,
@@ -141,7 +217,7 @@
       type: "line",
       data: {
         labels: {{ chart_category_labels | tojson }},
-        datasets: [{ label: "Total spent", data: {{ chart_category_values | tojson }}, borderColor: "#2b5f8a", backgroundColor: "#2b5f8a", fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 }]
+        datasets: [{ label: "Total spent", data: {{ chart_category_values | tojson }}, borderColor: indigo, backgroundColor: indigo, fill: false, borderWidth: 2.2, pointRadius: 3, pointHoverRadius: 5, tension: 0.32 }]
       },
       options: {
         responsive: true,
