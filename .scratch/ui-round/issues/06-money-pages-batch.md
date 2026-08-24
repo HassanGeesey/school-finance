@@ -4,13 +4,17 @@
 
 **Blocked by:** 01 — Token layer, component set, app shell.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Each listed page renders fully on tokens/components; no hardcoded hex outside the token block
-- [ ] htmx-swapped fragments arrive pre-styled (partials updated with their parents)
-- [ ] All money cells right-aligned `.num`; table headers follow the micro-label spec
-- [ ] Money-flow route tests pass unchanged
+- [x] Each listed page renders fully on tokens/components; no hardcoded hex outside the token block
+- [x] htmx-swapped fragments arrive pre-styled (partials updated with their parents)
+- [x] All money cells right-aligned `.num`; table headers follow the micro-label spec *(38 `amount-cell`/`amount-head` usages across templates; visual confirmation in ticket 08 browser sweep)*
+- [x] Money-flow route tests pass unchanged
 
 ## Comments
 
--
+Built (commit `0ba8866`): payments index (the existing record-payment page — this app has no separate payments-ledger page; ledgers live on home.html and student account) restyled onto content-panel/field components with its htmx partials (`_badges`, `_clears`, receipt, profile `_print`) updated alongside so swaps never flash unstyled; fee-template forms/list + closed-months list on shared form/ledger anatomy; expenses dashboard/record/categories restyled; reports frame + index chrome restyled with Chart.js canvases untouched; remaining report pages already consumed the restyled `components/ui.html` macros and needed no direct edits. Credit balances now wear the indigo accent (`badge-indigo`) in fees/_account_finance — closing ticket 07's gap. Zero behavior change: same routes/payloads; tests untouched.
+
+Note for ticket 08: "payments index as a ledger" from the spec doesn't map to an existing route/template — no payments-list page exists in the app. Nothing was invented to force it (scope guard); ledger presentation of Month-tagged Payments is delivered where those lists actually live (campus dashboard, student account).
+
+Verification: included in coordinator's combined phase-2 run over fees/expenses/reports/fee-money/profile/payments suites within 308 passed (tests unchanged).
