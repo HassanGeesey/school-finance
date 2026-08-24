@@ -351,3 +351,43 @@ def test_kpis_are_none_without_a_report_service(service, actor):
     summaries = service.list_campuses()
 
     assert summaries and all(summary.kpi is None for summary in summaries)
+
+
+def test_portfolio_kpis_aggregate_across_campuses(service, actor, db):
+    with db.session() as session:
+        school = session.query(School).one()
+        campus_b = Campus(school_id=school.id, name="Campus B")
+        session.add(campus_b)
+        session.commit()
+        campus_b_id = campus_b.id
+        campus_a_id = session.query(Campus).filter_by(name="Campus A").one().id
+
+    _seed_money(db, school.id, campus_a_id, amount=10000, paid=5000)
+    _seed_money(db, school.id, campus_b_id, amount=4000, paid=4000)
+
+    reports = ReportService(db, arrears=ArrearsService(db))
+    svc = SchoolDashboardService(db, audit=AuditService(db), reports=reports)
+
+    with scope_context(RequestScope(user=None, school_id=school.id, campus_id=None)):
+        kpis = svc.portfolio_kpis()
+
+    assert kpis.total_collected_cents == 9000
+    assert kpis.total_expected_cents == 14000
+    assert kpis.collection_percent == 64
+    assert kpis.net_flow_cents == 9000
+    assert kpis.arrears_cents == 5000
+    assert kpis.active_campus_count == 2
+    assert kpis.archived_campus_count == 0
+    assert kpis.active_student_count == 2
+
+
+def test_portfolio_kpis_counts_archived_campuses(service, actor, db):
+    created = service.create_campus(actor=actor, name="Branch")
+    service.archive_campus(actor=actor, campus_id=created.id)
+
+    kpis = service.portfolio_kpis()
+
+    assert kpis.active_campus_count == 1
+    assert kpis.archived_campus_count == 1
+    assert kpis.total_expected_cents == 0
+    assert kpis.collection_percent == 0

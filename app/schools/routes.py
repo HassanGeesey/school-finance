@@ -86,6 +86,7 @@ def school_dashboard(
         context={
             "school": service.school(),
             "campuses": service.list_campuses(),
+            "portfolio_kpis": service.portfolio_kpis(),
             "owners": service.list_owners() if is_superadmin else [],
             "is_superadmin": is_superadmin,
             "has_reporting": getattr(request.app.state, "reports", None) is not None,

@@ -96,6 +96,26 @@ class CampusSummary:
     kpi: CampusKpi | None
 
 
+@dataclass(frozen=True)
+class PortfolioKpis:
+    """School-wide executive KPIs for the dashboard header row."""
+
+    total_collected_cents: int
+    total_expected_cents: int
+    net_flow_cents: int
+    arrears_cents: int
+    active_campus_count: int
+    archived_campus_count: int
+    active_student_count: int
+
+    @property
+    def collection_percent(self) -> int:
+        """Expected-vs-paid across the School (0 when nothing was expected)."""
+        if self.total_expected_cents <= 0:
+            return 0
+        return round(min(self.total_collected_cents / self.total_expected_cents, 1.0) * 100)
+
+
 class SchoolDashboardService:
     """School business rules. Each method is one unit of work on its own session."""
 
@@ -188,6 +208,21 @@ class SchoolDashboardService:
         """One Campus of the School (for read-only drill-down routes)."""
         with self._session() as session:
             return self._get_campus(session, campus_id)
+
+    def portfolio_kpis(self) -> PortfolioKpis:
+        """School-wide executive KPIs aggregated from the per-Campus KPIs."""
+        campuses = self.list_campuses()
+        kpis = [summary.kpi for summary in campuses if summary.kpi is not None]
+        active_count = sum(1 for summary in campuses if not summary.campus.archived)
+        return PortfolioKpis(
+            total_collected_cents=sum(kpi.paid_cents for kpi in kpis),
+            total_expected_cents=sum(kpi.expected_cents for kpi in kpis),
+            net_flow_cents=sum(kpi.paid_cents - kpi.expenses_cents for kpi in kpis),
+            arrears_cents=sum(kpi.arrears_cents for kpi in kpis),
+            active_campus_count=active_count,
+            archived_campus_count=len(campuses) - active_count,
+            active_student_count=sum(kpi.active_student_count for kpi in kpis),
+        )
 
     def list_owners(self) -> list[User]:
         """The School's Owner accounts: active first, then by name."""
