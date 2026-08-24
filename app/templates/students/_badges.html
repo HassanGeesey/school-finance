@@ -1,11 +1,11 @@
 {% macro student_status_badge(status) %}
 {% set tones = {
-  "active": "badge-success",
-  "inactive": "badge-neutral",
+  "active": "badge-emerald",
+  "inactive": "badge-slate",
 } %}
 {% set labels = {
   "active": "Active",
   "inactive": "Inactive",
 } %}
-<span class="badge {{ tones.get(status, 'badge-neutral') }}">{{ labels.get(status, status) }}</span>
+<span class="badge {{ tones.get(status, 'badge-slate') }}">{{ labels.get(status, status) }}</span>
 {% endmacro %}

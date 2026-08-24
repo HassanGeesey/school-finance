@@ -44,18 +44,18 @@
         <td>
           <div class="flex items-center gap-2">
             <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-200 text-sm font-semibold">{{ u.name[:1] | upper }}</span>
-            <div>
-              <p class="font-medium">{{ u.name }}{% if me and u.id == me.id %} <span class="text-xs font-normal text-base-content/50">(you)</span>{% endif %}</p>
-              <p class="text-xs text-base-content/50">{{ u.username }}</p>
+            <div class="min-w-0">
+              <p class="primary-cell">{{ u.name }}{% if me and u.id == me.id %} <span class="text-xs font-normal text-base-content/50">(you)</span>{% endif %}</p>
+              <p class="text-xs text-base-content/50 num">{{ u.username }}</p>
             </div>
           </div>
         </td>
         <td>{{ roles.get(u.role, u.role) }}</td>
         <td>
           {% if u.is_active %}
-          {{ badge("Active", "success") }}
+          {{ badge("Active", "emerald") }}
           {% else %}
-          {{ badge("Disabled", "neutral") }}
+          {{ badge("Disabled", "slate") }}
           {% endif %}
         </td>
         <td>
@@ -69,7 +69,7 @@
           {% endif %}
           <details class="dropdown dropdown-end">
             <summary class="btn btn-ghost btn-xs">{{ icon("pencil-square", "h-4 w-4") }} Reset</summary>
-            <div class="dropdown-content menu z-20 mt-2 w-72 rounded-box border border-base-300 bg-base-100 p-3 shadow-lg">
+            <div class="dropdown-content z-20 mt-2 w-72 p-3">
               <form method="post" action="/admin/users/{{ u.id }}/password" class="flex items-end gap-2"
                     hx-post="/admin/users/{{ u.id }}/password" hx-target="#users-section" hx-swap="innerHTML">
                 <div class="flex-1">
@@ -77,7 +77,7 @@
                   <input id="password-{{ u.id }}" name="password" type="password" required autocomplete="new-password"
                          class="input input-sm w-full">
                 </div>
-                {{ btn(label="Set", icon="check", variant="outline", size="sm", type="submit") }}
+                {{ btn(label="Set", icon="check", variant="secondary", size="sm", type="submit") }}
               </form>
             </div>
           </details>

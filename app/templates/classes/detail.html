@@ -61,26 +61,26 @@
   </form>
   {% endif %}
 
-  {% call card(title="Students", subtitle=(students | length) ~ " student" ~ ("s" if students | length != 1 else "") ~ " in this class. Archived students stay on the register with their history; they are never deleted.", actions=((btn(label="Add student", icon="plus", variant="primary", size="sm", type="button", attrs='onclick="document.getElementById(\'add-student-modal\').showModal()"') ~ " " ~ btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm")) if is_admin else "")) %}
+  {% call card(title="Students", subtitle=(students | length) ~ " student" ~ ("s" if students | length != 1 else "") ~ " in this class. Archived students stay on the register with their history; they are never deleted.", actions=((btn(label="Add student", icon="plus", variant="primary", size="sm", type="button", attrs='data-modal-open="add-student-modal"') ~ " " ~ btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm")) if is_admin else "")) %}
     {% call table_scroll() %}
       <table class="table">
         <thead>
           <tr>
             <th>Name</th>
             <th>Status</th>
-            {% if is_admin %}<th class="w-40 text-right">Actions</th>{% endif %}
+            {% if is_admin %}<th class="w-40 amount-head">Actions</th>{% endif %}
           </tr>
         </thead>
         <tbody>
           {% for student in students %}
-          <tr data-row-href="/students/{{ student.id }}/account" class="cursor-pointer hover:bg-base-200/60">
-            <td class="font-medium text-base-content">
+          <tr data-row-href="/students/{{ student.id }}/account" class="cursor-pointer">
+            <td class="primary-cell">
               <a href="/students/{{ student.id }}/account" class="sr-only">{{ student.full_name }}</a>
               {{ student.full_name }}
             </td>
             <td>{{ student_status_badge(student.status) }}</td>
             {% if is_admin %}
-            <td class="text-right whitespace-nowrap">
+            <td class="amount-head whitespace-nowrap">
               <div class="inline-flex items-center gap-1">
                 <a href="/students/{{ student.id }}/edit" class="btn btn-ghost btn-xs">{{ icon("pencil-square", "h-4 w-4") }} Edit</a>
                 {% if student.status == "active" %}
@@ -112,12 +112,12 @@
     {% if cls.default_template %}
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <p class="text-3xl font-semibold">{{ money(monthly_total_cents) }}</p>
-        <p class="mt-1 text-sm text-base-content/60">per student / month</p>
+        <p class="kpi-label">Per student / month</p>
+        <p class="kpi-value num">{{ money(monthly_total_cents) }}</p>
       </div>
       <div class="text-sm text-base-content/70">
         Default template:
-        <a href="/fees" class="link">{{ cls.default_template.name }}</a>{% if cls.default_template.archived %} (archived){% endif %}
+        <a href="/fees" class="link link-primary">{{ cls.default_template.name }}</a>{% if cls.default_template.archived %} (archived){% endif %}
         {% if is_admin %}
         <a href="/classes/{{ cls.id }}/edit" class="btn btn-outline btn-xs ml-2">{{ icon("pencil-square", "h-4 w-4") }} Change</a>
         {% endif %}
@@ -131,38 +131,42 @@
 
 <dialog id="add-student-modal" class="modal">
   <div class="modal-box">
-    <form method="dialog">
-      <button type="button" class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close" onclick="this.closest('dialog').close()">{{ icon("x-mark", "h-4 w-4") }}</button>
-    </form>
-    <h3 class="text-lg font-semibold">Add student</h3>
-    <p class="mt-1 text-sm text-base-content/60">New students inherit this class's default fee template unless you pick one or enter a custom amount.</p>
-    <form method="post" action="/classes/{{ cls.id }}/students" class="mt-4">
-      <div class="grid gap-4 sm:grid-cols-2">
-        {{ form_field("first_name", "First name", placeholder="e.g. Ada", required=true, id="student-first") }}
-        {{ form_field("last_name", "Last name", placeholder="e.g. Lovelace", required=true, id="student-last") }}
+    <div class="modal-header">
+      <div class="min-w-0">
+        <h3>Add student</h3>
+        <p class="text-xs text-base-content/60">New students inherit this class's default fee template unless you pick one or enter a custom amount.</p>
       </div>
-      <div class="grid gap-4 sm:grid-cols-2 mt-4">
-        <div>
-          <label for="student-enrolled" class="label"><span class="label-text">Enrolled on (default today)</span></label>
-          <input id="student-enrolled" name="enrolled_on" type="date" class="input w-full">
+      <button type="button" class="btn btn-ghost btn-circle" aria-label="Close" data-modal-close>{{ icon("x-mark", "w-4 h-4") }}</button>
+    </div>
+    <form method="post" action="/classes/{{ cls.id }}/students">
+      <div class="modal-body">
+        <div class="grid gap-4 sm:grid-cols-2">
+          {{ form_field("first_name", "First name", placeholder="e.g. Ada", required=true, id="student-first") }}
+          {{ form_field("last_name", "Last name", placeholder="e.g. Lovelace", required=true, id="student-last") }}
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="student-enrolled" class="label"><span class="label-text">Enrolled on (default today)</span></label>
+            <input id="student-enrolled" name="enrolled_on" type="date" class="input w-full">
+          </div>
+          <div>
+            <label for="student-template" class="label"><span class="label-text">Fee template</span></label>
+            <select id="student-template" name="fee_template_id" class="select w-full">
+              <option value="">— Class default —</option>
+              {% for t in template_options %}
+              <option value="{{ t.id }}">{{ t.name }}{% if t.archived %} (archived){% endif %} — {{ money(t.amount_cents) }}/month</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
         <div>
-          <label for="student-template" class="label"><span class="label-text">Fee template</span></label>
-          <select id="student-template" name="fee_template_id" class="select w-full">
-            <option value="">— Class default —</option>
-            {% for t in template_options %}
-            <option value="{{ t.id }}">{{ t.name }}{% if t.archived %} (archived){% endif %} — {{ money(t.amount_cents) }}/month</option>
-            {% endfor %}
-          </select>
+          <label for="student-amount" class="label"><span class="label-text">Custom monthly amount (overrides the template)</span></label>
+          <input id="student-amount" name="custom_amount" type="text" inputmode="decimal" placeholder="e.g. 50.00" class="input w-full">
         </div>
       </div>
-      <div class="mt-4">
-        <label for="student-amount" class="label"><span class="label-text">Custom monthly amount (overrides the template)</span></label>
-        <input id="student-amount" name="custom_amount" type="text" inputmode="decimal" placeholder="e.g. 50.00" class="input w-full">
-      </div>
-      <div class="modal-action">
-        <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
-        <button type="submit" class="btn btn-primary">{{ icon("plus", "h-4 w-4") }} Add student</button>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">{{ icon("plus", "w-4 h-4") }} Add student</button>
       </div>
     </form>
   </div>

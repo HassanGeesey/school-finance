@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% from "components/icons.html" import icon %}<!DOCTYPE html>
 <html lang="en" data-theme="schoolfinance">
 <head>
   <meta charset="UTF-8">
@@ -8,13 +8,12 @@
 </head>
 <body class="flex min-h-screen items-center justify-center bg-base-200 px-4">
   <div class="w-full max-w-md text-center">
-    <div class="rounded-box border border-base-300 bg-base-100 p-8 shadow-sm">
-      <span class="inline-flex h-12 w-12 items-center justify-center rounded-box bg-warning/10 text-warning">
-      </span>
+    <section class="content-panel p-8">
+      <span class="inline-flex h-12 w-12 items-center justify-center rounded-md bg-warning/10 text-warning">{{ icon("exclamation-triangle", "h-6 w-6") }}</span>
       <h1 class="mt-4 text-lg font-semibold text-base-content">In-app shutdown is disabled</h1>
       <p class="mt-2 text-sm text-base-content/60">This deployment is managed by the server platform, which restarts the app automatically — stopping it from here is not available. Use the platform's controls to restart or stop the service.</p>
-    </div>
-    <p class="mt-6 text-xs text-base-content/40">v{{ app_version }}</p>
+    </section>
+    <p class="auth-foot num">v{{ app_version }}</p>
   </div>
 </body>
 </html>

@@ -1,8 +1,8 @@
 {% macro class_status_badge(status) %}
 {% set tones = {
-  "active": "badge-success",
-  "completed": "badge-info",
-  "inactive": "badge-neutral",
+  "active": "badge-emerald",
+  "completed": "badge-indigo",
+  "inactive": "badge-slate",
 } %}
-<span class="badge {{ tones.get(status, 'badge-neutral') }}">{{ class_status_label(status) }}</span>
+<span class="badge {{ tones.get(status, 'badge-slate') }}">{{ class_status_label(status) }}</span>
 {% endmacro %}

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% from "components/icons.html" import icon %}<!DOCTYPE html>
 <html lang="en" data-theme="schoolfinance">
 <head>
   <meta charset="UTF-8">
@@ -8,13 +8,12 @@
 </head>
 <body class="flex min-h-screen items-center justify-center bg-base-200 px-4">
   <div class="w-full max-w-md text-center">
-    <div class="rounded-box border border-base-300 bg-base-100 p-8 shadow-sm">
-      <span class="inline-flex h-12 w-12 items-center justify-center rounded-box bg-warning/10 text-warning">
-      </span>
+    <section class="content-panel p-8">
+      <span class="inline-flex h-12 w-12 items-center justify-center rounded-md bg-warning/10 text-warning">{{ icon("arrow-right-on-rectangle", "h-6 w-6") }}</span>
       <h1 class="mt-4 text-lg font-semibold text-base-content">{{ app_name }} is shutting down</h1>
       <p class="mt-2 text-sm text-base-content/60">The server has been asked to stop. You can close this window and restart the app whenever you need it again — all data is safe on disk.</p>
-    </div>
-    <p class="mt-6 text-xs text-base-content/40">v{{ app_version }}</p>
+    </section>
+    <p class="auth-foot num">v{{ app_version }}</p>
   </div>
 </body>
 </html>

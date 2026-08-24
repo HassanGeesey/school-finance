@@ -23,22 +23,22 @@
         <tr>
           <th>Class</th>
           <th>Status</th>
-          <th>Students</th>
-          <th class="text-right">Monthly fee</th>
-          <th class="text-right">Unpaid fees</th>
+          <th class="amount-head">Students</th>
+          <th class="amount-head">Monthly fee</th>
+          <th class="amount-head">Unpaid fees</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr data-row-href="/classes/{{ row.cls.id }}" class="cursor-pointer hover:bg-base-200/60">
+        <tr data-row-href="/classes/{{ row.cls.id }}" class="cursor-pointer">
           <td>
             <a href="/classes/{{ row.cls.id }}" class="sr-only font-medium">{{ row.cls.name }}</a>
-            <span class="font-medium">{{ row.cls.name }}</span>
+            <span class="primary-cell">{{ row.cls.name }}</span>
           </td>
           <td>{{ class_status_badge(row.cls.status) }}</td>
-          <td>{{ row.student_count }}</td>
-          <td class="text-right">{{ money(row.monthly_total_cents) }}</td>
-          <td class="text-right font-semibold {% if row.arrears_cents %}text-error{% endif %}">{{ money(row.arrears_cents) }}</td>
+          <td class="num">{{ row.student_count }}</td>
+          <td class="amount-cell">{{ money(row.monthly_total_cents) }}</td>
+          <td class="amount-cell {% if row.arrears_cents %}text-error{% endif %}">{{ money(row.arrears_cents) }}</td>
         </tr>
         {% else %}
         <tr>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "components/icons.html" import icon %}
-{% from "components/ui.html" import page_header, card, btn, badge, empty_state, table_scroll %}
+{% from "components/ui.html" import page_header, card, btn, badge, alert, empty_state, table_scroll %}
 
 {% block title %}Audit log — {{ school_name() }}{% endblock %}
 {% block topbar_title %}Audit log{% endblock %}
@@ -9,18 +9,22 @@
 <div class="space-y-6">
   {{ page_header("Audit log", "Every payment, expense, fee template, waiver, and configuration change is recorded here, in order. Entries are append-only and cannot be edited or deleted.") }}
 
-  <form method="get" action="/audit" class="flex flex-wrap items-end gap-3">
-    <div>
-      <label for="action-filter" class="label"><span class="label-text">Action</span></label>
-      <select id="action-filter" name="action" class="select select-sm w-auto">
-        <option value="">All actions</option>
-        {% for name in actions %}
-        <option value="{{ name }}" {% if action == name %}selected{% endif %}>{{ action_labels.get(name, name) }}</option>
-        {% endfor %}
-      </select>
+  <section class="content-panel">
+    <div class="panel-body">
+      <form method="get" action="/audit" class="flex flex-wrap items-end gap-3">
+        <div>
+          <label for="action-filter" class="label"><span class="label-text">Action</span></label>
+          <select id="action-filter" name="action" class="select select-sm w-auto">
+            <option value="">All actions</option>
+            {% for name in actions %}
+            <option value="{{ name }}" {% if action == name %}selected{% endif %}>{{ action_labels.get(name, name) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {{ btn(label="Filter", icon="magnifying-glass", variant="primary", size="sm", type="submit") }}
+      </form>
     </div>
-    {{ btn(label="Filter", icon="magnifying-glass", variant="primary", size="sm", type="submit") }}
-  </form>
+  </section>
 
   {% call card() %}
   {% call table_scroll() %}
@@ -36,7 +40,7 @@
       <tbody>
         {% for entry in entries %}
         <tr>
-          <td class="whitespace-nowrap">{{ entry.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td class="num whitespace-nowrap">{{ entry.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
           <td>{{ entry.user.name if entry.user else "System" }}</td>
           <td>{{ badge(action_labels.get(entry.action, entry.action)) }}</td>
           <td>{{ entry.summary }}</td>
@@ -58,7 +62,7 @@
     {% else %}
     <span></span>
     {% endif %}
-    <span class="text-base-content/50">Page {{ page }}</span>
+    <span class="text-base-content/50">Page <span class="num font-semibold">{{ page }}</span></span>
     {% if page * page_size < total %}
     {{ btn(href="/audit?action=" ~ action ~ "&page=" ~ (page + 1), label="Next", icon="arrow-right", variant="ghost", size="sm") }}
     {% endif %}

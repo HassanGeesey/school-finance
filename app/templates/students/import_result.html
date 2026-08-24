@@ -31,8 +31,8 @@
         <tbody>
           {% for row in result.imported %}
           <tr>
-            <td class="text-base-content/50">{{ row.row_number }}</td>
-            <td class="font-medium text-base-content">{{ row.full_name }}</td>
+            <td class="num text-base-content/50">{{ row.row_number }}</td>
+            <td class="primary-cell">{{ row.full_name }}</td>
             <td>{{ student_status_badge("active") }}</td>
           </tr>
           {% else %}
@@ -58,7 +58,7 @@
         <tbody>
           {% for row in result.skipped %}
           <tr>
-            <td class="text-base-content/50">{{ row.row_number }}</td>
+            <td class="num text-base-content/50">{{ row.row_number }}</td>
             <td class="text-warning">{{ row.reason }}</td>
           </tr>
           {% endfor %}
