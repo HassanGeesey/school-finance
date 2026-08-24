@@ -10,15 +10,15 @@
 <div class="flex flex-wrap items-start justify-between gap-4">
   <div class="flex min-w-0 items-center gap-4">
     {% if logo %}
-    <span class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-200 p-1">
+    <span class="bg-base-200 flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-base-300 p-1">
       <img src="{{ logo }}" alt="School logo" class="h-full w-full object-contain">
     </span>
     {% endif %}
     <div class="min-w-0">
       <p class="text-lg font-bold text-base-content">{{ name }}</p>
-      <p class="text-sm text-base-content/60">{{ document_label }}</p>
+      <p class="mt-0.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">{{ document_label }}</p>
       {% if contact %}
-      <p class="mt-1 text-xs text-base-content/50">{{ contact|join(" · ") }}</p>
+      <p class="num mt-1 text-xs text-base-content/50">{{ contact|join(" · ") }}</p>
       {% endif %}
     </div>
   </div>

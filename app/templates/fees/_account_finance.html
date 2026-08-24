@@ -14,13 +14,14 @@
       <b class="num {{ 'text-error' if account.balance_cents > 0 else '' }}">{{ money(account.balance_cents) }}</b>
       <span class="muted ml-3">Credit held:</span>
       <b class="num">{{ money(account.credits_cents) }}</b>
+      {% if account.credits_cents %}<span class="badge badge-indigo badge-xs">credit</span>{% endif %}
     </p>
     {% if account.balance_cents > 0 %}
-    <span class="badge badge-error">Owes {{ money(account.balance_cents) }}</span>
+    <span class="badge badge-rose">Owes {{ money(account.balance_cents) }}</span>
     {% elif account.balance_cents < 0 %}
-    <span class="badge badge-success">Credit {{ money(account.credits_cents) }}</span>
+    <span class="badge badge-emerald">Credit {{ money(account.credits_cents) }}</span>
     {% else %}
-    <span class="badge badge-neutral">Up to date</span>
+    <span class="badge badge-slate">Up to date</span>
     {% endif %}
   </div>
 
@@ -30,30 +31,30 @@
         <thead>
           <tr>
             <th>Month</th>
-            <th class="text-right">Expected</th>
-            <th class="text-right">Waivers</th>
-            <th class="text-right">Paid</th>
-            <th class="text-right">Credit</th>
-            <th class="text-right">Remaining</th>
+            <th class="amount-head">Expected</th>
+            <th class="amount-head">Waivers</th>
+            <th class="amount-head">Paid</th>
+            <th class="amount-head"><span class="badge badge-indigo badge-xs">Credit</span></th>
+            <th class="amount-head">Remaining</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
           {% for line in account.lines %}
           <tr>
-            <td class="font-medium text-base-content">
+            <td class="primary-cell">
               {{ line.period_label }}
               {% for waiver in line.waivers %}
               <div class="mt-1 flex items-center gap-1 text-xs text-base-content/60">
-                {{ icon("academic-cap", "h-3 w-3") }} {{ waiver.label }} — {{ money(waiver.amount_cents) }}
+                {{ icon("academic-cap", "h-3 w-3") }} {{ waiver.label }} — <span class="num">{{ money(waiver.amount_cents) }}</span>
               </div>
               {% endfor %}
             </td>
-            <td class="text-right num">{{ money(line.expected_cents) }}</td>
-            <td class="text-right num">{{ money(line.waivers_cents) }}</td>
-            <td class="text-right num">{{ money(line.paid_cents) }}</td>
-            <td class="text-right num">{{ money(line.credit_consumed_cents) }}</td>
-            <td class="text-right num {{ 'text-error' if line.remaining_cents > 0 else '' }}">{{ money(line.remaining_cents) }}</td>
+            <td class="amount-cell num">{{ money(line.expected_cents) }}</td>
+            <td class="amount-cell num">{{ money(line.waivers_cents) }}</td>
+            <td class="amount-cell num">{{ money(line.paid_cents) }}</td>
+            <td class="amount-cell num">{% if line.credit_consumed_cents %}<span class="badge badge-indigo badge-xs">{{ money(line.credit_consumed_cents) }}</span>{% else %}{{ money(line.credit_consumed_cents) }}{% endif %}</td>
+            <td class="amount-cell num">{{ money(line.remaining_cents) }}</td>
             <td>{{ badge(charge_status_labels[line.status], charge_status_tones[line.status]) }}</td>
           </tr>
           {% else %}
@@ -65,13 +66,13 @@
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr class="border-t border-base-300">
+          <tr>
             <td class="font-semibold text-base-content">Total</td>
-            <td class="text-right num font-semibold text-base-content">{{ money(account.expected_cents) }}</td>
+            <td class="amount-cell num">{{ money(account.expected_cents) }}</td>
             <td></td>
-            <td class="text-right num font-semibold text-base-content">{{ money(account.paid_cents) }}</td>
-            <td class="text-right num font-semibold text-base-content">{{ money(account.credits_cents) }}</td>
-            <td class="text-right num font-bold {{ 'text-error' if account.balance_cents > 0 else '' }}">{{ money(account.balance_cents) }}</td>
+            <td class="amount-cell num">{{ money(account.paid_cents) }}</td>
+            <td class="amount-cell num">{{ money(account.credits_cents) }}</td>
+            <td class="amount-cell num">{% if account.balance_cents > 0 %}<span class="text-error">{{ money(account.balance_cents) }}</span>{% else %}{{ money(account.balance_cents) }}{% endif %}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -87,18 +88,18 @@
             <th>Date</th>
             <th>For</th>
             <th>Method</th>
-            <th class="text-right">Amount</th>
+            <th class="amount-head">Amount</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {% for payment in account.payments %}
           <tr>
-            <td>{{ payment.paid_on.isoformat() }}</td>
+            <td class="num">{{ payment.paid_on.isoformat() }}</td>
             <td>{{ period_label(payment.month, payment.year) }}</td>
             <td>{{ payment_method_badge(payment.method) }}</td>
-            <td class="text-right font-semibold text-base-content">{{ money(payment.amount_cents) }}</td>
-            <td class="text-right"><a href="/payments/{{ payment.id }}/receipt" class="link link-neutral text-sm">Receipt</a></td>
+            <td class="amount-cell num">{{ money(payment.amount_cents) }}</td>
+            <td class="text-right"><a href="/payments/{{ payment.id }}/receipt" class="btn btn-ghost btn-xs">Receipt</a></td>
           </tr>
           {% else %}
           <tr>
@@ -118,14 +119,14 @@
         <thead>
           <tr>
             <th>Date</th>
-            <th class="text-right">Amount</th>
+            <th class="amount-head"><span class="badge badge-indigo badge-xs">Credit</span></th>
           </tr>
         </thead>
         <tbody>
           {% for credit in account.credits %}
           <tr>
-            <td>{{ credit.created_at.date().isoformat() }}</td>
-            <td class="text-right font-semibold text-base-content">{{ money(credit.amount_cents) }}</td>
+            <td class="num">{{ credit.created_at.date().isoformat() }}</td>
+            <td class="amount-cell num">{{ money(credit.amount_cents) }}</td>
           </tr>
           {% else %}
           <tr>

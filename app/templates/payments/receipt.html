@@ -25,57 +25,59 @@
       {% endcall %}
     </div>
 
-    <dl class="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
-      <div>
-        <dt class="text-xs uppercase tracking-wider text-base-content/50">Student</dt>
-        <dd class="mt-0.5 font-medium text-base-content">{{ payment.student.full_name }}</dd>
-      </div>
-      <div>
-        <dt class="text-xs uppercase tracking-wider text-base-content/50">Class</dt>
-        <dd class="mt-0.5 font-medium text-base-content">{{ payment.student.school_class.name }}</dd>
-      </div>
-      <div>
-        <dt class="text-xs uppercase tracking-wider text-base-content/50">Payment date</dt>
-        <dd class="mt-0.5 font-medium text-base-content">{{ payment.paid_on.isoformat() }}</dd>
-      </div>
-      <div>
-        <dt class="text-xs uppercase tracking-wider text-base-content/50">Method</dt>
-        <dd class="mt-0.5">{{ payment_method_badge(payment.method) }}</dd>
-      </div>
-    </dl>
+    <div class="mt-4 font-mono">
+      <dl class="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-base-content/50">Student</dt>
+          <dd class="mt-0.5 font-medium text-base-content">{{ payment.student.full_name }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-base-content/50">Class</dt>
+          <dd class="mt-0.5 font-medium text-base-content">{{ payment.student.school_class.name }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-base-content/50">Payment date</dt>
+          <dd class="mt-0.5 font-medium text-base-content num">{{ payment.paid_on.isoformat() }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-base-content/50">Method</dt>
+          <dd class="mt-0.5">{{ payment_method_badge(payment.method) }}</dd>
+        </div>
+      </dl>
 
-    {% call table_scroll() %}
-      <table class="table mt-4">
-        <thead>
-          <tr>
-            <th>Applied to</th>
-            <th class="text-right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in applied_rows %}
-          <tr>
-            <td>{{ row.period_label }}</td>
-            <td class="text-right font-medium">{{ money(row.amount_cents) }}</td>
-          </tr>
-          {% endfor %}
-          {% if credit_cents %}
-          <tr>
-            <td>Credit on account <span class="text-base-content/60">(excess paid)</span></td>
-            <td class="text-right font-medium text-success">{{ money(credit_cents) }}</td>
-          </tr>
-          {% endif %}
-        </tbody>
-        <tfoot>
-          <tr class="border-t border-base-300">
-            <td class="font-semibold text-base-content">Total received</td>
-            <td class="text-right text-lg font-bold text-base-content">{{ money(payment.amount_cents) }}</td>
-          </tr>
-        </tfoot>
-      </table>
-    {% endcall %}
+      {% call table_scroll() %}
+        <table class="table mt-4">
+          <thead>
+            <tr>
+              <th>Applied to</th>
+              <th class="amount-head">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in applied_rows %}
+            <tr>
+              <td>{{ row.period_label }}</td>
+              <td class="amount-cell num">{{ money(row.amount_cents) }}</td>
+            </tr>
+            {% endfor %}
+            {% if credit_cents %}
+            <tr>
+              <td>Credit on account <span class="text-base-content/60">(excess paid)</span> <span class="badge badge-indigo badge-xs">credit</span></td>
+              <td class="amount-cell num"><span class="badge badge-indigo badge-sm">{{ money(credit_cents) }}</span></td>
+            </tr>
+            {% endif %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td class="font-semibold text-base-content">Total received</td>
+              <td class="amount-cell num text-lg">{{ money(payment.amount_cents) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      {% endcall %}
 
-    <p class="mt-4 text-center text-xs text-base-content/50">Thank you — this receipt covers the month(s) listed above. Any excess paid was placed on the student's account as credit.</p>
+      <p class="mt-4 text-center text-xs text-base-content/50">Thank you — this receipt covers the month(s) listed above. Any excess paid was placed on the student's account as credit.</p>
+    </div>
   {% endcall %}
 </div>
 {% endblock %}

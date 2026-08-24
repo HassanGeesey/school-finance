@@ -1,7 +1,7 @@
 {% from "components/ui.html" import form_field, alert %}
 {% from "components/icons.html" import icon %}
 
-<form method="post" action="/expenses" class="space-y-4"
+<form method="post" action="/expenses" class="modal-body"
       hx-post="/expenses" hx-target="#record-expense-modal-content" hx-swap="innerHTML">
   {% if error %}
   <div>{{ alert("error", error) }}</div>
@@ -20,7 +20,7 @@
            value="{{ record.get('description', '') }}" placeholder="e.g. Bus fuel for the week" class="input w-full">
   </div>
   <div class="grid gap-4 sm:grid-cols-2">
-    {{ form_field("amount", "Amount (USD)", placeholder="0.00", value=record.get('amount', ''), required=true, id="expense-amount") }}
+    {{ form_field("amount", "Amount (USD)", placeholder="0.00", value=record.get('amount', ''), required=true, id="expense-amount", input_class="input num w-full") }}
     {{ form_field("occurred_on", "Date", type="date", value=(record.get('occurred_on', today)), required=true, id="expense-date") }}
   </div>
   <div>
@@ -34,7 +34,7 @@
       {% endfor %}
     </div>
   </div>
-  <div class="flex items-center gap-2 pt-2">
+  <div class="flex flex-wrap items-center gap-2 pt-2">
     <button type="submit" class="btn btn-primary">{{ icon("banknotes", "h-4 w-4") }} Record expense</button>
     <p class="text-xs text-base-content/60">Partial expenses are fine — amounts are never limited.</p>
   </div>

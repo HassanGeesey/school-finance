@@ -1,10 +1,10 @@
 {% from "components/ui.html" import card, btn, empty_state, table_scroll %}
 {% from "payments/_badges.html" import payment_method_badge %}
 
-<form id="expense-filters" method="get" action="/expenses" class="frow">
+<form id="expense-filters" method="get" action="/expenses" class="flex flex-wrap items-end gap-3">
   <div>
-    <label for="expense-filter-category" class="label-t">Category</label>
-    <select id="expense-filter-category" name="category" class="select w-full"
+    <label for="expense-filter-category" class="label"><span class="label-text">Category</span></label>
+    <select id="expense-filter-category" name="category" class="select select-sm w-full"
             hx-get="/expenses/dashboard" hx-trigger="change"
             hx-target="#expense-dashboard" hx-swap="innerHTML" hx-include="#expense-filters">
       <option value="" {% if not filter_category %}selected{% endif %}>All categories</option>
@@ -14,8 +14,8 @@
     </select>
   </div>
   <div>
-    <label for="expense-filter-period" class="label-t">Month</label>
-    <select id="expense-filter-period" name="period" class="select w-full"
+    <label for="expense-filter-period" class="label"><span class="label-text">Month</span></label>
+    <select id="expense-filter-period" name="period" class="select select-sm w-full"
             hx-get="/expenses/dashboard" hx-trigger="change"
             hx-target="#expense-dashboard" hx-swap="innerHTML" hx-include="#expense-filters">
       <option value="" {% if not filter_period %}selected{% endif %}>All months</option>
@@ -38,17 +38,17 @@
           <th>Category</th>
           <th>Description</th>
           <th>Method</th>
-          <th class="text-right">Amount</th>
+          <th class="amount-head">Amount</th>
         </tr>
       </thead>
       <tbody>
         {% for expense in expenses %}
         <tr>
-          <td>{{ expense.occurred_on.isoformat() }}</td>
-          <td><span class="badge badge-info">{{ expense.category.name }}</span></td>
-          <td class="font-medium text-base-content">{{ expense.description }}</td>
+          <td class="num">{{ expense.occurred_on.isoformat() }}</td>
+          <td><span class="badge badge-indigo">{{ expense.category.name }}</span></td>
+          <td class="primary-cell">{{ expense.description }}</td>
           <td>{{ payment_method_badge(expense.method) }}</td>
-          <td class="text-right font-semibold text-error">{{ money(expense.amount_cents) }}</td>
+          <td class="amount-cell num"><span class="text-error">{{ money(expense.amount_cents) }}</span></td>
         </tr>
         {% else %}
         <tr>

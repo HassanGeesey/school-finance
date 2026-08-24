@@ -10,22 +10,22 @@
   <form class="mb-4 flex flex-wrap items-end gap-2"
         hx-post="/fees/closed-months"
         hx-target="#closed-months-card" hx-swap="outerHTML">
-    <label class="form-control w-36">
-      <div class="label"><span class="label-text">Month</span></div>
-      <select name="month" class="select select-bordered select-sm">
+    <div class="w-36">
+      <label class="label" for="closed-month"><span class="label-text">Month</span></label>
+      <select id="closed-month" name="month" class="select select-sm w-full">
         {% for i, name in months %}
         <option value="{{ i }}">{{ name }}</option>
         {% endfor %}
       </select>
-    </label>
-    <label class="form-control w-28">
-      <div class="label"><span class="label-text">Year</span></div>
-      <select name="year" class="select select-bordered select-sm">
+    </div>
+    <div class="w-28">
+      <label class="label" for="closed-year"><span class="label-text">Year</span></label>
+      <select id="closed-year" name="year" class="select select-sm w-full">
         {% for y in years %}
         <option value="{{ y }}">{{ y }}</option>
         {% endfor %}
       </select>
-    </label>
+    </div>
     {{ btn(label="Close month", icon="plus", variant="primary", size="sm", type="submit") }}
   </form>
   {% endif %}
@@ -40,7 +40,7 @@
       <tbody>
         {% for closed in closed_months %}
         <tr>
-          <td class="font-medium">{{ period_label(closed.month, closed.year) }}</td>
+          <td class="primary-cell">{{ period_label(closed.month, closed.year) }}</td>
           {% if is_admin %}
           <td class="text-right whitespace-nowrap">
             <button type="button" class="btn btn-ghost btn-xs text-success"

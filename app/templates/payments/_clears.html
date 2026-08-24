@@ -3,7 +3,7 @@
 {% elif not preview %}
 <span class="muted">Enter an amount to see what clears.</span>
 {% elif preview.credit_cents and not preview.applied_cents %}
-<span class="muted">Nothing to clear — {{ money(preview.credit_cents) }} becomes credit.</span>
+<span class="muted">Nothing to clear — <b class="num">{{ money(preview.credit_cents) }}</b> becomes credit.</span>
 {% else %}
-<b class="num">{{ money(preview.applied_cents) }}</b>
+<b class="num text-base-content">{{ money(preview.applied_cents) }}</b>
 {% endif %}

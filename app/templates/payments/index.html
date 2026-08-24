@@ -10,11 +10,16 @@
   {{ page_header("Record payment", "Search for the student, pick one from the list, then enter the amount and method. Partial payments clear the oldest unpaid months first.") }}
 
   <div class="grid items-start gap-6 lg:grid-cols-[440px_minmax(0,1fr)]">
-    <div class="board">
-      <div class="board-body">
+    <section class="content-panel">
+      <div class="panel-header">
+        <div class="panel-title-area min-w-0">
+          <h2>New payment</h2>
+        </div>
+      </div>
+      <div class="panel-body">
         <form method="get" action="/payments">
           <div class="field relative">
-            <label for="payment-search">Search student</label>
+            <label for="payment-search" class="label"><span class="label-text">Search student</span></label>
             <input id="payment-search" name="q" type="search" value="{{ q }}" placeholder="Type a name…"
                    autocomplete="off" class="input"
                    hx-get="/payments/student-picker"
@@ -32,7 +37,7 @@
           </div>
 
           <div class="field">
-            <label for="payment-amount">Amount (USD)</label>
+            <label for="payment-amount" class="label"><span class="label-text">Amount (USD)</span></label>
             <input id="payment-amount" name="amount" type="number" step="0.01" min="0.01" placeholder="0.00" class="input num"
                    hx-get="/payments/preview?part=clears"
                    hx-trigger="input changed delay:400ms, load, change from:#payment-month, change from:#payment-year, htmx:afterSwap from:#payment-student"
@@ -46,7 +51,7 @@
                hx-swap="innerHTML"
                hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value || '0'}">
             <div class="field">
-              <label for="payment-month" class="block text-[12.5px] font-semibold mb-1.5">For month</label>
+              <label for="payment-month" class="label"><span class="label-text">For month</span></label>
               <select id="payment-month" name="month" class="select w-full">
                 {% for value, label in months %}
                 <option value="{{ value }}" {% if month|string == value|string %}selected{% endif %}>{{ label }}</option>
@@ -54,7 +59,7 @@
               </select>
             </div>
             <div class="field">
-              <label for="payment-year" class="block text-[12.5px] font-semibold mb-1.5">Year</label>
+              <label for="payment-year" class="label"><span class="label-text">Year</span></label>
               <select id="payment-year" name="year" class="select w-full">
                 {% for value in years %}
                 <option value="{{ value }}" {% if year|string == value|string %}selected{% endif %}>{{ value }}</option>
@@ -64,8 +69,8 @@
           </div>
 
           <div class="field">
-            <label for="payment-method">Method</label>
-            <select id="payment-method" name="method" class="input w-full">
+            <label for="payment-method" class="label"><span class="label-text">Method</span></label>
+            <select id="payment-method" name="method" class="select w-full">
               {% for value, text in methods.items() %}
               <option value="{{ value }}">{{ text }}</option>
               {% endfor %}
@@ -83,23 +88,20 @@
 
           <div class="mt-3.5 flex gap-2">
             {{ btn(href="/payments", label="Cancel", variant="ghost") }}
-            <button id="payment-save" type="submit" class="btn btn-primary flex-1 justify-center" disabled>{{ icon("arrow-right", "h-4 w-4") }} Save &amp; print receipt</button>
+            <button id="payment-save" type="submit" class="btn btn-primary btn-block justify-center" disabled>{{ icon("arrow-right", "h-4 w-4") }} Save &amp; print receipt</button>
           </div>
         </form>
       </div>
-    </div>
+    </section>
 
-    <div class="board">
-      <div class="board-head">
-        <div class="board-title-wrap min-w-0">
-          <span class="pin"></span>
-          <div>
-            <div class="board-title">Receipt preview</div>
-            <div class="board-sub">Printed with the school's name, logo, and contact block.</div>
-          </div>
+    <section class="content-panel">
+      <div class="panel-header">
+        <div class="panel-title-area min-w-0">
+          <h2>Receipt preview</h2>
+          <p>Printed with the school's name, logo, and contact block.</p>
         </div>
       </div>
-      <div class="board-body">
+      <div class="panel-body">
         <div id="receipt-preview"
              hx-get="/payments/receipt-preview"
               hx-trigger="input changed delay:400ms from:#payment-amount, change from:#payment-method, change from:#payment-month, change from:#payment-year, load, htmx:afterSwap from:#payment-student"
@@ -108,7 +110,7 @@
           <p class="text-sm text-base-content/50">Pick a student, then fill in the amount and method to preview the receipt.</p>
         </div>
       </div>
-    </div>
+    </section>
   </div>
 </div>
 {% endblock %}

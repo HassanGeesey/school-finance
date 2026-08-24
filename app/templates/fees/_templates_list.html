@@ -7,7 +7,7 @@
       <thead>
         <tr>
           <th>Template</th>
-          <th>Amount / month</th>
+          <th class="amount-head">Amount / month</th>
           <th>Linked students</th>
           <th>Status</th>
           {% if is_admin %}<th class="w-44 text-right">Actions</th>{% endif %}
@@ -16,10 +16,10 @@
       <tbody>
         {% for template in templates %}
         <tr>
-          <td class="font-medium">{{ template.name }}</td>
-          <td>{{ money(template.amount_cents) }}</td>
-          <td>{{ counts.get(template.id, 0) }}</td>
-          <td>{% if template.archived %}{{ badge("Archived", "neutral") }}{% endif %}</td>
+          <td class="primary-cell">{{ template.name }}</td>
+          <td class="amount-cell num">{{ money(template.amount_cents) }}</td>
+          <td class="num">{{ counts.get(template.id, 0) }}</td>
+          <td>{% if template.archived %}{{ badge("Archived", "slate") }}{% endif %}</td>
           {% if is_admin %}
           <td class="text-right whitespace-nowrap">
             <button type="button" class="btn btn-ghost btn-xs"
