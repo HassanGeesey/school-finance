@@ -4,14 +4,22 @@
 
 **Blocked by:** 01 — Token layer, component set, app shell.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Slip previews partial-remaining, cleared, and credit-forwarded states correctly for chosen student/amount
-- [ ] Submitted payments hit the existing endpoints; amounts, tagged month, method persist exactly as before
-- [ ] Receipt generation/print behavior unchanged
-- [ ] Esc cancels cleanly; no submission on close
-- [ ] Existing payment route tests pass unchanged
+- [x] Slip previews partial-remaining, cleared, and credit-forwarded states correctly for chosen student/amount
+- [x] Submitted payments hit the existing endpoints; amounts, tagged month, method persist exactly as before
+- [x] Receipt generation/print behavior unchanged
+- [x] Esc cancels cleanly; no submission on close
+- [x] Existing payment route tests pass unchanged
 
 ## Comments
 
 -
+
+Built: `record.html` is now a compact host page (student summary board + trigger button) that auto-opens the new self-contained `_record_modal.html` `<dialog>` on load. The modal holds campus (fixed to acting campus; editable only when a caller passes options + flag), student select showing monthly rate ("Ada Lovelace — $50.00/mo"), decimal-dollar amount input mapped to integer cents, Owed Month select built from `account.lines` (overdue = past month still carrying shortfall, marked "· overdue", JS-synced year select), method select, payment date. Below the inputs a live monospace `.receipt-slip` recomputes on every keystroke/change from server-rendered line data: campus/school header + contact, student, Owed month, Monthly Amount in force, Amount paid, indigo "Credit rolled forward" row on overpay, and one status of Cleared in full / Partial payment — remaining X / Paid in full + credit forwarded. Form posts the identical fields (`student_id`, `amount`, `method`, `paid_on`, `month`, `year`) to `/payments/record`; success redirect and receipt/print flow untouched; POST-error re-render reopens the modal with the in-modal error alert. Esc / ✕ / backdrop / Cancel close without submitting via ui.js declarative hooks; no JS files touched.
+
+Verification: `.venv\Scripts\python.exe -m pytest tests/test_payments_routes.py tests/test_fee_money_routes.py -q -p no:warnings` → 30 passed. Extra throwaway render check confirmed dialog markup, FW-22-1 default-tag `value="N" selected` contract, JSON slip data, and owed-month data attributes on the rendered page (file deleted after).
+
+Not committed — task instruction forbids git commands for this session.
+
+Coordinator note: implementation committed as `0463acd`; included in the 308-passed combined phase-2 run. Open nuance for ticket 05/08: school-scope campus retargeting inside the modal awaits backend support (no campus field on POST /payments/record today) — modal currently fixed to the acting campus, which matches today's behavior.
