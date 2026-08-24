@@ -1,14 +1,31 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import page_header, card, btn, badge, alert, stat_card, empty_state, form_field %}
+{% from "components/ui.html" import page_header, card, btn, badge, alert, empty_state, form_field %}
 {% from "components/icons.html" import icon %}
 
 {% block title %}School dashboard — {{ school.name }}{% endblock %}
 {% block topbar_title %}School dashboard{% endblock %}
 
 {% block content %}
-{% set user = current_user() %}
-<div class="sf-dashboard space-y-6">
-  {{ page_header("School dashboard", "Every Campus side by side" + (", with read-only access" if not is_superadmin else "") + ".", actions=btn(href="/school/campuses/new", label="New campus", icon="plus", variant="primary", size="sm") if is_superadmin else "") }}
+<div class="space-y-6">
+
+  {% if is_superadmin %}
+  {{ page_header(
+       "School Executive Dashboard",
+       "Portfolio overview across every Campus of " ~ school.name ~ ".",
+       actions=btn(href="/school/campuses/new", label="New campus", icon="plus", variant="primary", size="sm")
+  ) }}
+  {% else %}
+  {{ page_header(
+       "School Executive Dashboard",
+       "Portfolio overview across every Campus of " ~ school.name ~ ".",
+       actions=badge("Viewing read-only", "slate")
+  ) }}
+
+  <div class="alert alert-info">
+    {{ icon("eye", "w-5 h-5 shrink-0") }}
+    <span>Read-only view — every page you open is for monitoring only. Nothing can be recorded or changed.</span>
+  </div>
+  {% endif %}
 
   {% if msg %}
   <div>{{ alert("success", msg) }}</div>
@@ -17,156 +34,186 @@
   <div>{{ alert("error", err) }}</div>
   {% endif %}
 
-  {% if not is_superadmin %}
-  <div class="board">
-    <div class="board-body">
-      <p class="text-sm text-base-content/70">{{ icon("eye", "h-4 w-4 inline") }} Read-only view — every page you open is for monitoring only. Nothing can be recorded or changed.</p>
+  {# -- Executive KPI row ----------------------------------------------------
+     Renders only when the route supplies school-wide aggregates (context key
+     `portfolio_kpis`, computed in service/route context — never in template).
+     See ui-round ticket 02 FOUNDATION GAPS for the expected shape.
+     -------------------------------------------------------------------------- #}
+  {% if portfolio_kpis is defined and portfolio_kpis %}
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="kpi-card">
+      <p class="kpi-label">Total Collections</p>
+      <p class="kpi-value num">{{ money(portfolio_kpis.total_collected_cents) }}</p>
+      <p class="kpi-meta positive"><span class="num">{{ portfolio_kpis.collection_percent }}% of expected ({{ money(portfolio_kpis.total_expected_cents) }})</span></p>
+    </div>
+    <div class="kpi-card">
+      <p class="kpi-label">Net Operating Flow</p>
+      <p class="kpi-value num">{{ money(portfolio_kpis.net_flow_cents) }}</p>
+      <p class="kpi-meta positive">After all Campus expenses</p>
+    </div>
+    <div class="kpi-card">
+      <p class="kpi-label">Outstanding Arrears</p>
+      <p class="kpi-value num amber">{{ money(portfolio_kpis.arrears_cents) }}</p>
+      <p class="kpi-meta warning">Across all Campuses</p>
+    </div>
+    <div class="kpi-card">
+      <p class="kpi-label">Operating Campuses</p>
+      <p class="kpi-value num">{{ portfolio_kpis.active_campus_count }}<span class="align-middle text-sm font-normal text-base-content/50"> / <span class="num">{{ portfolio_kpis.archived_campus_count }}</span> archived</span></p>
+      <p class="kpi-meta"><span class="num">{{ portfolio_kpis.active_student_count }}</span>&nbsp;active students total</p>
     </div>
   </div>
   {% endif %}
 
-  <div class="sf-campus-list grid items-start gap-6">
-    {% for summary in campuses %}
-    {% set c = summary.campus %}
-    <section class="sf-campus-row board {{ 'opacity-70' if c.archived }}">
-      <div class="board-head">
-        <div class="board-title-wrap min-w-0">
-          <span class="pin"></span>
-          <div class="min-w-0">
-            <h2 class="board-title flex items-center gap-2">
-              {{ icon("building-office-2", "h-4 w-4") }} {{ c.name }}
-              {% if c.archived %}{{ badge("Archived", "neutral") }}{% endif %}
+  {# -- Campus Financial Health deck ----------------------------------------- #}
+  <section class="space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="board-title">Campus Financial Health</h2>
+      <span class="text-xs text-base-content/60">Independent operational tenant units</span>
+    </div>
+
+    <div class="grid items-start gap-6 lg:grid-cols-2">
+      {% for summary in campuses %}
+      {% set c = summary.campus %}
+      {% set kpi = summary.kpi %}
+      <article class="content-panel">
+        <div class="panel-header">
+          <div class="panel-title-area min-w-0">
+            <h2 class="board-title flex flex-wrap items-center gap-2">
+              <span class="min-w-0">{{ c.name }}</span>
+              {% if c.archived %}
+              {{ badge("Archived", "slate") }}
+              {% else %}
+              {{ badge("Active", "emerald") }}
+              {% endif %}
             </h2>
             {% if summary.admin %}
-            <p class="board-sub">Campus admin: {{ summary.admin.name }} ({{ summary.admin.username }})</p>
+            <p class="board-sub">Manager: <strong>{{ summary.admin.name }}</strong> ({{ summary.admin.username }})</p>
             {% else %}
-            <p class="board-sub">No Campus admin assigned yet.</p>
+            <p class="board-sub">No Campus Admin assigned yet.</p>
             {% endif %}
           </div>
-        </div>
-        <div class="flex flex-wrap items-center gap-2 shrink-0">
-          {{ btn(href="/campuses/" ~ c.id, label="Open", icon="arrow-right", variant="outline", size="sm") }}
-        </div>
-      </div>
-      <div class="board-body">
-        {% if has_reporting and summary.kpi %}
-        {% set kpi = summary.kpi %}
-        <div class="sf-kpi-strip grid grid-cols-2 gap-3">
-          <div class="rounded-box bg-base-200/60 p-3">
-            <p class="stat-label">Collected (this month)</p>
-            <p class="stat-value num text-sm">{{ money(kpi.collected_cents) }}</p>
-          </div>
-          <div class="rounded-box bg-base-200/60 p-3">
-            <p class="stat-label">Expenses (this month)</p>
-            <p class="stat-value num text-sm">{{ money(kpi.expenses_cents) }}</p>
-          </div>
-          <div class="rounded-box bg-base-200/60 p-3">
-            <p class="stat-label">Arrears</p>
-            <p class="stat-value num text-sm {{ 'text-error' if kpi.arrears_cents > 0 }}">{{ money(kpi.arrears_cents) }}</p>
-          </div>
-          <div class="rounded-box bg-base-200/60 p-3">
-            <p class="stat-label">Active students</p>
-            <p class="stat-value num text-sm">{{ kpi.active_student_count }}</p>
-          </div>
-        </div>
-        <div class="mt-4">
-          <div class="flex items-center justify-between text-xs text-base-content/60">
-            <span>Expected vs paid</span>
-            <span>{{ money(kpi.paid_cents) }} of {{ money(kpi.expected_cents) }} ({{ kpi.collected_percent }}%)</span>
-          </div>
-          <progress class="sf-progress progress progress-success w-full" value="{{ kpi.collected_percent }}" max="100"></progress>
-        </div>
-        {% elif not has_reporting %}
-        <p class="text-sm text-base-content/60">Reporting is not available in this build.</p>
-        {% else %}
-        <p class="text-sm text-base-content/60">No activity to report yet.</p>
-        {% endif %}
-
-        <div class="mt-4 flex flex-wrap gap-2">
-          {{ btn(href="/campuses/" ~ c.id, label="Dashboard", icon="home", variant="ghost", size="xs") }}
-          {{ btn(href="/campuses/" ~ c.id ~ "/students", label="Students", icon="user-group", variant="ghost", size="xs") }}
-          {{ btn(href="/campuses/" ~ c.id ~ "/classes", label="Classes", icon="rectangle-stack", variant="ghost", size="xs") }}
-          {{ btn(href="/campuses/" ~ c.id ~ "/payments", label="Payments", icon="banknotes", variant="ghost", size="xs") }}
-          {{ btn(href="/campuses/" ~ c.id ~ "/expenses", label="Expenses", icon="arrow-up-tray", variant="ghost", size="xs") }}
-          {{ btn(href="/campuses/" ~ c.id ~ "/arrears", label="Unpaid fees", icon="exclamation-triangle", variant="ghost", size="xs") }}
-          {{ btn(href="/campuses/" ~ c.id ~ "/reports", label="Reports", icon="chart-bar", variant="ghost", size="xs") }}
-        </div>
-
-        {% if is_superadmin and not c.archived %}
-        <div class="mt-4 border-t border-base-300 pt-4">
-          {% if summary.admin %}
-          <form method="post" action="/school/campuses/{{ c.id }}/archive" class="inline"
-                onsubmit="return confirm('Archive {{ c.name }}? Its history is kept, but it stops being active.')">
-            {{ btn(label="Archive campus", icon="archive-box", variant="outline", size="xs", type="submit", class="text-error") }}
-          </form>
-          {% else %}
-          <details class="dropdown dropdown-end">
-            <summary class="btn btn-outline btn-xs">{{ icon("user-plus", "h-4 w-4") }} Assign campus admin</summary>
-            <div class="dropdown-content menu z-20 mt-2 w-72 rounded-box border border-base-300 bg-base-100 p-3 shadow-lg">
-              <form method="post" action="/school/campuses/{{ c.id }}/admin" class="space-y-2">
-                {{ form_field("name", "Name", value="", required=true, placeholder="e.g. Jane Head", input_class="input input-sm w-full") }}
-                {{ form_field("username", "Username", value="", required=true, placeholder="e.g. jane", input_class="input input-sm w-full") }}
-                {{ form_field("password", "Password", type="password", value="", required=true, placeholder="Temporary password", input_class="input input-sm w-full") }}
-                {{ btn(label="Assign", icon="check", variant="primary", size="sm", type="submit") }}
-              </form>
-            </div>
-          </details>
+          {% if not c.archived %}
+          {{ btn(href="/campuses/" ~ c.id, label="Enter campus", icon="arrow-right", variant="secondary", size="sm") }}
           {% endif %}
         </div>
-        {% endif %}
+
+        <div class="panel-body">
+          {% if c.archived %}
+          <p class="flex items-start gap-2 py-4 text-sm text-base-content/60">
+            {{ icon("archive-box", "w-5 h-5 shrink-0") }}
+            <span>This Campus has been archived. Its student and financial records are preserved here, read-only.</span>
+          </p>
+          {% elif has_reporting and kpi %}
+          <div class="grid grid-cols-3 gap-3">
+            <div class="min-w-0">
+              <p class="stat-label">Collected</p>
+              <p class="text-base font-bold text-base-content num">{{ money(kpi.collected_cents) }}</p>
+            </div>
+            <div class="min-w-0">
+              <p class="stat-label">Expenses</p>
+              <p class="text-base font-bold text-base-content num">{{ money(kpi.expenses_cents) }}</p>
+            </div>
+            <div class="min-w-0">
+              <p class="stat-label">Arrears</p>
+              <p class="text-base font-bold text-base-content num" {% if kpi.arrears_cents > 0 %}style="color: var(--sf-amber-text);"{% endif %}>{{ money(kpi.arrears_cents) }}</p>
+            </div>
+          </div>
+
+          <div class="progress-wrap mt-4">
+            <div class="progress-meta">
+              <span>Expected vs paid</span>
+              <span class="num"><strong>{{ money(kpi.paid_cents) }}</strong> of {{ money(kpi.expected_cents) }} ({{ kpi.collected_percent }}%)</span>
+            </div>
+            <div class="progress-track">
+              <span class="progress-fill" style="transform: scaleX(calc({{ kpi.collected_percent }} / 100));"></span>
+            </div>
+          </div>
+          {% elif not has_reporting %}
+          <p class="py-4 text-sm text-base-content/60">Reporting is not available in this build.</p>
+          {% else %}
+          <p class="py-4 text-sm text-base-content/60">No activity to report yet.</p>
+          {% endif %}
+
+          {% if is_superadmin and not c.archived %}
+          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-base-300 pt-4">
+            {% if summary.admin %}
+            <form method="post" action="/school/campuses/{{ c.id }}/archive">
+              <button type="submit" data-confirm="Archive {{ c.name }}? Its history is kept, but it stops being active."
+                      class="btn btn-outline btn-xs text-error">
+                {{ icon("archive-box", "w-4 h-4") }} Archive campus
+              </button>
+            </form>
+            {% else %}
+            <details class="dropdown dropdown-end">
+              <summary class="btn btn-secondary btn-xs">{{ icon("user-plus", "w-4 h-4") }} Assign campus admin</summary>
+              <div class="dropdown-content menu z-20 mt-2 w-72 p-3 shadow-lg">
+                <form method="post" action="/school/campuses/{{ c.id }}/admin" class="space-y-2">
+                  {{ form_field("name", "Name", value="", required=true, placeholder="e.g. Jane Head", input_class="input input-sm w-full") }}
+                  {{ form_field("username", "Username", value="", required=true, placeholder="e.g. jane", input_class="input input-sm w-full") }}
+                  {{ form_field("password", "Password", type="password", value="", required=true, placeholder="Temporary password", input_class="input input-sm w-full") }}
+                  {{ btn(label="Assign", icon="check", variant="primary", size="sm", type="submit") }}
+                </form>
+              </div>
+            </details>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </article>
+      {% else %}
+      <div class="board lg:col-span-2">
+        <div class="board-body">
+          {{ empty_state("No Campuses yet", "Create the School's first Campus to get started.", "building-office-2", "/school/campuses/new" if is_superadmin else "", "New campus") }}
+        </div>
       </div>
-    </section>
-    {% else %}
-    <div class="lg:col-span-2">{{ empty_state("No Campuses yet", "Create the School's first Campus to get started.", "building-office-2", "/school/campuses/new" if is_superadmin else "", "New campus") }}</div>
-    {% endfor %}
-  </div>
+      {% endfor %}
+    </div>
+  </section>
 
   {% if is_superadmin %}
-  <div class="grid items-start gap-6 lg:grid-cols-2">
-    {% call card(title="Owner accounts", subtitle="Shareholders view every Campus read-only.", class="lg:col-span-2") %}
-      <div class="overflow-x-auto">
-        <table class="table">
-          <thead>
-            <tr><th>Owner</th><th>Username</th><th>Status</th><th class="w-1"></th></tr>
-          </thead>
-          <tbody>
-          {% for owner in owners %}
-            <tr>
-              <td class="font-medium">{{ owner.name }}</td>
-              <td>{{ owner.username }}</td>
-              <td>
-                {% if owner.is_active %}
-                {{ badge("Active", "success") }}
-                {% else %}
-                {{ badge("Disabled", "neutral") }}
-                {% endif %}
-              </td>
-              <td>
-                {% if owner.is_active %}
-                <form method="post" action="/school/owners/{{ owner.id }}/disable" class="inline">
-                  {{ btn(label="Disable", icon="x-mark", variant="ghost", size="xs", type="submit", class="text-error") }}
-                </form>
-                {% else %}
-                <form method="post" action="/school/owners/{{ owner.id }}/enable" class="inline">
-                  {{ btn(label="Enable", icon="check", variant="ghost", size="xs", type="submit") }}
-                </form>
-                {% endif %}
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="4" class="py-0">{{ empty_state("No Owner accounts yet", "Owners are shareholders who can monitor every Campus read-only.", "user-group") }}</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <form method="post" action="/school/owners" class="mt-4 flex flex-wrap items-end gap-3 border-t border-base-300 pt-4">
-        <div class="min-w-40 flex-1">{{ form_field("name", "Name", value="", required=true, placeholder="e.g. The Board", input_class="input input-sm w-full") }}</div>
-        <div class="min-w-40 flex-1">{{ form_field("username", "Username", value="", required=true, placeholder="e.g. board", input_class="input input-sm w-full") }}</div>
-        <div class="min-w-40 flex-1">{{ form_field("password", "Password", type="password", value="", required=true, placeholder="Temporary password", input_class="input input-sm w-full") }}</div>
-        {{ btn(label="Add owner", icon="plus", variant="primary", size="sm", type="submit") }}
-      </form>
-    {% endcall %}
-  </div>
+  {% call card(title="Owner accounts", subtitle="Shareholders view every Campus read-only.", class="lg:col-span-2") %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr><th>Owner</th><th>Username</th><th>Status</th><th class="amount-head"></th></tr>
+        </thead>
+        <tbody>
+        {% for owner in owners %}
+          <tr>
+            <td class="primary-cell">{{ owner.name }}</td>
+            <td>{{ owner.username }}</td>
+            <td>
+              {% if owner.is_active %}
+              {{ badge("Active", "emerald") }}
+              {% else %}
+              {{ badge("Disabled", "slate") }}
+              {% endif %}
+            </td>
+            <td class="text-right">
+              {% if owner.is_active %}
+              <form method="post" action="/school/owners/{{ owner.id }}/disable" class="inline">
+                {{ btn(label="Disable", icon="x-mark", variant="ghost", size="xs", type="submit", class="text-error") }}
+              </form>
+              {% else %}
+              <form method="post" action="/school/owners/{{ owner.id }}/enable" class="inline">
+                {{ btn(label="Enable", icon="check", variant="ghost", size="xs", type="submit") }}
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="py-0">{{ empty_state("No Owner accounts yet", "Owners are shareholders who can monitor every Campus read-only.", "user-group") }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <form method="post" action="/school/owners" class="mt-4 flex flex-wrap items-end gap-3 border-t border-base-300 pt-4">
+      <div class="min-w-40 flex-1">{{ form_field("name", "Name", value="", required=true, placeholder="e.g. The Board", input_class="input input-sm w-full") }}</div>
+      <div class="min-w-40 flex-1">{{ form_field("username", "Username", value="", required=true, placeholder="e.g. board", input_class="input input-sm w-full") }}</div>
+      <div class="min-w-40 flex-1">{{ form_field("password", "Password", type="password", value="", required=true, placeholder="Temporary password", input_class="input input-sm w-full") }}</div>
+      {{ btn(label="Add owner", icon="plus", variant="primary", size="sm", type="submit") }}
+    </form>
+  {% endcall %}
   {% endif %}
 </div>
 {% endblock %}
