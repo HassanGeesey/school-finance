@@ -19,7 +19,6 @@
   {% if title or subtitle or actions %}
   <div class="board-head">
     <div class="board-title-wrap min-w-0">
-      <span class="pin"></span>
       <div class="min-w-0">
         {% if title %}<h2 class="board-title">{{ title }}</h2>{% endif %}
         {% if subtitle %}<p class="board-sub">{{ subtitle }}</p>{% endif %}
@@ -35,7 +34,7 @@
 {% endmacro %}
 
 {% macro btn(href="", label="", icon="", variant="primary", size="", type="button", class="", attrs="") %}
-{% set vclass = "btn-" ~ variant if variant in ["primary", "secondary", "accent", "neutral", "info", "success", "warning", "error", "outline", "ghost", "soft"] else "" %}
+{% set vclass = "btn-" ~ variant if variant in ["primary", "secondary", "emerald", "accent", "neutral", "info", "success", "warning", "error", "outline", "ghost", "soft"] else "" %}
 {% set sclass = "btn-" ~ size if size in ["xs", "sm", "md", "lg"] else "" %}
 {% if href %}
 <a href="{{ href }}" class="btn {{ vclass }} {{ sclass }} {{ class }}" {{ attrs|safe }}>{% if icon %}{{ icon_svg(icon, "w-4 h-4") }}{% endif %}{% if label %}{{ label }}{% endif %}</a>
@@ -45,7 +44,7 @@
 {% endmacro %}
 
 {% macro badge(text, tone="neutral") %}
-{% set tones = ["primary", "secondary", "accent", "neutral", "info", "success", "warning", "error"] %}
+{% set tones = ["primary", "secondary", "emerald", "amber", "slate", "rose", "indigo", "accent", "neutral", "info", "success", "warning", "error"] %}
 <span class="badge {{ 'badge-' ~ tone if tone in tones }}">{{ text }}</span>
 {% endmacro %}
 
@@ -116,11 +115,18 @@
 {% macro confirm_dialog(id="confirm-dialog") %}
 <dialog id="{{ id }}" class="modal">
   <div class="modal-box">
-    <h3 class="text-lg font-semibold">Please confirm</h3>
-    <p class="mt-2 text-sm text-base-content/70" data-confirm-message></p>
-    <div class="modal-action">
-      <button type="button" data-confirm-cancel class="btn btn-ghost">Cancel</button>
-      <button type="button" data-confirm-accept class="btn btn-error">Confirm</button>
+    <div class="modal-header">
+      <h3>Please confirm</h3>
+      <button type="button" class="btn btn-ghost btn-circle" aria-label="Close" data-modal-close>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p data-confirm-message></p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" data-confirm-cancel class="btn btn-secondary">Cancel</button>
+      <button type="button" data-confirm-accept class="btn btn-primary">Confirm</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>

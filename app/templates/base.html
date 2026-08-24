@@ -12,114 +12,120 @@
   <script src="/static/js/chart.umd.min.js" defer></script>
   <script src="/static/js/ui.js" defer></script>
 </head>
-<body class="min-h-screen bg-base-200 antialiased">
+<body class="antialiased">
 {% block layout %}
 {% set user = current_user() %}
 {% set path = request.url.path %}
+{% set school_bound = user and user.role in ("superadmin", "owner") %}
+{% set campus_view = path.startswith("/campuses/") %}
 {% macro nav_item(href, label, icon_name, active) %}
-<a href="{{ href }}" class="nav-link {{ 'active' if active else '' }}">
-  {{ icon(icon_name, "h-[17px] w-[17px] shrink-0") }}
-  {{ label }}
+<a href="{{ href }}" class="rail-link {{ 'active' if active else '' }}">
+  {{ icon(icon_name, "shrink-0") }}
+  <span>{{ label }}</span>
 </a>
 {% endmacro %}
-{% macro nav_placeholder(label, icon_name, title) %}
-<span title="{{ title }}" aria-disabled="true" class="flex cursor-not-allowed items-center gap-3 px-3 py-2 text-sm text-base-content/35">
-  {{ icon(icon_name, "h-5 w-5 shrink-0") }}
-  <span class="flex-1">{{ label }}</span>
-  <span class="badge badge-ghost badge-xs">Soon</span>
-</span>
-{% endmacro %}
 
-<div class="flex min-h-screen">
-  <aside id="app-sidebar" class="no-print fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col lg:static lg:translate-x-0">
-    <div class="index-brand flex h-16 shrink-0 items-center gap-3 px-4">
-      <span class="index-logo inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden p-1">
+<div class="shell">
+  <aside id="app-sidebar" class="rail no-print">
+    <div class="rail-brand">
+      <span class="rail-logo">
         {% if logo_url() %}
-        <img src="{{ logo_url() }}" alt="School logo" class="h-full w-full rounded object-contain">
+        <img src="{{ logo_url() }}" alt="School logo">
         {% else %}
-        {{ icon("banknotes", "h-6 w-6") }}
+        {{ icon("banknotes") }}
         {% endif %}
       </span>
-      <div class="min-w-0">
-        <p class="index-brand-name truncate">{{ school_name() }}</p>
-        <p class="index-brand-sub">School finance</p>
-      </div>
+      <span class="rail-brand-text">
+        <span class="rail-brand-name">{{ school_name() }}</span>
+        <span class="rail-brand-sub">School finance</span>
+      </span>
     </div>
 
-    <nav class="index-nav px-3 pb-4">
-      {% if user and user.role in ("superadmin", "owner") %}
-      <p class="nav-group-label mt-4 px-3">School</p>
-      <div class="mt-1">
-        {{ nav_item("/school", "School dashboard", "building-office-2", path.startswith("/school")) }}
-        {% if user.role == "superadmin" %}
-        {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
-        {% endif %}
-      </div>
-      {% if path.startswith("/campuses/") %}
-      <p class="nav-group-label mt-5 px-3">Viewing campus</p>
-      <div class="mt-1">
-        {{ nav_item("/school", "Back to School dashboard", "arrow-left", false) }}
-      </div>
+    <nav class="rail-nav" aria-label="Primary">
+      {% if school_bound %}
+      <p class="rail-group-label">School</p>
+      {{ nav_item("/school", "School dashboard", "building-office-2", path.startswith("/school") or campus_view) }}
+      {% if user.role == "superadmin" %}
+      {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
+      {% endif %}
+      {% if campus_view %}
+      <p class="rail-group-label">Viewing campus</p>
+      {{ nav_item("/school", "Back to School dashboard", "arrow-left", false) }}
       {% endif %}
       {% else %}
-      <p class="nav-group-label mt-4 px-3">School</p>
-      <div class="mt-1">
-        {{ nav_item("/", "Dashboard", "home", path == "/") }}
-        {{ nav_item("/classes", "Classes", "rectangle-stack", path.startswith("/classes")) }}
-        {{ nav_item("/students", "Students", "user-group", path.startswith("/students")) }}
-      </div>
+      <p class="rail-group-label">School</p>
+      {{ nav_item("/", "Dashboard", "home", path == "/") }}
+      {{ nav_item("/classes", "Classes", "rectangle-stack", path.startswith("/classes")) }}
+      {{ nav_item("/students", "Students", "user-group", path.startswith("/students")) }}
 
-      <p class="nav-group-label mt-5 px-3">Finance</p>
-      <div class="mt-1">
-        {{ nav_item("/fees", "Fee templates", "academic-cap", path.startswith("/fees")) }}
-        {{ nav_item("/payments", "Payments", "receipt-percent", path.startswith("/payments")) }}
-        {{ nav_item("/expenses", "Expenses", "banknotes", path.startswith("/expenses")) }}
-      </div>
+      <p class="rail-group-label">Finance</p>
+      {{ nav_item("/fees", "Fee templates", "academic-cap", path.startswith("/fees")) }}
+      {{ nav_item("/payments", "Payments", "receipt-percent", path.startswith("/payments")) }}
+      {{ nav_item("/expenses", "Expenses", "banknotes", path.startswith("/expenses")) }}
 
-      <p class="nav-group-label mt-5 px-3">Reports</p>
-      <div class="mt-1">
-        {{ nav_item("/arrears", "Unpaid fees", "exclamation-triangle", path.startswith("/arrears")) }}
-        {{ nav_item("/reports", "Reports", "chart-bar", path.startswith("/reports")) }}
-      </div>
+      <p class="rail-group-label">Reports</p>
+      {{ nav_item("/arrears", "Unpaid fees", "exclamation-triangle", path.startswith("/arrears")) }}
+      {{ nav_item("/reports", "Reports", "chart-bar", path.startswith("/reports")) }}
 
       {% if user and user.role == "admin" %}
-      <p class="nav-group-label mt-5 px-3">System</p>
-      <div class="mt-1">
-        {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
-        {{ nav_item("/admin", "Settings", "cog-6-tooth", path == "/admin") }}
-      </div>
+      <p class="rail-group-label">System</p>
+      {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
+      {{ nav_item("/admin", "Settings", "cog-6-tooth", path == "/admin") }}
       {% endif %}
       {% endif %}
     </nav>
 
-    <p class="index-foot shrink-0 px-4 py-3">v{{ app_version }}</p>
+    <div class="rail-foot">
+      {% if user %}
+      <div class="rail-role">
+        <span>Signed in as</span>
+        <strong>{{ user.name }}</strong>
+        <em>{{ role_label(user.role) }}</em>
+      </div>
+      {% endif %}
+      <p class="rail-version num">v{{ app_version }}</p>
+    </div>
   </aside>
 
-  <div id="sidebar-backdrop" class="no-print fixed inset-0 z-30 hidden bg-slate-900/40"></div>
+  <div id="sidebar-backdrop" class="rail-backdrop no-print"></div>
 
-  <div class="flex min-h-screen min-w-0 flex-1 flex-col">
-    <header id="app-topbar" class="no-print sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 px-4 sm:px-6">
-      <button id="sidebar-toggle" type="button" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="Toggle navigation">
-        {{ icon("menu", "h-5 w-5") }}
+  <div class="shell-main">
+    <header id="app-topbar" class="topbar no-print">
+      <button id="sidebar-toggle" type="button" class="sidebar-toggle lg:hidden" aria-label="Toggle navigation">
+        {{ icon("menu") }}
       </button>
-      <p class="topbar-title min-w-0 flex-1 truncate">{% block topbar_title %}{{ app_name }}{% endblock %}</p>
-      {% if not user or user.role not in ("superadmin", "owner") %}
-      <form method="get" action="/students" class="hidden md:block">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        {% if school_bound and campus_view %}
+        <a class="crumb-root" href="/school">School</a>
+        <span class="crumb-sep" aria-hidden="true">/</span>
+        <span class="crumb-current">{{ school_name() }}</span>
+        {% else %}
+        <span class="crumb-current">{% block topbar_title %}{{ app_name }}{% endblock %}</span>
+        {% endif %}
+      </nav>
+      {% if not school_bound %}
+      <form method="get" action="/students" class="search-form hidden md:block">
         <label class="relative block">
-          <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-base-content/40">{{ icon("magnifying-glass", "h-4 w-4") }}</span>
-          <input name="q" type="search" placeholder="Search students…" class="input input-sm w-52 pl-9">
+          <span class="search-icon">{{ icon("magnifying-glass") }}</span>
+          <input name="q" type="search" placeholder="Search students…" class="input search-input">
         </label>
       </form>
       {% endif %}
+      {% if school_bound %}
+      <a class="campus-pill" href="/school" title="{{ 'All Campuses' if not campus_view else 'Switch campus' }}">
+        {{ icon("building-office-2") }}
+        <span>{% if campus_view %}{{ school_name() }}{% else %}All Campuses{% endif %}</span>
+      </a>
+      {% endif %}
       {% if user %}
       <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="user">
-          <span class="user-avatar inline-flex h-8 w-8 items-center justify-center text-sm">{{ user.name[:1] | upper }}</span>
-          <span class="hidden text-left sm:block">
-            <span class="user-name block">{{ user.name }}</span>
-            <span class="user-role block">{{ role_label(user.role) }}</span>
+        <div tabindex="0" role="button" class="user-pill">
+          <span class="user-avatar">{{ user.name[:1] | upper }}</span>
+          <span class="user-meta">
+            <span class="user-name">{{ user.name }}</span>
+            <span class="user-role">{{ role_label(user.role) }}</span>
           </span>
-          {{ icon("chevron-down", "h-4 w-4 text-base-content/40") }}
+          {{ icon("chevron-down") }}
         </div>
         <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-48 p-1 shadow-lg">
           {% if user.role == "admin" %}
@@ -135,13 +141,13 @@
       {% endif %}
     </header>
 
-    <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-      <div class="mx-auto w-full max-w-[1180px]">
+    <main class="workspace-pad">
+      <div class="workspace">
         {% block content %}{% endblock %}
       </div>
     </main>
 
-    <footer class="no-print px-6 py-6 text-sm text-base-content/40">
+    <footer class="site-foot no-print">
       &copy; {{ year }} {{ school_name() }}
     </footer>
   </div>

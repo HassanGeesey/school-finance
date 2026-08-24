@@ -5,41 +5,45 @@
 {% block title %}Log in — {{ app_name }}{% endblock %}
 
 {% block layout %}
-<div class="flex min-h-screen items-center justify-center bg-base-200 px-4">
-  <div class="w-full max-w-md">
-    <div class="mb-8 flex flex-col items-center text-center">
-      <span class="index-logo inline-flex h-12 w-12 items-center justify-center">{{ icon("banknotes", "h-6 w-6") }}</span>
-      <h1 class="mt-4 text-xl font-bold">{{ app_name }}</h1>
-      <p class="page-sub mt-1">School fee collection, expenses, and unpaid fees.</p>
-    </div>
-
-    <div class="board">
-      <div class="board-body p-8">
-        <div class="board-title-wrap mb-1"><span class="pin"></span><h2 class="board-title text-lg">Log in</h2></div>
-        {% if error %}
-        <div class="mt-4">{{ alert("error", error) }}</div>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="auth-logo">
+        {% if logo_url() %}
+        <img src="{{ logo_url() }}" alt="School logo">
+        {% else %}
+        {{ icon("banknotes") }}
         {% endif %}
-
-        <form method="post" action="/login" class="mt-6 space-y-4">
-          <input type="hidden" name="next" value="{{ next }}">
-          {{ form_field("username", "Username", value=username or "", required=true, attrs='autofocus') }}
-          <div>
-            <label for="password" class="label"><span class="label-text">Password</span></label>
-            <div class="relative">
-              <input id="password" name="password" type="password" required class="input w-full pr-11">
-              <button type="button" data-password-toggle="#password" aria-label="Show password"
-                      class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-base-content/40 transition-colors hover:text-base-content">
-                <span data-icon="eye">{{ icon("eye", "h-5 w-5") }}</span>
-                <span data-icon="eye-slash" class="hidden">{{ icon("eye-slash", "h-5 w-5") }}</span>
-              </button>
-            </div>
-          </div>
-          <button type="submit" class="btn btn-primary btn-block">Log in</button>
-        </form>
-      </div>
+      </span>
+      <h1 class="auth-title">{{ app_name }}</h1>
+      <p class="auth-tagline">School fee collection, expenses, and unpaid fees.</p>
     </div>
 
-    <p class="mt-6 text-center text-xs text-base-content/40">v{{ app_version }}</p>
+    <section class="auth-panel">
+      <h2 class="auth-panel-title">Log in</h2>
+      {% if error %}
+      <div class="mt-4">{{ alert("error", error) }}</div>
+      {% endif %}
+
+      <form method="post" action="/login" class="auth-form">
+        <input type="hidden" name="next" value="{{ next }}">
+        {{ form_field("username", "Username", value=username or "", required=true, attrs='autofocus') }}
+        <div>
+          <label for="password" class="label"><span class="label-text">Password</span></label>
+          <div class="auth-field">
+            <input id="password" name="password" type="password" required class="input w-full">
+            <button type="button" data-password-toggle="#password" aria-label="Show password"
+                    class="auth-toggle-password">
+              <span data-icon="eye">{{ icon("eye") }}</span>
+              <span data-icon="eye-slash" class="hidden">{{ icon("eye-slash") }}</span>
+            </button>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Log in</button>
+      </form>
+    </section>
+
+    <p class="auth-foot num">v{{ app_version }}</p>
   </div>
 </div>
 {% endblock %}

@@ -5,30 +5,30 @@
 {% block title %}Set up {{ app_name }}{% endblock %}
 
 {% block layout %}
-<div class="flex min-h-screen items-center justify-center bg-base-200 px-4">
-  <div class="w-full max-w-md">
-    <div class="mb-8 flex flex-col items-center text-center">
-      <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-content">{{ icon("banknotes", "h-6 w-6") }}</span>
-      <h1 class="mt-4 text-xl font-bold text-base-content">{{ app_name }}</h1>
-      <p class="mt-1 text-sm text-base-content/60">This is the first launch. Create the Admin account that will manage {{ app_name }}.</p>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="auth-logo">{{ icon("banknotes") }}</span>
+      <h1 class="auth-title">{{ app_name }}</h1>
+      <p class="auth-tagline">This is the first launch. Create the Admin account that will manage {{ app_name }}.</p>
     </div>
 
-    <div class="rounded-box border border-base-300 bg-base-100 p-8 shadow-sm">
-      <h2 class="text-lg font-semibold text-base-content">Create your admin account</h2>
+    <section class="auth-panel">
+      <h2 class="auth-panel-title">Create your admin account</h2>
       {% if error %}
       <div class="mt-4">{{ alert("error", error) }}</div>
       {% endif %}
 
-      <form method="post" action="/setup" class="mt-6 space-y-4">
-        {{ form_field("school_name", "School name", value=school_name or "", required=true, placeholder="e.g. Sunrise Primary School", attrs='autofocus') }}
+      <form method="post" action="/setup" class="auth-form">
+        {{ form_field("school_name", "School name", value=school_name or "", required=true, placeholder="e.g. Greenfield Primary School", attrs='autofocus') }}
         {{ form_field("name", "Your full name", value=name or "", required=true) }}
         {{ form_field("username", "Username", value=username or "", required=true) }}
         {{ form_field("password", "Password", type="password", required=true) }}
         <button type="submit" class="btn btn-primary btn-block">Create admin account</button>
       </form>
-    </div>
+    </section>
 
-    <p class="mt-6 text-center text-xs text-base-content/40">v{{ app_version }}</p>
+    <p class="auth-foot num">v{{ app_version }}</p>
   </div>
 </div>
 {% endblock %}

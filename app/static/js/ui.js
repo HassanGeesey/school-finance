@@ -1,5 +1,11 @@
-/* UI helpers for the School Finance shell: toasts, confirm dialogs, loading
- * states, sidebar toggling. Loaded after htmx. */
+/* UI helpers for the School Finance shell: modals, toasts, confirm dialogs,
+ * loading states, sidebar toggling, Esc handling. Loaded after htmx.
+ *
+ * Declarative hooks (wire behavior purely from markup):
+ *   data-modal-open="<element-id>"   opens that <dialog> via showModal()
+ *   data-modal-close                 closes the enclosing <dialog>
+ * Esc closes the topmost open dialog, unless focus is in an editable field.
+ */
 (function () {
   'use strict';
 
@@ -15,19 +21,64 @@
   };
 
   function showToast(message, tone) {
-    var tones = { info: 'alert-info', success: 'alert-success', warning: 'alert-warning', error: 'alert-error' };
-    var alert = document.createElement('div');
-    alert.className = 'alert shadow-lg ' + (tones[tone] || 'alert-info');
-    alert.setAttribute('role', 'alert');
-    var text = document.createElement('span');
-    text.textContent = message;
-    alert.appendChild(text);
-    toastContainer().appendChild(alert);
+    var el = document.createElement('div');
+    el.className = 'toast-item toast-' + (tone || 'info');
+    el.setAttribute('role', 'status');
+    el.textContent = message;
+    toastContainer().appendChild(el);
     setTimeout(function () {
-      alert.classList.add('opacity-0', 'transition-opacity', 'duration-300');
-      setTimeout(function () { alert.remove(); }, 350);
+      el.classList.add('toast-leaving');
+      setTimeout(function () { el.remove(); }, 300);
     }, 4000);
   }
+
+  function isEditable(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || el.isContentEditable === true;
+  }
+
+  function openModalById(id) {
+    var target = id ? document.getElementById(id) : null;
+    if (target && typeof target.showModal === 'function') {
+      target.showModal();
+      return true;
+    }
+    return false;
+  }
+
+  function closeEnclosingModal(el) {
+    var dialog = el.closest ? el.closest('dialog') : null;
+    if (dialog && typeof dialog.close === 'function') dialog.close();
+  }
+
+  // Declarative modal wiring: openers and closers never need bespoke JS.
+  document.addEventListener('click', function (event) {
+    var opener = event.target.closest('[data-modal-open]');
+    if (opener) {
+      if (!openModalById(opener.getAttribute('data-modal-open'))) {
+        event.preventDefault();
+      }
+      return;
+    }
+    var closer = event.target.closest('[data-modal-close]');
+    if (closer) {
+      event.preventDefault();
+      closeEnclosingModal(closer);
+    }
+  });
+
+  // Esc closes the topmost open dialog app-wide; typing stays untouched
+  // (native <dialog> Esc behavior keeps working regardless).
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    if (isEditable(document.activeElement)) return;
+    var open = document.querySelectorAll('dialog[open]');
+    if (open.length > 0) {
+      var top = open[open.length - 1];
+      if (typeof top.close === 'function') top.close();
+    }
+  });
 
   function openConfirmDialog(message, onConfirm) {
     var dialog = document.getElementById('confirm-dialog');
