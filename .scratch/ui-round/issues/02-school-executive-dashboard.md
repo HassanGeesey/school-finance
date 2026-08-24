@@ -11,7 +11,7 @@
 - [x] Management controls visible to Superadmin only; Owner/Shareholder gets explicit viewing badge and zero mutation controls
 - [x] Existing campus/admin/owner provisioning flows still work after restyle
 - [x] Route tests for role gating still pass unchanged
-- [ ] KPI row renders portfolio-wide figures computed in route/service context (no template arithmetic) — **blocked: aggregates absent from route context**; template row is built and guarded on an optional `portfolio_kpis` context key (see Comments). Not computed in template per spec rule.
+- [x] KPI row renders portfolio-wide figures computed in route/service context (no template arithmetic) *(resolved post-ticket: `SchoolDashboardService.portfolio_kpis()` added — see Comments)*
 
 ## Comments
 
@@ -27,3 +27,5 @@ Coordinator note: implementation committed as `3da88ee`; combined phase-2 verifi
 ### FOUNDATION GAPS (route/service context needed)
 
 1. **Portfolio KPI aggregates are absent from `GET /school` context** (app/schools/routes.py:75). The executive KPI row needs one context key, e.g. `portfolio_kpis` with: `total_collected_cents`, `total_expected_cents`, `collection_percent`, `net_flow_cents` (collected − expenses), `arrears_cents`, `active_campus_count`, `archived_campus_count`, `active_student_count` — summed over `SchoolDashboardService.list_campuses()` results in service/route context (guard `kpi is None`). Until it exists the row stays hidden; the template already renders it the moment the key appears.
+
+Coordinator resolution (commit `c1bd250`): authorized minimal deviation from the round's "zero backend changes" guard — spec's own Implementation Decisions require these figures be computed in services/route context, which was impossible without them. Added frozen dataclass `PortfolioKpis` + `SchoolDashboardService.portfolio_kpis()` aggregating per-Campus KPIs, wired into `GET /school` context under exactly the key the template guards on. New tests: aggregation across campuses + archived-count handling (existing contracts untouched). test_school_service + test_school_routes = 40 passed; mypy delta vs pre-round baseline = zero. Ticket checklist now fully checked.
