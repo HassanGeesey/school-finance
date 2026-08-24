@@ -1,0 +1,371 @@
+{#- ==========================================================================
+   payments/_record_modal.html — compact record-payment <dialog> + live
+   receipt slip (ui-round 04). Self-contained: form, slip markup, and slip
+   script travel together, so any surface that records payments can include it.
+
+   INCLUDE CONTRACT — set any of these before including (all optional; each
+   falls back to the payments/record.html page context when present):
+
+     record_modal_id        <dialog> id           (default "record-payment-modal")
+     record_action          form POST target      (default "/payments/record")
+     record_students        [{id, label, name}]   picker options; default derives a
+                                                  single option from `student`
+     record_months          [{value, label, year, rate_cents, expected_cents,
+                            paid_cents}]         Owed Month choices, oldest first;
+                                                  default derives them from
+                                                  account.lines (owed months)
+     record_years           [int]                 Year choices; default = years
+                                                  covered by record_months, else
+                                                  the page's `years` list
+     record_selected_month  default tag month     (default: page `month`)
+     record_selected_year   default tag year      (default: page `year`)
+     record_methods         {value: label}        (default: page `methods`)
+     record_method          preselected method    (default: page `method`|"cash")
+     record_paid_on         ISO default date      (default: page `paid_on`)
+     record_amount          prefilled amount      (default: page `amount`)
+     record_error           in-modal error line   (default: page `error`)
+     record_campus_options  [{id, name}]          campus choices for school-scope
+                                                  callers whose endpoint accepts a
+                                                  campus field
+     record_campus_editable true enables the campus select when options exist
+
+   Submit posts the SAME fields as the classic record screen (student_id,
+   amount, method, paid_on, month, year) to the existing endpoint; success
+   still lands on the printable receipt. Esc, the backdrop, and the ✕ close
+   without submitting (ui.js declarative hooks). The campus select posts
+   campus_id only when enabled — today's endpoint ignores that field, so
+   record.html keeps it fixed to the acting campus.
+   ========================================================================== -#}
+{#- Resolve parameters against the page context. -#}
+{% set rp_id = record_modal_id if record_modal_id is defined else "record-payment-modal" %}
+{% set rp_action = record_action if record_action is defined else "/payments/record" %}
+{% set rp_students = record_students if record_students is defined else [] %}
+{% set rp_methods = record_methods if record_methods is defined else (methods if methods is defined else {}) %}
+{% set rp_method_sel = (record_method if record_method is defined else (method if method is defined else "cash")) or "cash" %}
+{% set rp_paid_on = (record_paid_on if record_paid_on is defined else (paid_on if paid_on is defined else "")) %}
+{% set rp_amount = record_amount if record_amount is defined else (amount if amount is defined else "") %}
+{% set rp_error = record_error if record_error is defined else (error if error is defined else "") %}
+{% set rp_campus_opts = record_campus_options if record_campus_options is defined else [] %}
+{% set rp_campus_editable = (record_campus_editable is defined and record_campus_editable) and rp_campus_opts|length > 0 %}
+
+{#- Default single-student option + owed-month choices from the page context. -#}
+{% if not rp_students and student is defined and account is defined %}
+  {% set rp_lines = [] %}
+  {% for line in account.lines %}
+    {% if rp_lines.append({"value": line.month|string, "label": line.period_label, "year": line.year, "rate_cents": line.amount_in_force_cents, "expected_cents": line.expected_cents, "paid_cents": line.paid_cents}) %}{% endif %}
+  {% endfor %}
+  {% set rp_rate = account.lines[-1].amount_in_force_cents if account.lines else 0 %}
+  {% if rp_students.append({"id": student.id|string, "label": student.full_name ~ ((" — " ~ money(rp_rate) ~ "/mo") if rp_rate else ""), "name": student.full_name}) %}{% endif %}
+{% endif %}
+{% set rp_months = record_months if record_months is defined else [] %}
+{% if not rp_months and account is defined %}
+  {% for line in account.lines %}
+    {% if rp_months.append({"value": line.month|string, "label": line.period_label, "year": line.year, "rate_cents": line.amount_in_force_cents, "expected_cents": line.expected_cents, "paid_cents": line.paid_cents}) %}{% endif %}
+  {% endfor %}
+{% endif %}
+{% set rp_fallback_months = months if months is defined else [] %}
+{% if not rp_months and rp_fallback_months %}
+  {% for value, label in rp_fallback_months %}
+    {% if rp_months.append({"value": value|string, "label": label, "year": None, "rate_cents": 0, "expected_cents": 0, "paid_cents": 0}) %}{% endif %}
+  {% endfor %}
+{% endif %}
+{% set rp_year_list = record_years if record_years is defined else [] %}
+{% if not rp_year_list %}
+  {% for item in rp_months if item.year %}
+    {% if item.year not in rp_year_list %}{% if rp_year_list.append(item.year) %}{% endif %}{% endif %}
+  {% endfor %}
+{% endif %}
+{% if not rp_year_list and years is defined %}{% set rp_year_list = years %}{% endif %}
+
+{% set rp_month_sel = ((record_selected_month if record_selected_month is defined else (month if month is defined else "")) or "")|string %}
+{% set rp_year_sel = ((record_selected_year if record_selected_year is defined else (year if year is defined else "")) or "")|string %}
+{% set rp_first_student = rp_students[0] if rp_students else None %}
+{% set rp_method_pairs = [] %}
+{% for v, t in rp_methods.items() %}
+  {% if rp_method_pairs.append({"value": (v|string), "label": (t|string)}) %}{% endif %}
+{% endfor %}
+{% set rp_student_pairs = [] %}
+{% for s in rp_students %}
+  {% if rp_student_pairs.append({"id": (s.id|string), "name": s.name}) %}{% endif %}
+{% endfor %}
+
+<dialog id="{{ rp_id }}" class="modal">
+  <form method="post" action="{{ rp_action }}" class="modal-box" id="rp-form">
+    <div class="modal-header">
+      <h3>Record payment</h3>
+      <button type="button" class="btn btn-ghost btn-circle" aria-label="Close" data-modal-close>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      {% if rp_error %}
+      <div role="alert" class="alert alert-error"><span>{{ rp_error }}</span></div>
+      {% endif %}
+
+      <input type="hidden" name="student_id" id="rp-student-id" value="{{ rp_first_student.id if rp_first_student else "" }}">
+
+      <div>
+        <label for="rp-campus" class="block text-[12.5px] font-semibold mb-1.5">Campus</label>
+        {% if rp_campus_editable %}
+        <select id="rp-campus" name="campus_id" class="select w-full">
+          {% for c in rp_campus_opts %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <select id="rp-campus" class="select w-full" disabled>
+          <option>{{ school_name() }}</option>
+        </select>
+        {% endif %}
+      </div>
+
+      <div>
+        <label for="rp-student" class="block text-[12.5px] font-semibold mb-1.5">Student</label>
+        {% if rp_students|length > 1 %}
+        <select id="rp-student" class="select w-full">
+          {% for s in rp_students %}
+          <option value="{{ s.id }}">{{ s.label }}</option>
+          {% endfor %}
+        </select>
+        {% elif rp_students %}
+        <select id="rp-student" class="select w-full">
+          <option value="{{ rp_first_student.id }}" selected>{{ rp_first_student.label }}</option>
+        </select>
+        {% else %}
+        <select id="rp-student" class="select w-full" disabled>
+          <option>No student in scope</option>
+        </select>
+        {% endif %}
+      </div>
+
+      <div>
+        <label for="rp-amount" class="block text-[12.5px] font-semibold mb-1.5">Amount (USD)</label>
+        <input id="rp-amount" name="amount" type="number" step="0.01" min="0.01" required
+               value="{{ rp_amount }}" placeholder="0.00" inputmode="decimal" class="input num">
+      </div>
+
+      <div>
+        <span class="block text-[12.5px] font-semibold mb-1.5">Owed month</span>
+        <div class="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <select id="rp-month" name="month" class="select w-full">
+            {% for item in rp_months %}
+            <option value="{{ item.value }}" {% if item.value == rp_month_sel %}selected{% endif %} data-year="{{ item.year if item.year else "" }}" data-label="{{ item.label }}" data-rate-cents="{{ item.rate_cents }}" data-expected-cents="{{ item.expected_cents }}" data-paid-cents="{{ item.paid_cents }}">{{ item.label }}</option>
+            {% endfor %}
+          </select>
+          <select id="rp-year" name="year" class="select" aria-label="Year">
+            {% for y in rp_year_list %}
+            <option value="{{ y }}" {% if y|string == rp_year_sel %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="rp-method" class="block text-[12.5px] font-semibold mb-1.5">Method</label>
+          <select id="rp-method" name="method" class="select w-full">
+            {% for value, text in rp_methods.items() %}
+            <option value="{{ value }}" {% if value == rp_method_sel %}selected{% endif %}>{{ text }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="rp-paid-on" class="block text-[12.5px] font-semibold mb-1.5">Payment date</label>
+          <input id="rp-paid-on" name="paid_on" type="date" value="{{ rp_paid_on }}" required class="input">
+        </div>
+      </div>
+
+      {#- Live allocation slip: monospace, updates on every field change. -#}
+      <div class="receipt-slip num" id="rp-slip" aria-live="polite">
+        <div class="text-center" style="font-weight:700">{{ school_name() }}</div>
+        {% if school_contact() %}
+        <div class="text-center" style="color:var(--ink-faint)">{{ school_contact() | join(" · ") }}</div>
+        {% endif %}
+        <div style="border-top:1px solid var(--rule);margin:8px 0"></div>
+        <div class="receipt-row"><span>Student</span><b>{{ rp_first_student.name if rp_first_student else "—" }}</b></div>
+        <div class="receipt-row" data-rp-row="period"><span>Owed month</span><b>—</b></div>
+        <div class="receipt-row" data-rp-row="rate"><span>Monthly Amount</span><b>—</b></div>
+        <div class="receipt-row" data-rp-row="paid"><span>Amount paid</span><b>—</b></div>
+        <div data-rp-slot></div>
+        <div style="border-top:1px dashed var(--rule);margin:8px 0"></div>
+        <div class="receipt-row" data-rp-row="status" style="font-weight:700"><span>Status</span><span>Enter an amount…</span></div>
+        <div class="receipt-row" style="color:var(--ink-faint)" data-rp-row="meta"><span>Method</span><span>Date</span></div>
+      </div>
+
+      <script type="application/json" id="rp-data">{{ {
+        "campus": school_name(),
+        "contact": school_contact(),
+        "methods": rp_method_pairs,
+        "students": rp_student_pairs,
+      } | tojson }}</script>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">Record payment</button>
+    </div>
+  </form>
+  <form method="dialog" class="modal-backdrop"><button aria-label="Close">close</button></form>
+</dialog>
+
+<script>
+(function () {
+  'use strict';
+  var dialog = document.getElementById('{{ rp_id }}');
+  var dataEl = document.getElementById('rp-data');
+  if (!dialog || !dataEl || dialog.dataset.rpWired) return;
+  dialog.dataset.rpWired = '1';
+  var DATA = JSON.parse(dataEl.textContent);
+  var STUDENTS = {};
+  DATA.students.forEach(function (s) { STUDENTS[s.id] = s; });
+  var METHOD_LABELS = {};
+  DATA.methods.forEach(function (m) { METHOD_LABELS[m.value] = m.label; });
+
+  function $(id) { return document.getElementById(id); }
+  var studentSel = $('rp-student');
+  var studentId = $('rp-student-id');
+  var amountIn = $('rp-amount');
+  var monthSel = $('rp-month');
+  var yearSel = $('rp-year');
+  var methodSel = $('rp-method');
+  var paidOn = $('rp-paid-on');
+  var slip = $('rp-slip');
+
+  function fmt(cents) {
+    var neg = cents < 0;
+    var s = (Math.abs(cents) / 100).toFixed(2);
+    return (neg ? '-$' : '$') + s;
+  }
+
+  function row(name) { return slip.querySelector('[data-rp-row="' + name + '"]'); }
+  function setRow(name, cells) {
+    var el = row(name);
+    if (!el) return null;
+    el.textContent = '';
+    cells.forEach(function (c) {
+      var span = document.createElement('span');
+      if (c.bold) { var b = document.createElement('b'); b.textContent = c.text; span.appendChild(b); }
+      else span.textContent = c.text;
+      if (c.style) span.setAttribute('style', c.style);
+      el.appendChild(span);
+    });
+    return el;
+  }
+
+  function markOverdueOptions() {
+    var now = new Date();
+    Array.prototype.forEach.call(monthSel.options, function (opt) {
+      var y = parseInt(opt.getAttribute('data-year'), 10);
+      var m = parseInt(opt.value, 10);
+      var exp = parseInt(opt.getAttribute('data-expected-cents'), 10) || 0;
+      var paid = parseInt(opt.getAttribute('data-paid-cents'), 10) || 0;
+      var overdue = !isNaN(y) && !isNaN(m) &&
+        (y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth() + 1)) &&
+        Math.max(exp - paid, 0) > 0;
+      opt.textContent = opt.getAttribute('data-label') + (overdue ? ' · overdue' : '');
+    });
+  }
+
+  function chosenLine() {
+    var opt = monthSel.options[monthSel.selectedIndex];
+    if (!opt) return null;
+    return {
+      label: opt.getAttribute('data-label'),
+      rate: parseInt(opt.getAttribute('data-rate-cents'), 10) || 0,
+      expected: parseInt(opt.getAttribute('data-expected-cents'), 10) || 0,
+      paid: parseInt(opt.getAttribute('data-paid-cents'), 10) || 0,
+      year: opt.getAttribute('data-year')
+    };
+  }
+
+  function syncYearFromMonth() {
+    var opt = monthSel.options[monthSel.selectedIndex];
+    if (!opt) return;
+    var y = opt.getAttribute('data-year');
+    if (y && yearSel && y !== '') yearSel.value = y;
+  }
+
+  function syncMonthFromYear() {
+    if (!yearSel) return;
+    var y = yearSel.value;
+    for (var i = 0; i < monthSel.options.length; i++) {
+      if (monthSel.options[i].getAttribute('data-year') === y) {
+        monthSel.selectedIndex = i;
+        return;
+      }
+    }
+  }
+
+  function renderSlip() {
+    var sid = studentId.value;
+    var stu = STUDENTS[sid] || null;
+    var line = chosenLine();
+    var cents = Math.round(parseFloat(amountIn.value) * 100);
+    var hasAmount = !isNaN(cents) && cents > 0;
+
+    setRow('period', [{ text: line ? line.label : '—', bold: true }]);
+    setRow('rate', [{ text: line ? fmt(line.rate) : '—', bold: true }]);
+    setRow('paid', [{ text: hasAmount ? fmt(cents) : '—', bold: true }]);
+
+    var slot = slip.querySelector('[data-rp-slot]');
+    slot.textContent = '';
+
+    var statusStyle = { full: 'color:var(--sf-emerald-text)', partial: 'color:var(--sf-amber-text)' };
+    if (!stu) {
+      setRow('status', [{ text: 'Status' }, { text: 'Pick a student…' }]);
+    } else if (!hasAmount) {
+      setRow('status', [{ text: 'Status' }, { text: 'Enter an amount…' }]);
+    } else if (line) {
+      var shortfall = Math.max(line.expected - line.paid, 0);
+      var applied = Math.min(cents, shortfall);
+      var credit = cents - applied;
+
+      if (credit > 0) {
+        var creditRow = document.createElement('div');
+        creditRow.className = 'receipt-row';
+        var lbl = document.createElement('span');
+        lbl.textContent = 'Credit rolled forward';
+        var val = document.createElement('b');
+        val.textContent = fmt(credit);
+        val.setAttribute('style', 'background:var(--sf-indigo-subtle);color:var(--sf-indigo-text);padding:1px 6px;border-radius:4px');
+        creditRow.appendChild(lbl);
+        creditRow.appendChild(val);
+        slot.appendChild(creditRow);
+      }
+
+      var statusText;
+      if (credit > 0) {
+        statusText = 'Paid in full + credit forwarded';
+      } else if (applied < shortfall) {
+        statusText = 'Partial payment — remaining ' + fmt(shortfall - applied);
+      } else {
+        statusText = 'Cleared in full';
+      }
+      var tone = credit > 0 ? statusStyle.full : (applied < shortfall ? statusStyle.partial : statusStyle.full);
+      setRow('status', [{ text: 'Status' }, { text: statusText, style: tone }]);
+    }
+
+    var methodName = methodSel && methodSel.options[methodSel.selectedIndex]
+      ? METHOD_LABELS[methodSel.options[methodSel.selectedIndex].value] || methodSel.options[methodSel.selectedIndex].textContent : '—';
+    setRow('meta', [
+      { text: (DATA.campus || '') + ' · ' + methodName },
+      { text: paidOn ? ('Paid ' + paidOn.value) : '' }
+    ]);
+  }
+
+  if (studentSel) {
+    studentSel.addEventListener('change', function () {
+      studentId.value = studentSel.value;
+      renderSlip();
+    });
+  }
+  monthSel.addEventListener('change', function () { syncYearFromMonth(); renderSlip(); });
+  if (yearSel) yearSel.addEventListener('change', function () { syncMonthFromYear(); renderSlip(); });
+  amountIn.addEventListener('input', renderSlip);
+  if (methodSel) methodSel.addEventListener('change', renderSlip);
+  if (paidOn) paidOn.addEventListener('change', renderSlip);
+
+  markOverdueOptions();
+  syncYearFromMonth();
+  renderSlip();
+})();
+</script>
