@@ -1,6 +1,8 @@
+{#- Arrears badges — Calm Slate pill vocabulary for the collections queue. -#}
+
 {% macro debt_age_badge(band) %}
 {% set tones = {
-  "current": "badge-neutral",
+  "current": "badge-slate",
   "late": "badge-warning",
   "overdue": "badge-error",
 } %}
@@ -9,5 +11,15 @@
   "late": "31-60 days",
   "overdue": "Over 60 days",
 } %}
-<span class="badge {{ tones.get(band, 'badge-neutral') }}">{{ labels.get(band, band) }}</span>
+<span class="badge {{ tones.get(band, 'badge-slate') }}">{{ labels.get(band, band) }}</span>
+{% endmacro %}
+
+{#- Urgency flag for the queue: amber Urgent once the oldest shortfall is over
+  60 days, slate Reminder otherwise (ui-round 05). -#}
+{% macro urgency_badge(band) %}
+{% if band == "overdue" %}
+<span class="badge badge-amber">Urgent</span>
+{% else %}
+<span class="badge badge-slate">Reminder</span>
+{% endif %}
 {% endmacro %}
