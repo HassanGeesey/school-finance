@@ -198,5 +198,48 @@
     });
   });
 
+
+  /* ── Dark mode toggle ────────────────────────────────────────────── */
+  var THEME_KEY = 'sf-theme';
+  var themeToggle = document.getElementById('theme-toggle');
+  var themeIconSun = document.getElementById('theme-icon-sun');
+  var themeIconMoon = document.getElementById('theme-icon-moon');
+  var themeLabel = document.getElementById('theme-label');
+
+  function prefersDark() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  function currentTheme() {
+    var saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'dark' || saved === 'light') return saved;
+    return prefersDark() ? 'dark' : 'light';
+  }
+
+  function applyTheme(mode) {
+    var isDark = mode === 'dark';
+    document.documentElement.setAttribute('data-theme', isDark ? 'schoolfinance-dark' : 'schoolfinance');
+    if (themeIconSun) themeIconSun.style.display = isDark ? 'none' : '';
+    if (themeIconMoon) themeIconMoon.style.display = isDark ? '' : 'none';
+    if (themeLabel) themeLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
+  }
+
+  if (themeToggle) {
+    themeToggle.addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      localStorage.setItem(THEME_KEY, next);
+      applyTheme(next);
+    });
+    applyTheme(currentTheme());
+  }
+
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+      if (!localStorage.getItem(THEME_KEY)) {
+        applyTheme(prefersDark() ? 'dark' : 'light');
+      }
+    });
+  }
+
   window.showToast = showToast;
 })();
