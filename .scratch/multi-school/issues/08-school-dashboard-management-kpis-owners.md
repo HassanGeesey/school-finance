@@ -6,7 +6,7 @@
 
 **Status:** implemented
 
-- [ ] A browser prototype of the School Dashboard, campus management, and owner view is shown and approved before implementation
+- [x] A browser prototype of the School Dashboard, campus management, and owner view is shown and approved before implementation
 - [x] The Superadmin creates a Campus, assigns a Campus Admin, creates and revokes Owner accounts, and archives a Campus — each action audited as School-level
 - [x] Per-Campus KPI cards (collections, arrears, expenses, expected-vs-paid) render from each Campus's data; a two-Campus School is compared side by side
 - [x] Drill-down shows any Campus's existing pages read-only — no mutation available

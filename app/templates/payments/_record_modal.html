@@ -177,19 +177,19 @@
 
       {#- Live allocation slip: monospace, updates on every field change. -#}
       <div class="receipt-slip num" id="rp-slip" aria-live="polite">
-        <div class="text-center" style="font-weight:700">{{ school_name() }}</div>
+        <div class="text-center font-bold">{{ school_name() }}</div>
         {% if school_contact() %}
-        <div class="text-center" style="color:var(--ink-faint)">{{ school_contact() | join(" · ") }}</div>
+        <div class="text-center" style="color:var(--sf-text-muted)">{{ school_contact() | join(" · ") }}</div>
         {% endif %}
-        <div style="border-top:1px solid var(--rule);margin:8px 0"></div>
+        <div style="border-top:1px solid var(--sf-border-subtle);margin:var(--sf-space-sm) 0"></div>
         <div class="receipt-row"><span>Student</span><b>{{ rp_first_student.name if rp_first_student else "—" }}</b></div>
         <div class="receipt-row" data-rp-row="period"><span>Owed month</span><b>—</b></div>
         <div class="receipt-row" data-rp-row="rate"><span>Monthly Amount</span><b>—</b></div>
         <div class="receipt-row" data-rp-row="paid"><span>Amount paid</span><b>—</b></div>
         <div data-rp-slot></div>
-        <div style="border-top:1px dashed var(--rule);margin:8px 0"></div>
-        <div class="receipt-row" data-rp-row="status" style="font-weight:700"><span>Status</span><span>Enter an amount…</span></div>
-        <div class="receipt-row" style="color:var(--ink-faint)" data-rp-row="meta"><span>Method</span><span>Date</span></div>
+        <div style="border-top:1px dashed var(--sf-border-subtle);margin:var(--sf-space-sm) 0"></div>
+        <div class="receipt-row font-bold" data-rp-row="status"><span>Status</span><span>Enter an amount…</span></div>
+        <div class="receipt-row" style="color:var(--sf-text-muted)" data-rp-row="meta"><span>Method</span><span>Date</span></div>
       </div>
 
       <script type="application/json" id="rp-data">{{ {
@@ -326,7 +326,7 @@
         lbl.textContent = 'Credit rolled forward';
         var val = document.createElement('b');
         val.textContent = fmt(credit);
-        val.setAttribute('style', 'background:var(--sf-indigo-subtle);color:var(--sf-indigo-text);padding:1px 6px;border-radius:4px');
+        val.setAttribute('style', 'background:var(--sf-indigo-subtle);color:var(--sf-indigo-text);padding:1px 6px;border-radius:var(--sf-radius-sm)');
         creditRow.appendChild(lbl);
         creditRow.appendChild(val);
         slot.appendChild(creditRow);

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Request Journey — Reference</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-head">
+  <p class="kicker">Reference</p>
+  <h1>The Request Journey</h1>
+  <p class="lede">What happens, in order, when a page is opened in this app — the cheat sheet to keep beside you while reading code.</p>
+</header>
+
+<nav class="ref-nav">
+  <a href="#journey" data-def="The six stops every request makes, with the real files involved">The journey</a>
+  <a href="#map" data-def="Where each kind of code lives in the repo">Repo map</a>
+  <a href="#glossary" data-def="Plain-language definitions of the terms used across lessons">Glossary</a>
+</nav>
+
+<section id="journey">
+<h2>The six stops</h2>
+
+<figure class="flow">
+  <div class="flow-row">
+    <div class="flow-step"><b>1. Browser</b>you click /students</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><b>2. Router</b><code>app/**/routes.py</code></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><b>3. Gates</b><code>app/auth/deps.py</code></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><b>4. Service</b><code>app/**/service.py</code></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><b>5. Database</b><code>app/models.py</code></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><b>6. Template</b><code>app/templates/**</code></div>
+  </div>
+  <figcaption>The URL travels down through layers; the rendered HTML travels back up. Routes are <em>thin</em> — they do almost no work themselves.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Stop</th><th>What it does</th><th>Real file</th></tr>
+  <tr>
+    <td><b>1. Browser</b></td>
+    <td>Types a URL / clicks a link → sends an HTTP request.</td>
+    <td><code>app/static/js/ui.js</code> and <code>htmx.min.js</code> enhance what the server sends</td>
+  </tr>
+  <tr>
+    <td><b>2. Router</b></td>
+    <td>Matches the URL path against <code>@router.get("/…")</code> decorators, calls the matching function. This is the only place URLs are decided.</td>
+    <td><code>app/students/routes.py:223</code> — <code>@router.get("/students")</code></td>
+  </tr>
+  <tr>
+    <td><b>3. Gate</b></td>
+    <td>Dependencies like <code>Depends(require_login)</code> run first; they check who you are (session) and what role you have, and reject the request with a redirect / 403 if you shouldn't be there.</td>
+    <td><code>app/auth/deps.py</code> — <code>require_login</code>, <code>require_admin</code></td>
+  </tr>
+  <tr>
+    <td><b>4. Service</b></td>
+    <td>Contains the actual business rules: what a student account is owed, what "overdue" means. Routers call services — never the database directly.</td>
+    <td><code>app/students/service.py</code> — <code>StudentService.search_students()</code></td>
+  </tr>
+  <tr>
+    <td><b>5. Database</b></td>
+    <td>SQLAlchemy models map rows to Python objects. Services query them in the current tenant scope.</td>
+    <td><code>app/models.py</code> — <code>Student</code>, <code>Class</code>, <code>FeeTemplate</code>…</td>
+  </tr>
+  <tr>
+    <td><b>6. Template</b></td>
+    <td>Jinja2 HTML files mix markup with data via <code>{{ value }}</code> and <code>{% for … %}</code>. The router renders one with <code>TemplateResponse</code>.</td>
+    <td><code>app/templates/students/search.html</code></td>
+  </tr>
+</table>
+
+<h3>Two render modes</h3>
+<ul>
+  <li><b>Full page</b> — a normal GET returns a complete HTML document.</li>
+  <li><b>HTMX partial</b> — forms submit via HTMX (header <code>HX-Request</code>); the server returns just a fragment, and HTMX swaps it into the page without a reload.</li>
+</ul>
+</section>
+
+<section id="map">
+<h2>Repo map</h2>
+<table>
+  <tr><th>Path</th><th>Role</th></tr>
+  <tr><td><code>app/main.py</code></td><td>App factory: wires services and routers together, mounts static files</td></tr>
+  <tr><td><code>app/config.py</code></td><td>Settings (database URL, app name…) from environment</td></tr>
+  <tr><td><code>app/db.py</code></td><td>Engine + session wiring for the database</td></tr>
+  <tr><td><code>app/templating.py</code></td><td>Shared template globals: <code>money</code>, <code>current_user</code>, <code>school_name</code>…</td></tr>
+  <tr><td><code>app/models.py</code></td><td>All database tables as SQLAlchemy models</td></tr>
+  <tr><td><code>app/&lt;feature&gt;/routes.py</code></td><td>URLs for one feature (students, fees, payments…)</td></tr>
+  <tr><td><code>app/&lt;feature&gt;/service.py</code></td><td>Business rules for that feature</td></tr>
+  <tr><td><code>app/templates/&lt;feature&gt;/</code></td><td>Jinja2 pages for that feature</td></tr>
+  <tr><td><code>app/static/</code></td><td>CSS, JS (htmx, chart.js, ui.js)</td></tr>
+</table>
+</section>
+
+<section id="glossary">
+<h2>Glossary</h2>
+<dl class="glossary">
+  <dt>Request</dt><dd>A message your browser sends: GET (fetch a page) or POST (submit a form), with a URL.</dd>
+  <dt>Route / endpoint</dt><dd>A URL pattern a decorator maps to a function.</dd>
+  <dt>Router</dt><dd>The collection of routes for one feature (<code>APIRouter</code>).</dd>
+  <dt>Dependency / gate</dt><dd>A function FastAPI runs before the route handler, often checking auth.</dd>
+  <dt>Service</dt><dd>A Python class holding business rules; the router's workhorse.</dd>
+  <dt>Model</dt><dd>A class describing one database table (<code>Student</code>, <code>FeeTemplate</code>).</dd>
+  <dt>Template</dt><dd>An HTML file with Jinja2 placeholders that the server fills with data.</dd>
+  <dt>HTMX swap</dt><dd>Replacing part of the page with a fragment the server returned.</dd>
+  <dt>Session</dt><dd>The "who am I" cookie the server checks on each request.</dd>
+  <dt>Tenant scope</dt><dd>The current Campus every query is confined to (multi-school).</dd>
+  <dt>ORM</dt><dd>Object-relational mapper (SQLAlchemy): Python objects <em>are</em> the rows.</dd>
+</dl>
+</section>
+
+<footer class="lesson-foot">
+  <p>Reference for <a href="../lessons/0001-the-request-journey.html" data-def="The first lesson: follow one real request through this app">Lesson 1 — The Request Journey</a>.</p>
+  <p>Questions? Ask your teacher — that's the point of the lessons.</p>
+</footer>
+
+</body>
+</html>
