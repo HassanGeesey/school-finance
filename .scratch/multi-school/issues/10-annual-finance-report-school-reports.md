@@ -19,7 +19,7 @@
 
 Grilling session: `project-decisions.md` → "Annual finance report + School Reports" (Y-1..Y-6). Terms: `CONTEXT.md` → "Reporting" (Annual Finance Report, School Reports).
 
-**Built (commit: NOT COMMITTED — working tree carries unrelated in-flight UI-round edits in the shared template files):**
+**Built (commit `77bb48b` — pushed to `origin/ui` alongside the in-flight UI-round work the shared template files carried):**
 
 Service: `app/reports/service.py` gains `annual_finance(year)` (12 `PeriodLine` months + totals + an annual arrears figure via `ArrearsService.arrears_report(today=snapshot_date)`, where `snapshot_date = min(date(year,12,31), today)` so a completed year is capped at Dec 31 and the current year at today), `annual_years()` (distinct years with owed months/payments/expenses), and an `end` bound on the by-month payment/expense helpers. `app/schools/service.py` gains `annual_years()` and `annual_rollup(year)` (runs the report service under each Campus scope, like `_kpi`), returning per-Campus reports, school totals, and a school-wide monthly series.
 
