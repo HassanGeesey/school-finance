@@ -1,4 +1,4 @@
-{% macro class_status_badge(status) %}
+﻿{% macro class_status_badge(status) %}
 {% set tones = {
   "active": "badge-emerald",
   "completed": "badge-indigo",
@@ -6,3 +6,4 @@
 } %}
 <span class="badge {{ tones.get(status, 'badge-slate') }}">{{ class_status_label(status) }}</span>
 {% endmacro %}
+

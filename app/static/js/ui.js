@@ -199,6 +199,58 @@
   });
 
 
+  /* ── User-pill dropdown keyboard support ──────────────────────────── */
+  document.querySelectorAll('.dropdown [role="button"]').forEach(function (trigger) {
+    trigger.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        trigger.click();
+      }
+    });
+    /* Keep aria-expanded in sync when the dropdown opens/closes */
+    var observer = new MutationObserver(function () {
+      var menu = trigger.parentElement.querySelector('.dropdown-content');
+      if (menu) trigger.setAttribute('aria-expanded', menu.classList.contains('show') || menu.offsetParent !== null ? 'true' : 'false');
+    });
+    var dd = trigger.parentElement;
+    if (dd) observer.observe(dd, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  });
+
+  /* ── Payment search keyboard navigation ──────────────────────────── */
+  document.addEventListener('keydown', function (e) {
+    var results = document.getElementById('payment-results');
+    if (!results || results.classList.contains('hidden')) return;
+    var items = results.querySelectorAll('button, a, [role="option"]');
+    if (!items.length) return;
+    var active = results.querySelector('.active-search-item');
+    var idx = Array.prototype.indexOf.call(items, active);
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (active) active.classList.remove('active-search-item');
+      idx = (idx + 1) % items.length;
+      items[idx].classList.add('active-search-item');
+      items[idx].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (active) active.classList.remove('active-search-item');
+      idx = idx <= 0 ? items.length - 1 : idx - 1;
+      items[idx].classList.add('active-search-item');
+      items[idx].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' && active) {
+      e.preventDefault();
+      active.click();
+    }
+  });
+
+  /* ── Hide save-hint when a student is selected ───────────────────── */
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (e.detail.target && e.detail.target.id === 'payment-student') {
+      var hint = document.getElementById('payment-save-hint');
+      if (hint) hint.classList.add('hidden');
+    }
+  });
+
   /* ── Dark mode toggle ────────────────────────────────────────────── */
   var THEME_KEY = 'sf-theme';
   var themeToggle = document.getElementById('theme-toggle');

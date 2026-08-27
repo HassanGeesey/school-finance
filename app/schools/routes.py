@@ -14,6 +14,7 @@ nothing is ever written.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Callable
 from urllib.parse import urlencode
 
@@ -228,6 +229,108 @@ def enable_owner(
 
 
 # ---------------------------------------------------------------------------
+# School Reports (Superadmin / Owner)
+# ---------------------------------------------------------------------------
+
+
+def _school_year_options(service: SchoolDashboardService) -> list[tuple[str, str]]:
+    """(value, label) year pairs for the hub/rollup dropdowns."""
+    years = service.annual_years()
+    if years:
+        return [(str(year), str(year)) for year in years]
+    return [(str(date.today().year), str(date.today().year))]
+
+
+def _school_selected_year(service: SchoolDashboardService, year: int | None) -> int:
+    """The selected year: the ``year`` query param, else the newest data year."""
+    if year is not None:
+        return year
+    years = service.annual_years()
+    if years:
+        return years[0]
+    return date.today().year
+
+
+@router.get("/school/reports", response_class=HTMLResponse)
+def school_reports(
+    request: Request,
+    year: int | None = None,
+    _user: User = Depends(require_school_bound),
+) -> HTMLResponse:
+    service = _service(request)
+    selected_year = _school_selected_year(service, year)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="school/reports.html",
+        context={
+            "school": service.school(),
+            "campuses": service.list_campuses(),
+            "year": selected_year,
+            "year_options": _school_year_options(service),
+        },
+    )
+
+
+@router.get("/school/reports/annual", response_class=HTMLResponse)
+def school_annual_rollup(
+    request: Request,
+    year: int | None = None,
+    _user: User = Depends(require_school_bound),
+) -> HTMLResponse:
+    service = _service(request)
+    selected_year = _school_selected_year(service, year)
+    report = service.annual_rollup(selected_year)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="school/annual_rollup.html",
+        context={
+            "school": service.school(),
+            "report": report,
+            "year": selected_year,
+            "year_options": _school_year_options(service),
+        },
+    )
+
+
+@router.get("/school/reports/annual.csv")
+def school_annual_rollup_csv(
+    request: Request,
+    year: int | None = None,
+    _user: User = Depends(require_school_bound),
+) -> Response:
+    from ..reports.routes import _amount, _csv, _csv_response
+
+    service = _service(request)
+    selected_year = _school_selected_year(service, year)
+    report = service.annual_rollup(selected_year)
+    rows: list[list[object]] = [
+        ["Annual finance rollup", str(selected_year)],
+        [],
+        ["Campus", "Income (payments)", "Expenses", "Net", "Year-end arrears"],
+    ]
+    rows += [
+        [
+            entry.campus.name,
+            _amount(entry.report.income_cents),
+            _amount(entry.report.expenses_cents),
+            _amount(entry.report.net_cents),
+            _amount(entry.report.year_end_arrears_cents),
+        ]
+        for entry in report.campuses
+    ]
+    rows += [
+        [
+            "School total",
+            _amount(report.income_cents),
+            _amount(report.expenses_cents),
+            _amount(report.net_cents),
+            _amount(report.year_end_arrears_cents),
+        ]
+    ]
+    return _csv_response(_csv(rows), filename="annual-finance-rollup")
+
+
+# ---------------------------------------------------------------------------
 # Read-only drill-down: a School-bound viewer opening one Campus's pages
 # ---------------------------------------------------------------------------
 
@@ -395,6 +498,8 @@ def _campus_report(
     class_id: int | None = None,
 ) -> Response:
     from ..reports.routes import (
+        annual_csv,
+        annual_page,
         expense_category_csv,
         expense_category_page,
         income_expense_csv,
@@ -407,7 +512,8 @@ def _campus_report(
         summary_page,
     )
 
-    def run_with(csv_suffix: bool, req: Request):
+    def run_with(csv_suffix: bool, req: Request) -> Response:
+        handler: Callable[..., Response]
         if page_name == "income-expense":
             handler = income_expense_csv if csv_suffix else income_expense_page
             return handler(req, period=period, month=month, year=year)
@@ -423,6 +529,9 @@ def _campus_report(
         if page_name == "students":
             handler = students_csv if csv_suffix else students_page
             return handler(req, class_id=class_id)
+        if page_name == "annual":
+            handler = annual_csv if csv_suffix else annual_page
+            return handler(req, year=year)
         raise HTTPException(status_code=404, detail="Report not found.")
 
     campus = _campus_or_404(request, campus_id)
@@ -430,8 +539,8 @@ def _campus_report(
     return _under_campus(request, campus, lambda req: run_with(csv_suffix, req))
 
 
-@router.get("/campuses/{campus_id}/reports/{report_name}", response_class=HTMLResponse)
-def campus_report_page(
+@router.get("/campuses/{campus_id}/reports/{report_name}.csv")
+def campus_report_csv(
     request: Request,
     campus_id: int,
     report_name: str,
@@ -452,8 +561,8 @@ def campus_report_page(
     )
 
 
-@router.get("/campuses/{campus_id}/reports/{report_name}.csv")
-def campus_report_csv(
+@router.get("/campuses/{campus_id}/reports/{report_name}", response_class=HTMLResponse)
+def campus_report_page(
     request: Request,
     campus_id: int,
     report_name: str,

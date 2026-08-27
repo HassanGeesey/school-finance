@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, card, btn, badge, empty_state %}
+
+{% block title %}School reports - {{ school.name }}{% endblock %}
+{% block topbar_title %}School reports{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {{ page_header(
+       "School Reports",
+       "The annual finance report for every Campus of " ~ school.name ~ ", and the school-wide annual rollup."
+  ) }}
+
+  <form method="get" action="/school/reports" class="no-print">
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <label for="year" class="label"><span class="label-text">Year</span></label>
+        <select id="year" name="year" class="select select-sm w-full">
+          {% for value, label in year_options %}
+          <option value="{{ value }}" {% if value == year|string %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-sm">{{ icon("arrow-path", "w-4 h-4") }} Show</button>
+    </div>
+  </form>
+
+  {% call card(
+       title="Annual finance rollup",
+       subtitle="The whole School for " ~ year ~ ": every Campus side by side, with school-wide totals."
+  ) %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-base-content/70">
+        Income, expenses, net, and year-end arrears across every Campus, plus the school-wide monthly cash flow.
+      </p>
+      {{ btn(href="/school/reports/annual?year=" ~ year, label="Open rollup", icon="arrow-right", variant="primary", size="sm") }}
+    </div>
+  {% endcall %}
+
+  <section class="space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="board-title">Campuses</h2>
+      <span class="text-xs text-base-content/60">Annual finance report per Campus</span>
+    </div>
+
+    <div class="grid items-start gap-6 lg:grid-cols-2">
+      {% for summary in campuses %}
+      {% set c = summary.campus %}
+      <article class="content-panel">
+        <div class="panel-header">
+          <div class="panel-title-area min-w-0">
+            <h2 class="board-title flex flex-wrap items-center gap-2">
+              <span class="min-w-0">{{ c.name }}</span>
+              {% if c.archived %}
+              {{ badge("Archived", "slate") }}
+              {% else %}
+              {{ badge("Active", "emerald") }}
+              {% endif %}
+            </h2>
+            {% if summary.admin %}
+            <p class="board-sub">Manager: <strong>{{ summary.admin.name }}</strong></p>
+            {% else %}
+            <p class="board-sub">No Campus Admin assigned yet.</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="flex flex-wrap items-center gap-2">
+            {{ btn(href="/campuses/" ~ c.id ~ "/reports/annual?year=" ~ year, label="Annual finance report", icon="calendar-days", variant="secondary", size="sm") }}
+            {{ btn(href="/campuses/" ~ c.id ~ "/reports", label="All reports", icon="chart-bar", variant="ghost", size="sm") }}
+            {% if not c.archived %}
+            {{ btn(href="/campuses/" ~ c.id, label="Enter campus", icon="arrow-right", variant="ghost", size="sm") }}
+            {% endif %}
+          </div>
+        </div>
+      </article>
+      {% else %}
+      <div class="board lg:col-span-2">
+        <div class="board-body">
+          {{ empty_state("No Campuses yet", "Create the School's first Campus to get reporting.", "building-office-2") }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

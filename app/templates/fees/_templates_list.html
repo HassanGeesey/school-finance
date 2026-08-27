@@ -1,4 +1,4 @@
-{% from "components/icons.html" import icon %}
+﻿{% from "components/icons.html" import icon %}
 {% from "components/ui.html" import card, badge, btn, empty_state, table_scroll %}
 
 {% call card(title="Templates", subtitle="An archived template keeps its history and linked students but stops appearing in the class and student pickers.") %}
@@ -48,7 +48,7 @@
         {% else %}
         <tr>
           <td colspan="{{ 5 if is_admin else 4 }}">
-            {{ empty_state("No fee templates yet", "Create the first template — classes and students can then be pointed at it.", "banknotes") }}
+            {{ empty_state("No fee templates yet", "Create the first template - classes and students can then be pointed at it.", "banknotes") }}
           </td>
         </tr>
         {% endfor %}
@@ -56,3 +56,4 @@
     </table>
   {% endcall %}
 {% endcall %}
+

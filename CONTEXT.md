@@ -97,3 +97,13 @@ _Avoid_: Allocation, payment for, unallocated payment
 **Credit**:
 Money a parent has paid beyond what was owed. It rolls forward and covers the oldest owed months' shortfalls first.
 _Avoid_: Overpayment, credit balance, refund, advance
+
+## Reporting
+
+**Annual Finance Report**:
+The per-Campus yearly report: twelve monthly rows (income, expenses, net), annual totals, and an annual arrears figure — the derived comparison capped to the year's owed months (through Dec 31 for a completed year, through today for the current year), so a student enrolled or leaving later never changes it.
+_Avoid_: Yearly report, annual statement, year-to-date report
+
+**School Reports**:
+The Superadmin and Owner/Shareholder reporting surface: per-Campus Annual Finance Report cards and the All Campuses annual rollup. Read-only, like every School-level view.
+_Avoid_: Executive reports, report menu, school reporting hub

@@ -40,7 +40,9 @@ from sqlalchemy.orm import Session
 from ..audit.service import AuditActions, AuditService
 from ..auth.service import hash_password
 from ..db import Database
+from ..fees.service import period_label
 from ..models import Campus, School, User, UserRoles
+from ..reports.service import AnnualFinanceReport, PeriodLine
 from ..tenants.scope import RequestScope, require_scope, scope_context
 
 
@@ -116,6 +118,31 @@ class PortfolioKpis:
         return round(min(self.total_collected_cents / self.total_expected_cents, 1.0) * 100)
 
 
+@dataclass(frozen=True)
+class CampusAnnualReport:
+    """One Campus's Annual Finance Report inside the school-wide rollup."""
+
+    campus: Campus
+    report: AnnualFinanceReport
+
+
+@dataclass(frozen=True)
+class AnnualRollupReport:
+    """The All-Campuses annual rollup: per-Campus reports plus school totals.
+
+    ``monthly`` is the school-wide income/expense/net series for the twelve
+    months of the year, summed across every Campus.
+    """
+
+    year: int
+    campuses: list[CampusAnnualReport]
+    monthly: list[PeriodLine]
+    income_cents: int
+    expenses_cents: int
+    net_cents: int
+    year_end_arrears_cents: int
+
+
 class SchoolDashboardService:
     """School business rules. Each method is one unit of work on its own session."""
 
@@ -161,6 +188,16 @@ class SchoolDashboardService:
             raise CampusNotFound(f"No Campus with id {campus_id} exists in this School.")
         return campus
 
+    def _school_campuses(self, session: Session) -> list[Campus]:
+        """The School's Campuses, active first then by name."""
+        school = self._get_school(session)
+        return (
+            session.query(Campus)
+            .filter(Campus.school_id == school.id)
+            .order_by(Campus.archived.asc(), func.lower(Campus.name), Campus.id)
+            .all()
+        )
+
     def _active_campus_count(self, session: Session) -> int:
         return (
             session.query(Campus)
@@ -179,12 +216,7 @@ class SchoolDashboardService:
         """The School's Campuses, active first then by name, each with its KPIs."""
         with self._session() as session:
             school = self._get_school(session)
-            campuses = (
-                session.query(Campus)
-                .filter(Campus.school_id == school.id)
-                .order_by(Campus.archived.asc(), func.lower(Campus.name), Campus.id)
-                .all()
-            )
+            campuses = self._school_campuses(session)
             admins = {
                 user.campus_id: user
                 for user in session.query(User)
@@ -222,6 +254,79 @@ class SchoolDashboardService:
             active_campus_count=active_count,
             archived_campus_count=len(campuses) - active_count,
             active_student_count=sum(kpi.active_student_count for kpi in kpis),
+        )
+
+    # -- Annual reporting ----------------------------------------------------
+
+    def annual_years(self) -> list[int]:
+        """Years with any Campus data across the School, newest first.
+
+        Feeds the School Reports hub and rollup year dropdowns. Runs the report
+        service under the School-wide scope so every Campus's years count.
+        """
+        if self._reports is None:
+            return []
+        with scope_context(
+            RequestScope(user=None, school_id=self._school_id(), campus_id=None)
+        ):
+            return self._reports.annual_years()
+
+    def annual_rollup(self, year: int) -> AnnualRollupReport:
+        """Every Campus's Annual Finance Report for a year, side by side.
+
+        Each Campus's report is computed by running the report service under
+        that Campus's scope (mirrors ``_kpi``); the totals and the school-wide
+        monthly series roll those Campus reports up, so nothing is double
+        counted.
+        """
+        with self._session() as session:
+            campuses = self._school_campuses(session)
+        if self._reports is None:
+            return AnnualRollupReport(
+                year=year,
+                campuses=[],
+                monthly=[],
+                income_cents=0,
+                expenses_cents=0,
+                net_cents=0,
+                year_end_arrears_cents=0,
+            )
+        school_id = self._school_id()
+        campus_reports: list[CampusAnnualReport] = []
+        for campus in campuses:
+            campus_scope = RequestScope(
+                user=None, school_id=school_id, campus_id=campus.id
+            )
+            with scope_context(campus_scope):
+                report = self._reports.annual_finance(year)
+            campus_reports.append(CampusAnnualReport(campus=campus, report=report))
+        monthly = [
+            PeriodLine(
+                month=month,
+                year=year,
+                label=period_label(month, year),
+                income_cents=sum(
+                    cr.report.monthly[month - 1].income_cents for cr in campus_reports
+                ),
+                expenses_cents=sum(
+                    cr.report.monthly[month - 1].expenses_cents for cr in campus_reports
+                ),
+                net_cents=sum(
+                    cr.report.monthly[month - 1].net_cents for cr in campus_reports
+                ),
+            )
+            for month in range(1, 13)
+        ]
+        return AnnualRollupReport(
+            year=year,
+            campuses=campus_reports,
+            monthly=monthly,
+            income_cents=sum(cr.report.income_cents for cr in campus_reports),
+            expenses_cents=sum(cr.report.expenses_cents for cr in campus_reports),
+            net_cents=sum(cr.report.net_cents for cr in campus_reports),
+            year_end_arrears_cents=sum(
+                cr.report.year_end_arrears_cents for cr in campus_reports
+            ),
         )
 
     def list_owners(self) -> list[User]:

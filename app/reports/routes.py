@@ -106,6 +106,25 @@ def _class_options(request: Request) -> list[tuple[int, str]]:
     ]
 
 
+def _year_options(years: Iterable[int]) -> list[tuple[str, str]]:
+    """(value, label) pairs for the annual report's year dropdown."""
+    return [(str(year), str(year)) for year in years]
+
+
+def _resolve_year(request: Request, year: int | None) -> int:
+    """The selected year: the ``year`` query param, else the newest data year.
+
+    Falls back to the current calendar year when no data exists at all, so the
+    page always renders a report (empty rather than error).
+    """
+    if year is not None:
+        return year
+    years = _service(request).annual_years()
+    if years:
+        return years[0]
+    return date.today().year
+
+
 # -- CSV ---------------------------------------------------------------------
 
 
@@ -201,6 +220,12 @@ def reports_page(
             "description": "A month's income, expenses, and net, together with unpaid-fee and credit balances.",
             "href": "/reports/summary",
             "icon": "banknotes",
+        },
+        {
+            "title": "Annual finance report",
+            "description": "Income vs expenses month by month across a full year, with the year's totals and year-end arrears.",
+            "href": "/reports/annual",
+            "icon": "calendar-days",
         },
         {
             "title": "Student list",
@@ -484,6 +509,71 @@ def summary_csv(
     rows: list[list[object]] = [["Summarized finance", report.period_label]]
     rows += [[row.label, _amount(row.amount_cents)] for row in report.rows]
     return _csv_response(_csv(rows), filename="summary")
+
+
+# -- Annual finance report ---------------------------------------------------
+
+
+@router.get("/reports/annual", response_class=HTMLResponse)
+def annual_page(
+    request: Request,
+    year: int | None = None,
+    _user: User = Depends(require_login),
+) -> HTMLResponse:
+    selected_year = _resolve_year(request, year)
+    report = _service(request).annual_finance(selected_year)
+    return _render_report(
+        request,
+        template="reports/annual.html",
+        context={
+            "report_title": "Annual finance report",
+            "report_subtitle": (
+                "Income against expenses for each month of the year, with the "
+                "year's totals and arrears as of year end."
+            ),
+            "page_url": "/reports/annual",
+            "export_url": "/reports/annual.csv",
+            "export_params": {"year": str(selected_year)},
+            "selected_year": str(selected_year),
+            "year_options": _year_options(_service(request).annual_years()),
+            "report": report,
+        },
+    )
+
+
+@router.get("/reports/annual.csv")
+def annual_csv(
+    request: Request,
+    year: int | None = None,
+    _user: User = Depends(require_login),
+) -> Response:
+    selected_year = _resolve_year(request, year)
+    report = _service(request).annual_finance(selected_year)
+    rows: list[list[object]] = [
+        ["Annual finance report", str(selected_year)],
+        [],
+        ["Month", "Income (payments)", "Expenses", "Net"],
+    ]
+    rows += [
+        [
+            line.label,
+            _amount(line.income_cents),
+            _amount(line.expenses_cents),
+            _amount(line.net_cents),
+        ]
+        for line in report.monthly
+    ]
+    rows += [
+        [
+            "Year total",
+            _amount(report.income_cents),
+            _amount(report.expenses_cents),
+            _amount(report.net_cents),
+        ],
+        [],
+        ["Year-end arrears", _amount(report.year_end_arrears_cents)],
+    ]
+    return _csv_response(_csv(rows), filename="annual-finance")
 
 
 # -- Student list ------------------------------------------------------------

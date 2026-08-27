@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% from "components/ui.html" import page_header, card, btn, badge, alert, empty_state, form_field %}
 {% from "components/icons.html" import icon %}
 
-{% block title %}School dashboard — {{ school.name }}{% endblock %}
+{% block title %}School dashboard - {{ school.name }}{% endblock %}
 {% block topbar_title %}School dashboard{% endblock %}
 
 {% block content %}
@@ -23,7 +23,7 @@
 
   <div class="alert alert-info">
     {{ icon("eye", "w-5 h-5 shrink-0") }}
-    <span>Read-only view — every page you open is for monitoring only. Nothing can be recorded or changed.</span>
+    <span>Read-only view - every page you open is for monitoring only. Nothing can be recorded or changed.</span>
   </div>
   {% endif %}
 
@@ -36,7 +36,7 @@
 
   {# -- Executive KPI row ----------------------------------------------------
      Renders only when the route supplies school-wide aggregates (context key
-     `portfolio_kpis`, computed in service/route context — never in template).
+     `portfolio_kpis`, computed in service/route context - never in template).
      See ui-round ticket 02 FOUNDATION GAPS for the expected shape.
      -------------------------------------------------------------------------- #}
   {% if portfolio_kpis is defined and portfolio_kpis %}
@@ -217,3 +217,4 @@
   {% endif %}
 </div>
 {% endblock %}
+

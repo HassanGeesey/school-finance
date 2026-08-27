@@ -298,4 +298,15 @@ Grilling session log. Updated as decisions are made.
 | UIR-3 | Testing seam | **HTTP route tests only** (existing TestClient seam). Assert behavior: role gating, read-only owners see no mutation controls, correct pages per role, regression suite stays green. Never assert pixel/CSS details. Visual fidelity is verified by the human against `prototypes/school-finance-interactive.html` in a browser. |
 | UIR-4 | Feature slug & branch | **`.scratch/ui-round/` for spec + tickets; branch `ui` off master.** Merge to master only after explicit human approval of the implemented UI. |
 
+## Annual finance report + School Reports grilling session
+
+| # | Question | Answer |
+|---|----------|--------|
+| Y-1 | What does the "yearly report" show? | **Annual Finance Report** (canonical name): 12 monthly rows (income, expenses, net), annual totals, and an **annual arrears figure** — the derived comparison capped to the year's owed months (through Dec 31 for a completed year, through today for the current year); a student enrolled or leaving after that point never changes it. Credits excluded — they are a live figure, not a yearly one. |
+| Y-2 | What defines a "year"? | **Calendar year (Jan–Dec)** with a year picker, matching the existing monthly model. Dropdown lists **only years with data** (owed months/payments/expenses), defaulting to the newest data year (fallback: current year). |
+| Y-3 | Who can run it? | **Both** campus staff (joins the campus Reports hub, scoped to their Campus) **and** Superadmin/Owner. |
+| Y-4 | Superadmin/Owner "report menu" | **School Reports** (canonical name): a new rail item → `/school/reports` hub listing per-Campus Annual Finance Report cards (drill-down via the existing read-only `/campuses/{id}/reports/annual` path) **plus** an **All Campuses annual rollup** (`/school/reports/annual`): every Campus side by side for the year with school totals and a school-wide monthly cash-flow table. |
+| Y-5 | CSV export | **Yes**, on all three surfaces — campus `/reports/annual.csv`, drill-down `/campuses/{id}/reports/annual.csv`, and the rollup `/school/reports/annual.csv`. |
+| Y-6 | School-bound nav | A **Reports** rail item (Superadmin and Owner), under the "School" group; Overview stays active only on `/school` itself and campus drill-down, not the Reports hub. |
+
 

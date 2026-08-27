@@ -1,17 +1,17 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% from "components/ui.html" import empty_state %}
 {% from "students/_badges.html" import student_status_badge %}
 {% from "classes/_badges.html" import class_status_badge %}
 {% from "arrears/_badges.html" import urgency_badge, debt_age_badge %}
 
-{% block title %}Unpaid fees — {{ school_name() }}{% endblock %}
+{% block title %}Unpaid fees - {{ school_name() }}{% endblock %}
 {% block topbar_title %}Unpaid fees{% endblock %}
 
 {% block content %}
 {#- Record Payment modal (ui-round 04): ONE dialog serves the whole queue.
     Students come from this page's derived lines; owed-month options stay
     empty on purpose, so a submit posts no month/year and the endpoint tags
-    the payment to the student's own oldest unpaid month (FW-22-1) — the
+    the payment to the student's own oldest unpaid month (FW-22-1) - the
     same payload as the classic record flow. Per-row Clear Fee buttons
     pre-fill student + balance via the inline script in body_end. -#}
 {% set record_students = [] %}
@@ -25,7 +25,7 @@
   <div class="page-head">
     <div>
       <h1 class="page-title">Arrears &amp; Collections Queue</h1>
-      <p class="page-sub">Prioritized action list of families with past-due fees — oldest debt first. Archived students and completed classes keep their unpaid fees and still appear here.</p>
+      <p class="page-sub">Prioritized action list of families with past-due fees - oldest debt first. Archived students and completed classes keep their unpaid fees and still appear here.</p>
     </div>
   </div>
 
@@ -33,7 +33,7 @@
     <div class="panel-header">
       <div class="panel-title-area min-w-0">
         <h2>Outstanding Student Balances (<span class="num">{{ student_count }}</span> pending)</h2>
-        <p>Derived balances — expected amounts minus waivers, payments, and credit.</p>
+        <p>Derived balances - expected amounts minus waivers, payments, and credit.</p>
       </div>
       <div class="flex flex-wrap items-center gap-2 shrink-0">
         <span class="badge badge-slate num">{{ overdue_count }} over 60 days</span>
@@ -82,7 +82,7 @@
           {% else %}
           <tr>
             <td colspan="7">
-              {{ empty_state("No unpaid fees", "Every student is up to date — there is nothing outstanding to chase.", "check-circle") }}
+              {{ empty_state("No unpaid fees", "Every student is up to date - there is nothing outstanding to chase.", "check-circle") }}
             </td>
           </tr>
           {% endfor %}
@@ -125,3 +125,4 @@
 })();
 </script>
 {% endblock %}
+

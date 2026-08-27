@@ -1,14 +1,14 @@
-{% if error %}
+﻿{% if error %}
 <p class="text-sm text-base-content/60">{{ error }}</p>
 {% elif not preview %}
 <p class="text-sm text-base-content/50">Enter an amount to see what this payment settles.</p>
 {% else %}
 {% if not preview.in_owed_range %}
-<p class="mb-2 text-xs text-warning">{{ preview.period_label }} is outside this student's owed months — the full amount becomes credit. Record anyway if intended.</p>
+<p class="mb-2 text-xs text-warning">{{ preview.period_label }} is outside this student's owed months - the full amount becomes credit. Record anyway if intended.</p>
 {% endif %}
 <ul class="space-y-1 text-sm">
   <li class="flex items-center justify-between gap-6">
-    <span class="text-base-content/70">{{ preview.period_label }} — expected</span>
+    <span class="text-base-content/70">{{ preview.period_label }} - expected</span>
     <span class="font-medium text-base-content">{{ money(preview.expected_cents) }}</span>
   </li>
   <li class="flex items-center justify-between gap-6">
@@ -33,3 +33,4 @@
   {% endif %}
 </ul>
 {% endif %}
+

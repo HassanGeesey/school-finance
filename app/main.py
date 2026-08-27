@@ -210,7 +210,7 @@ def create_app(
         return JSONResponse(content={"status": "ok"})
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def home(request: Request, _user: User = Depends(require_login)) -> HTMLResponse:
+    def home(request: Request, _user: User = Depends(require_login)) -> Response:
         # School-bound accounts (Superadmin/Owner) live on the School Dashboard
         # (multi-school ticket 08); Campus-bound staff keep the Campus dashboard.
         if request.state.user.role in (UserRoles.SUPERADMIN, UserRoles.OWNER):

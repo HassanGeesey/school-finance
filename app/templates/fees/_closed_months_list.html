@@ -1,8 +1,8 @@
-{% from "components/icons.html" import icon %}
+﻿{% from "components/icons.html" import icon %}
 {% from "components/ui.html" import alert, card, btn, empty_state, table_scroll %}
 
 <div id="closed-months-card">
-  {% call card(title="Closed months", subtitle="A closed month is excluded from every student's owed months — no fees are expected and it never appears as unpaid.") %}
+  {% call card(title="Closed months", subtitle="A closed month is excluded from every student's owed months - no fees are expected and it never appears as unpaid.") %}
   {% if error %}
   <div class="mb-4">{{ alert("error", error) }}</div>
   {% endif %}
@@ -65,3 +65,4 @@
   {% endcall %}
   {% endcall %}
 </div>
+

@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% from "components/icons.html" import icon %}
-{% from "components/ui.html" import page_header, btn %}
+{% from "components/ui.html" import page_header, btn, empty_state %}
 
-{% block title %}Record payment — {{ school_name() }}{% endblock %}
+{% block title %}Record payment - {{ school_name() }}{% endblock %}
 {% block topbar_title %}Record payment{% endblock %}
 
 {% block content %}
@@ -20,12 +20,12 @@
         <form method="get" action="/payments">
           <div class="field relative">
             <label for="payment-search" class="label"><span class="label-text">Search student</span></label>
-            <input id="payment-search" name="q" type="search" value="{{ q }}" placeholder="Type a name…"
+            <input id="payment-search" name="q" type="search" value="{{ q }}" placeholder="Type a name..."
                    autocomplete="off" class="input"
                    hx-get="/payments/student-picker"
                    hx-trigger="input changed delay:400ms, search"
                    hx-target="#payment-results" hx-swap="innerHTML">
-            <div id="payment-results" class="{{ '' if q else 'hidden' }} absolute left-0 right-0 top-full z-50 mt-1">
+            <div id="payment-results" aria-live="polite" class="{{ '' if q else 'hidden' }} absolute left-0 right-0 top-full z-50 mt-1">
               {% if q %}{% include "payments/_student_options.html" %}{% endif %}
             </div>
           </div>
@@ -82,7 +82,7 @@
           <div class="alert alert-info">
             <div class="flex w-full items-center justify-between gap-2.5 py-0.5">
               <span class="text-sm font-semibold">Clears oldest unpaid months</span>
-              <span id="payment-clears" class="num muted text-sm">—</span>
+              <span id="payment-clears" class="num muted text-sm">-</span>
             </div>
           </div>
 
@@ -90,6 +90,7 @@
             {{ btn(href="/payments", label="Cancel", variant="ghost") }}
             <button id="payment-save" type="submit" class="btn btn-primary btn-block justify-center" disabled>{{ icon("arrow-right", "h-4 w-4") }} Save &amp; print receipt</button>
           </div>
+          <p id="payment-save-hint" class="mt-1 text-xs text-base-content/50">Select a student above to enable saving.</p>
         </form>
       </div>
     </section>
@@ -107,7 +108,7 @@
               hx-trigger="input changed delay:400ms from:#payment-amount, change from:#payment-method, change from:#payment-month, change from:#payment-year, load, htmx:afterSwap from:#payment-student"
               hx-swap="innerHTML"
               hx-vals="js:{student_id: document.querySelector('#payment-student input[name=student_id]').value, amount: document.getElementById('payment-amount').value, method: document.getElementById('payment-method').value, month: document.getElementById('payment-month').value, year: document.getElementById('payment-year').value}">
-          <p class="text-sm text-base-content/50">Pick a student, then fill in the amount and method to preview the receipt.</p>
+          {{ empty_state("Receipt preview", "Search for a student and enter an amount to see a live preview.", "document-text") }}
         </div>
       </div>
     </section>
@@ -173,3 +174,4 @@
   })();
 </script>
 {% endblock %}
+

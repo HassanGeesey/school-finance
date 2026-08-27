@@ -1,4 +1,4 @@
-{% from "components/icons.html" import icon as icon_svg %}
+﻿{% from "components/icons.html" import icon as icon_svg %}
 
 {% macro page_header(title, subtitle="", actions="", class="") %}
 <div class="page-head {{ class }}">
@@ -113,10 +113,10 @@
 {% endmacro %}
 
 {% macro confirm_dialog(id="confirm-dialog") %}
-<dialog id="{{ id }}" class="modal">
+<dialog id="{{ id }}" class="modal" aria-labelledby="{{ id }}-title">
   <div class="modal-box">
     <div class="modal-header">
-      <h3>Please confirm</h3>
+      <h3 id="{{ id }}-title">Please confirm</h3>
       <button type="button" class="btn btn-ghost btn-circle" aria-label="Close" data-modal-close>
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
       </button>
@@ -132,3 +132,4 @@
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
 {% endmacro %}
+

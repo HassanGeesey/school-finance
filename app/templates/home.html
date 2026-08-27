@@ -1,8 +1,8 @@
-{% extends "base.html" %}
-{% from "components/ui.html" import card, btn, badge, empty_state %}
+﻿{% extends "base.html" %}
+{% from "components/ui.html" import card, btn, badge, empty_state, page_header %}
 {% from "components/icons.html" import icon %}
 
-{% block title %}Dashboard — {{ school_name() }}{% endblock %}
+{% block title %}Dashboard - {{ school_name() }}{% endblock %}
 {% block topbar_title %}Dashboard{% endblock %}
 
 {% block content %}
@@ -12,55 +12,68 @@
 <div class="space-y-6">
 
   {# -- Page header: the Campus, its billing month, obvious way back --------- #}
-  <div class="page-head">
-    <div>
-      <div class="flex flex-wrap items-center gap-2">
-        <h1 class="page-title">{{ campus_title }}</h1>
-        <span class="badge badge-emerald">Campus operations</span>
-        {% if campus and campus.archived %}<span class="badge badge-slate">Archived</span>{% endif %}
-      </div>
-      <p class="page-sub">
-        Active billing month <strong class="num">{{ '%02d'|format(dashboard.month) }}/{{ dashboard.year }}</strong>
-        &middot; collections, expenses, and arrears for this Campus.
-      </p>
-    </div>
-    <div class="page-actions">
-      {% if campus %}
-      {{ btn(href="/school", label="Back to School dashboard", icon="arrow-left", variant="secondary", size="sm") }}
-      {% endif %}
-      {% if not read_only %}
-      {{ btn(href="/payments", label="Record payment", icon="banknotes", variant="primary", size="sm") }}
-      {{ btn(href="/arrears", label="View arrears queue", icon="exclamation-triangle", variant="secondary", size="sm") }}
-      {% endif %}
-      {{ btn(href=report_base, label="All reports", icon="chart-bar", variant="outline", size="sm") }}
-    </div>
+  {% set header_subtitle = "Active billing month <strong class=\"num\">" ~ ('%02d'|format(dashboard.month)) ~ '/' ~ dashboard.year ~ "</strong>  -  collections, expenses, and arrears for this Campus." %}
+  {% set header_actions = "" %}
+  {% if campus %}
+  {% set header_actions = header_actions ~ btn(href="/school", label="Back to overview", icon="arrow-left", variant="secondary", size="sm") %}
+  {% endif %}
+  {% if not read_only %}
+  {% set header_actions = header_actions ~ btn(href="/payments", label="Record payment", icon="banknotes", variant="primary", size="sm") ~ btn(href="/arrears", label="View arrears queue", icon="exclamation-triangle", variant="secondary", size="sm") %}
+  {% endif %}
+  {% set header_actions = header_actions ~ btn(href=report_base, label="All reports", icon="chart-bar", variant="outline", size="sm") %}
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <h1 class="page-title">{{ campus_title }}</h1>
+    <span class="badge badge-emerald">Campus operations</span>
+    {% if campus and campus.archived %}<span class="badge badge-slate">Archived</span>{% endif %}
   </div>
+  {{ page_header("", header_subtitle, header_actions) }}
 
   {% if read_only %}
   <div class="alert alert-info">
     {{ icon("eye", "w-5 h-5 shrink-0") }}
-    <span>Read-only view — you are monitoring {{ campus_title }}. Nothing can be recorded or changed here.</span>
+    <span>Read-only view - you are monitoring {{ campus_title }}. Nothing can be recorded or changed here.</span>
   </div>
   {% endif %}
 
+  <section class="daily-actions" aria-labelledby="daily-actions-title">
+    <div class="daily-actions-heading">
+      <div>
+        <h2 id="daily-actions-title">Today&apos;s work</h2>
+        <p>Start with the task that keeps this month moving.</p>
+      </div>
+    </div>
+    <div class="daily-action-grid">
+      <a class="daily-action daily-action-primary" href="/payments">
+        <span class="daily-action-icon">{{ icon("banknotes", "w-5 h-5") }}</span>
+        <span><strong>Collect a payment</strong><small>Record a student payment and print the receipt.</small></span>
+        {{ icon("arrow-right", "daily-action-arrow") }}
+      </a>
+      <a class="daily-action" href="/arrears">
+        <span class="daily-action-icon">{{ icon("exclamation-triangle", "w-5 h-5") }}</span>
+        <span><strong>Follow up unpaid fees</strong><small>Open the oldest balances that need attention.</small></span>
+        {{ icon("arrow-right", "daily-action-arrow") }}
+      </a>
+    </div>
+  </section>
+
   {# -- Campus KPI strip ------------------------------------------------------ #}
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <div class="kpi-card">
+    <div class="kpi-card tone-green">
       <p class="kpi-label">Month Collections</p>
       <p class="kpi-value num">{{ money(dashboard.collected_cents) }}</p>
       <p class="kpi-meta positive">Payments recorded this month</p>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card tone-blue">
       <p class="kpi-label">Recorded Expenses</p>
       <p class="kpi-value num">{{ money(dashboard.expenses_cents) }}</p>
       <p class="kpi-meta">Utilities, supplies &amp; staff costs</p>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card tone-amber">
       <p class="kpi-label">Outstanding Balance</p>
       <p class="kpi-value num amber">{{ money(dashboard.arrears_cents) }}</p>
       <p class="kpi-meta warning">
-        <span class="num">{{ dashboard.arrears_band_counts.get('overdue', 0) }}</span>&nbsp;over 60 days &middot;
-        <span class="num">{{ dashboard.arrears_band_counts.get('late', 0) }}</span>&nbsp;31&ndash;60 days &middot;
+        <span class="num">{{ dashboard.arrears_band_counts.get('overdue', 0) }}</span>&nbsp;over 60 days  - 
+        <span class="num">{{ dashboard.arrears_band_counts.get('late', 0) }}</span>&nbsp;31-60 days  - 
         <span class="num">{{ dashboard.arrears_band_counts.get('current', 0) }}</span>&nbsp;current
       </p>
     </div>
@@ -75,8 +88,8 @@
   <section class="content-panel">
     <div class="panel-header">
       <div class="panel-title-area min-w-0">
-        <h2>Recent Month-tagged Fee Collections</h2>
-        <p>Every payment is tagged to an owed month; receipts reprint instantly.</p>
+        <h2>Recent payments</h2>
+        <p>Latest fee payments. Receipts are ready to reprint.</p>
       </div>
       <div class="flex flex-wrap items-center gap-2 shrink-0">
         {{ btn(href=report_base ~ "/paid-students", label="Paid students", icon="arrow-right", variant="outline", size="sm") }}
@@ -86,24 +99,24 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Student</th>
-            <th>Class</th>
-            <th>Tagged month</th>
-            <th>Method</th>
-            <th>Time recorded</th>
-            <th class="amount-head">Amount</th>
-            <th class="amount-head">Receipt</th>
+            <th scope="col">Student</th>
+            <th scope="col">Class</th>
+            <th scope="col">Tagged month</th>
+            <th scope="col">Method</th>
+            <th scope="col">Time recorded</th>
+            <th scope="col" class="amount-head">Amount</th>
+            <th scope="col" class="amount-head">Receipt</th>
           </tr>
         </thead>
         <tbody>
         {% for payment in dashboard.recent_payments %}
           <tr>
             <td class="primary-cell">{{ payment.student.full_name }}</td>
-            <td>{{ payment.student.school_class.name if payment.student.school_class else "—" }}</td>
+            <td>{{ payment.student.school_class.name if payment.student.school_class else "-" }}</td>
             <td><span class="badge badge-slate num">{{ '%02d'|format(payment.month) }}/{{ payment.year }}</span></td>
             <td>{{ payment_method_labels.get(payment.method, payment.method) }}</td>
             <td>{{ payment.created_at.strftime("%d %b %Y, %H:%M") }}</td>
-            <td class="amount-cell num" style="color: var(--sf-emerald-text);">{{ money(payment.amount_cents) }}</td>
+            <td class="amount-cell num amount-positive">{{ money(payment.amount_cents) }}</td>
             <td class="text-right">
               <a href="/payments/{{ payment.id }}/receipt" class="btn btn-ghost btn-xs">
                 {{ icon("printer", "w-3.5 h-3.5") }} Reprint
@@ -119,7 +132,7 @@
   </section>
 
   <div class="grid items-start gap-6 lg:grid-cols-3">
-    {% call card(title="Income vs expenses — last 6 months", class="lg:col-span-2") %}
+    {% call card(title="Income vs expenses - last 6 months", class="lg:col-span-2") %}
       <div class="relative h-64"><canvas id="chart-monthly"></canvas></div>
     {% endcall %}
     {% call card(title="Unpaid fees by age") %}
@@ -144,14 +157,14 @@
       </div>
       <div class="overflow-x-auto">
         <table class="table">
-          <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="amount-head">Amount</th></tr></thead>
+          <thead><tr><th scope="col">Date</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col" class="amount-head">Amount</th></tr></thead>
           <tbody>
           {% for expense in dashboard.recent_expenses %}
             <tr>
               <td>{{ expense.occurred_on }}</td>
               <td class="primary-cell">{{ expense.category.name }}</td>
               <td>{{ expense.description }}</td>
-              <td class="amount-cell num" style="color: var(--sf-rose-text);">{{ money(expense.amount_cents) }}</td>
+              <td class="amount-cell num amount-negative">{{ money(expense.amount_cents) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="4" class="py-0">{{ empty_state("No expenses yet", "Recorded expenses will appear here.", "arrow-up-tray") }}</td></tr>
@@ -230,3 +243,5 @@
   });
 </script>
 {% endblock %}
+
+

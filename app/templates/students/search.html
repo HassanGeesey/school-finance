@@ -1,22 +1,22 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% from "components/icons.html" import icon %}
 {% from "components/ui.html" import page_header, card, btn, badge, alert, empty_state, table_scroll %}
 {% from "classes/_badges.html" import class_status_badge %}
 {% from "students/_badges.html" import student_status_badge %}
 
-{% block title %}Students — {{ school_name() }}{% endblock %}
+{% block title %}Students - {{ school_name() }}{% endblock %}
 {% block topbar_title %}Students{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-  {{ page_header("Students", "Search every student in the school by first name, last name, or full name. Archived students stay searchable — their history and unpaid fees remain.") }}
+  {{ page_header("Students", "Search every student in the school by first name, last name, or full name. Archived students stay searchable - their history and unpaid fees remain.") }}
 
   <section class="content-panel">
     <div class="panel-body">
       <form method="get" action="/students" class="flex flex-wrap items-end gap-3">
         <div>
           <label for="student-search" class="label"><span class="label-text">Search</span></label>
-          <input id="student-search" name="q" type="search" value="{{ q }}" placeholder="Search by name…" class="input input-sm w-full max-w-sm">
+          <input id="student-search" name="q" type="search" value="{{ q }}" placeholder="Search by name..." class="input input-sm w-full max-w-sm">
         </div>
         <div>
           <label for="class_id" class="label"><span class="label-text">Class</span></label>
@@ -57,7 +57,7 @@
   {% if q %}
   <p class="text-sm muted">
     {{ rows | length }} result{{ "s" if rows | length != 1 else "" }} for
-    <span class="font-semibold text-base-content">&ldquo;{{ q }}&rdquo;</span>
+    <span class="font-semibold text-base-content">"{{ q }}"</span>
   </p>
   {% endif %}
 
@@ -93,7 +93,7 @@
                 {% endif %}
               </span>
               {% else %}
-              <span class="text-base-content/40">—</span>
+              <span class="text-base-content/40">-</span>
               {% endif %}
             </td>
             {% endif %}
@@ -101,7 +101,7 @@
           {% else %}
           <tr>
             <td colspan="{{ 4 if period_options else 3 }}">
-              {{ empty_state("No students found", ("No results for “" ~ q ~ "” — try a different search." if q else "Add them inside a class."), "user-group") }}
+              {{ empty_state("No students found", ("No results for "" ~ q ~ "" - try a different search." if q else "Add them inside a class."), "user-group") }}
             </td>
           </tr>
           {% endfor %}
@@ -111,3 +111,4 @@
   {% endcall %}
 </div>
 {% endblock %}
+

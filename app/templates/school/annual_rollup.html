@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/ui.html" import page_header, card, btn, badge, stat_card, empty_state %}
+
+{% block title %}Annual rollup {{ year }} - {{ school.name }}{% endblock %}
+{% block topbar_title %}Annual rollup{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Annual finance rollup - {{ year }}</h1>
+      <p class="page-sub max-w-2xl">
+        Every Campus of {{ school.name }} side by side for the year, with school-wide totals.
+      </p>
+    </div>
+    <form method="get" action="/school/reports/annual.csv" class="page-actions no-print">
+      <input type="hidden" name="year" value="{{ year }}">
+      <button type="submit" class="btn btn-secondary btn-sm">
+        {{ icon("arrow-down-tray", "w-4 h-4") }} Export CSV
+      </button>
+    </form>
+  </div>
+
+  <form method="get" action="/school/reports/annual" class="no-print">
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <label for="year" class="label"><span class="label-text">Year</span></label>
+        <select id="year" name="year" class="select select-sm w-full">
+          {% for value, label in year_options %}
+          <option value="{{ value }}" {% if value == year|string %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-sm">{{ icon("arrow-path", "w-4 h-4") }} Show</button>
+    </div>
+  </form>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {{ stat_card("Income (payments)", money(report.income_cents), "arrow-down-tray", "success") }}
+    {{ stat_card("Expenses", money(report.expenses_cents), "arrow-up-tray", "error") }}
+    {{ stat_card("Net cash flow", money(report.net_cents), "banknotes", "neutral") }}
+    {{ stat_card("Year-end arrears", money(report.year_end_arrears_cents), "exclamation-triangle", "warning") }}
+  </div>
+
+  {% call card(title="Campuses for " ~ year, subtitle="One row per Campus, from that Campus's own records.") %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Campus</th>
+            <th class="text-right">Income</th>
+            <th class="text-right">Expenses</th>
+            <th class="text-right">Net</th>
+            <th class="text-right">Year-end arrears</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for entry in report.campuses %}
+          <tr>
+            <td>
+              <span class="flex items-center gap-2">
+                <span class="min-w-0">{{ entry.campus.name }}</span>
+                {% if entry.campus.archived %}{{ badge("Archived", "slate") }}{% endif %}
+              </span>
+            </td>
+            <td class="text-right num">{{ money(entry.report.income_cents) }}</td>
+            <td class="text-right num">{{ money(entry.report.expenses_cents) }}</td>
+            <td class="text-right num">{{ money(entry.report.net_cents) }}</td>
+            <td class="text-right num">{{ money(entry.report.year_end_arrears_cents) }}</td>
+            <td class="text-right">
+              <a href="/campuses/{{ entry.campus.id }}/reports/annual?year={{ year }}" class="btn btn-ghost btn-xs">
+                {{ icon("arrow-right", "w-4 h-4") }} Detail
+              </a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">{{ empty_state("No Campuses", "Create a Campus to see annual figures.", "building-office-2") }}</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="font-semibold">
+            <td>School total</td>
+            <td class="text-right num">{{ money(report.income_cents) }}</td>
+            <td class="text-right num">{{ money(report.expenses_cents) }}</td>
+            <td class="text-right num">{{ money(report.net_cents) }}</td>
+            <td class="text-right num">{{ money(report.year_end_arrears_cents) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  {% endcall %}
+
+  {% call card(title="Monthly cash flow - whole School", subtitle="Each month's income and expenses combined across every Campus.") %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr><th>Month</th><th class="text-right">Income</th><th class="text-right">Expenses</th><th class="text-right">Net</th></tr>
+        </thead>
+        <tbody>
+        {% for line in report.monthly %}
+          <tr>
+            <td>{{ line.label }}</td>
+            <td class="text-right num">{{ money(line.income_cents) }}</td>
+            <td class="text-right num">{{ money(line.expenses_cents) }}</td>
+            <td class="text-right num">{{ money(line.net_cents) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="text-center py-6 text-base-content/50">No activity for {{ year }}.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endcall %}
+
+  <p>
+    {{ btn(href="/school/reports", label="Back to School reports", icon="arrow-left", variant="ghost", size="sm") }}
+  </p>
+</div>
+{% endblock %}

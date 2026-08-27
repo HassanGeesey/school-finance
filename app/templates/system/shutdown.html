@@ -1,9 +1,9 @@
-{% from "components/icons.html" import icon %}<!DOCTYPE html>
+﻿{% from "components/icons.html" import icon %}<!DOCTYPE html>
 <html lang="en" data-theme="schoolfinance">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Shutting down — {{ app_name }}</title>
+  <title>Shutting down - {{ app_name }}</title>
   <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body class="flex min-h-screen items-center justify-center bg-base-200 px-4">
@@ -11,9 +11,10 @@
     <section class="content-panel p-8">
       <span class="inline-flex h-12 w-12 items-center justify-center rounded-md bg-warning/10 text-warning">{{ icon("arrow-right-on-rectangle", "h-6 w-6") }}</span>
       <h1 class="mt-4 text-lg font-semibold text-base-content">{{ app_name }} is shutting down</h1>
-      <p class="mt-2 text-sm text-base-content/60">The server has been asked to stop. You can close this window and restart the app whenever you need it again — all data is safe on disk.</p>
+      <p class="mt-2 text-sm text-base-content/60">The server has been asked to stop. You can close this window and restart the app whenever you need it again - all data is safe on disk.</p>
     </section>
     <p class="auth-foot num">v{{ app_version }}</p>
   </div>
 </body>
 </html>
+

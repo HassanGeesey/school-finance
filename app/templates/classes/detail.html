@@ -1,10 +1,10 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% from "components/icons.html" import icon %}
 {% from "components/ui.html" import page_header, card, btn, alert, empty_state, table_scroll, form_field %}
 {% from "classes/_badges.html" import class_status_badge %}
 {% from "students/_badges.html" import student_status_badge %}
 
-{% block title %}{{ cls.name }} — {{ school_name() }}{% endblock %}
+{% block title %}{{ cls.name }} - {{ school_name() }}{% endblock %}
 {% block topbar_title %}{{ cls.name }}{% endblock %}
 
 {% block content %}
@@ -14,7 +14,7 @@
   <div>
     <a href="/classes" class="link link-neutral text-sm">{{ icon("arrow-left", "h-4 w-4 inline") }} All classes</a>
     <div class="mt-2">
-      {{ page_header(cls.name ~ " " ~ class_status_badge(cls.status), "Monthly fee per student: " ~ money(monthly_total_cents) ~ ((" — default template \"" ~ cls.default_template.name ~ "\"") if cls.default_template else " — no default template"), actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
+      {{ page_header(cls.name ~ " " ~ class_status_badge(cls.status), "Monthly fee per student: " ~ money(monthly_total_cents) ~ ((" - default template \"" ~ cls.default_template.name ~ "\"") if cls.default_template else " - no default template"), actions=(btn(href="/classes/" ~ cls.id ~ "/students/import", label="Import CSV", icon="arrow-up-tray", variant="outline", size="sm") if is_admin else "")) }}
     </div>
   </div>
 
@@ -49,9 +49,9 @@
         <div>
           <label for="class-template" class="label"><span class="label-text">Default fee template</span></label>
           <select id="class-template" name="default_template_id" class="select w-full">
-            <option value="">— No default (students bill nothing) —</option>
+            <option value="">- No default (students bill nothing) -</option>
             {% for t in template_options %}
-            <option value="{{ t.id }}" {% if default_template_id == t.id|string %}selected{% endif %}>{{ t.name }}{% if t.archived %} (archived){% endif %} — {{ money(t.amount_cents) }}/month</option>
+            <option value="{{ t.id }}" {% if default_template_id == t.id|string %}selected{% endif %}>{{ t.name }}{% if t.archived %} (archived){% endif %} - {{ money(t.amount_cents) }}/month</option>
             {% endfor %}
           </select>
           <p class="mt-1 text-xs text-base-content/60">Managed under <a href="/fees" class="link">Fee templates</a>.</p>
@@ -124,7 +124,7 @@
       </div>
     </div>
     {% else %}
-    <p class="text-base-content/70">No default template — students in this class bill nothing until one is set under
+    <p class="text-base-content/70">No default template - students in this class bill nothing until one is set under
       <a href="/fees" class="link">Fee templates</a>.</p>
     {% endif %}
   {% endcall %}
@@ -152,9 +152,9 @@
           <div>
             <label for="student-template" class="label"><span class="label-text">Fee template</span></label>
             <select id="student-template" name="fee_template_id" class="select w-full">
-              <option value="">— Class default —</option>
+              <option value="">- Class default -</option>
               {% for t in template_options %}
-              <option value="{{ t.id }}">{{ t.name }}{% if t.archived %} (archived){% endif %} — {{ money(t.amount_cents) }}/month</option>
+              <option value="{{ t.id }}">{{ t.name }}{% if t.archived %} (archived){% endif %} - {{ money(t.amount_cents) }}/month</option>
               {% endfor %}
             </select>
           </div>
@@ -173,3 +173,4 @@
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
 {% endblock %}
+

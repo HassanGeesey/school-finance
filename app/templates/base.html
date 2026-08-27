@@ -1,4 +1,4 @@
-{% from "components/icons.html" import icon %}
+﻿{% from "components/icons.html" import icon %}
 {% from "components/ui.html" import confirm_dialog %}
 <!DOCTYPE html>
 <html lang="en" data-theme="schoolfinance">
@@ -54,27 +54,28 @@
     <nav class="rail-nav" aria-label="Primary">
       {% if school_bound %}
       <p class="rail-group-label">School</p>
-      {{ nav_item("/school", "School dashboard", "building-office-2", path.startswith("/school") or campus_view) }}
+      {{ nav_item("/school", "Overview", "building-office-2", (path == "/school") or campus_view) }}
+      {{ nav_item("/school/reports", "Reports", "chart-bar", path.startswith("/school/reports")) }}
       {% if user.role == "superadmin" %}
       {{ nav_item("/audit", "Audit log", "shield-check", path.startswith("/audit")) }}
       {% endif %}
       {% if campus_view %}
       <p class="rail-group-label">Viewing campus</p>
-      {{ nav_item("/school", "Back to School dashboard", "arrow-left", false) }}
+      {{ nav_item("/school", "Back to Overview", "arrow-left", false) }}
       {% endif %}
       {% else %}
-      <p class="rail-group-label">School</p>
-      {{ nav_item("/", "Dashboard", "home", path == "/") }}
-      {{ nav_item("/classes", "Classes", "rectangle-stack", path.startswith("/classes")) }}
+      <p class="rail-group-label">Work</p>
+      {{ nav_item("/", "Overview", "home", path == "/") }}
+      {{ nav_item("/payments", "Collect payments", "receipt-percent", path.startswith("/payments")) }}
+      {{ nav_item("/arrears", "Follow up unpaid", "exclamation-triangle", path.startswith("/arrears")) }}
+
+      <p class="rail-group-label">Manage</p>
       {{ nav_item("/students", "Students", "user-group", path.startswith("/students")) }}
+      {{ nav_item("/classes", "Classes", "rectangle-stack", path.startswith("/classes")) }}
+      {{ nav_item("/fees", "Fee setup", "academic-cap", path.startswith("/fees")) }}
 
-      <p class="rail-group-label">Finance</p>
-      {{ nav_item("/fees", "Fee templates", "academic-cap", path.startswith("/fees")) }}
-      {{ nav_item("/payments", "Payments", "receipt-percent", path.startswith("/payments")) }}
+      <p class="rail-group-label">Review</p>
       {{ nav_item("/expenses", "Expenses", "banknotes", path.startswith("/expenses")) }}
-
-      <p class="rail-group-label">Reports</p>
-      {{ nav_item("/arrears", "Unpaid fees", "exclamation-triangle", path.startswith("/arrears")) }}
       {{ nav_item("/reports", "Reports", "chart-bar", path.startswith("/reports")) }}
 
       {% if user and user.role == "admin" %}
@@ -117,9 +118,12 @@
       <form method="get" action="/students" class="search-form hidden md:block">
         <label class="relative block">
           <span class="search-icon">{{ icon("magnifying-glass") }}</span>
-          <input name="q" type="search" placeholder="Search students…" class="input search-input">
+          <input name="q" type="search" placeholder="Search students..." class="input search-input">
         </label>
       </form>
+      <a href="/students" class="btn btn-ghost btn-sm md:hidden" aria-label="Search students">
+        {{ icon("magnifying-glass") }}
+      </a>
       {% endif %}
       {% if school_bound %}
       <a class="campus-pill" href="/school" title="{{ 'All Campuses' if not campus_view else 'Switch campus' }}">
@@ -129,7 +133,7 @@
       {% endif %}
       {% if user %}
       <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="user-pill">
+        <div tabindex="0" role="button" class="user-pill" aria-haspopup="true" aria-expanded="false">
           <span class="user-avatar">{{ user.name[:1] | upper }}</span>
           <span class="user-meta">
             <span class="user-name">{{ user.name }}</span>
@@ -176,3 +180,6 @@
 {{ confirm_dialog() }}
 </body>
 </html>
+
+
+

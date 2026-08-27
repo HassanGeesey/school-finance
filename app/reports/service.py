@@ -179,6 +179,25 @@ class FinanceSummary:
 
 
 @dataclass
+class AnnualFinanceReport:
+    """One calendar year's monthly income vs expenses for the acting scope.
+
+    ``monthly`` is the twelve months of the year with income, expenses, and
+    net; the totals roll the year up. ``year_end_arrears_cents`` is the arrears
+    snapshot for the year: the derived comparison capped to the year's owed
+    months (through Dec 31 for a completed year, or today for the current
+    year), so a student enrolled or leaving after that point never changes it.
+    """
+
+    year: int
+    monthly: list[PeriodLine]
+    income_cents: Money
+    expenses_cents: Money
+    net_cents: Money
+    year_end_arrears_cents: Money
+
+
+@dataclass
 class StudentListLine:
     """One student's row in the register export."""
 
@@ -294,7 +313,7 @@ class ReportService:
         return totals
 
     def _payment_amounts_by_month(
-        self, start: date | None = None
+        self, start: date | None = None, end: date | None = None
     ) -> dict[tuple[int, int], int]:
         with self._session() as session:
             query = session.query(Payment.paid_on, Payment.amount_cents)
@@ -305,11 +324,13 @@ class ReportService:
                 )
             if start is not None:
                 query = query.filter(Payment.paid_on >= start)
+            if end is not None:
+                query = query.filter(Payment.paid_on < end)
             rows = query.all()
         return self._amounts_by_month([(row[0], row[1]) for row in rows])
 
     def _expense_amounts_by_month(
-        self, start: date | None = None
+        self, start: date | None = None, end: date | None = None
     ) -> dict[tuple[int, int], int]:
         with self._session() as session:
             query = session.query(Expense.occurred_on, Expense.amount_cents)
@@ -320,6 +341,8 @@ class ReportService:
                 )
             if start is not None:
                 query = query.filter(Expense.occurred_on >= start)
+            if end is not None:
+                query = query.filter(Expense.occurred_on < end)
             rows = query.all()
         return self._amounts_by_month([(row[0], row[1]) for row in rows])
 
@@ -447,6 +470,39 @@ class ReportService:
                 for month, year in expense_query.distinct().all()
             )
         return sorted(periods, reverse=True)
+
+    def annual_years(self) -> list[int]:
+        """Every year with owed months, payments, or expenses, newest first.
+
+        Feeds the annual report's year dropdown. Like :meth:`list_periods` but
+        reduced to distinct years.
+        """
+        today = date.today()
+        with self._session() as session:
+            closed = self._closed_months(session)
+            periods = self._owed_months_across_scope(session, closed, today)
+            cur = require_scope()
+            payment_query = session.query(Payment.month, Payment.year)
+            if cur is not None:
+                payment_query = payment_query.filter(
+                    scoped_campus_filter(session, cur, Payment.campus_id)
+                )
+            periods.update(
+                (month, year) for month, year in payment_query.distinct().all()
+            )
+            expense_query = session.query(
+                func.extract("month", Expense.occurred_on),
+                func.extract("year", Expense.occurred_on),
+            )
+            if cur is not None:
+                expense_query = expense_query.filter(
+                    scoped_campus_filter(session, cur, Expense.campus_id)
+                )
+            periods.update(
+                (int(month), int(year))
+                for month, year in expense_query.distinct().all()
+            )
+        return sorted({year for _, year in periods}, reverse=True)
 
     @staticmethod
     def _class_name(session: Session, class_id: int) -> str:
@@ -725,6 +781,52 @@ class ReportService:
             arrears_cents=arrears_cents,
             credits_cents=credits_cents,
             rows=rows,
+        )
+
+    # -- Annual finance report ----------------------------------------------
+
+    def annual_finance(self, year: int) -> AnnualFinanceReport:
+        """One calendar year's monthly income vs expenses, plus arrears.
+
+        Income and expenses are dated by when they were recorded within the
+        year. The arrears figure is the derived comparison capped to the year's
+        owed months: through Dec 31 for a completed year, through today for the
+        current year — a student enrolled or leaving after that point never
+        changes it.
+        """
+        start = date(year, 1, 1)
+        end = date(year + 1, 1, 1)
+        income_by_month = self._payment_amounts_by_month(start=start, end=end)
+        expense_by_month = self._expense_amounts_by_month(start=start, end=end)
+        monthly: list[PeriodLine] = []
+        income_total = 0
+        expenses_total = 0
+        for month in range(1, 13):
+            income = income_by_month.get((year, month), 0)
+            expenses = expense_by_month.get((year, month), 0)
+            income_total += income
+            expenses_total += expenses
+            monthly.append(
+                PeriodLine(
+                    month=month,
+                    year=year,
+                    label=period_label(month, year),
+                    income_cents=income,
+                    expenses_cents=expenses,
+                    net_cents=income - expenses,
+                )
+            )
+        snapshot_date = min(date(year, 12, 31), date.today())
+        arrears_cents = sum(
+            line.owed_cents for line in self._arrears_lines(snapshot_date)
+        )
+        return AnnualFinanceReport(
+            year=year,
+            monthly=monthly,
+            income_cents=income_total,
+            expenses_cents=expenses_total,
+            net_cents=income_total - expenses_total,
+            year_end_arrears_cents=arrears_cents,
         )
 
     # -- Student list --------------------------------------------------------

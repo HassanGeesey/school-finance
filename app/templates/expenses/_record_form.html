@@ -1,4 +1,4 @@
-{% from "components/ui.html" import form_field, alert %}
+﻿{% from "components/ui.html" import form_field, alert %}
 {% from "components/icons.html" import icon %}
 
 <form method="post" action="/expenses" class="modal-body"
@@ -8,7 +8,7 @@
   {% endif %}
 
   {% if not categories %}
-  <div>{{ alert("info", "No expense categories yet — an admin can add them via Manage categories.") }}</div>
+  <div>{{ alert("info", "No expense categories yet - an admin can add them via Manage categories.") }}</div>
   {% else %}
   <div>
     <label for="expense-category" class="label"><span class="label-text">Category</span></label>
@@ -36,7 +36,8 @@
   </div>
   <div class="flex flex-wrap items-center gap-2 pt-2">
     <button type="submit" class="btn btn-primary">{{ icon("banknotes", "h-4 w-4") }} Record expense</button>
-    <p class="text-xs text-base-content/60">Partial expenses are fine — amounts are never limited.</p>
+    <p class="text-xs text-base-content/60">Partial expenses are fine - amounts are never limited.</p>
   </div>
   {% endif %}
 </form>
+

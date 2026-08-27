@@ -1,4 +1,4 @@
-{% macro payment_method_badge(method) %}
+﻿{% macro payment_method_badge(method) %}
 {% set tones = {
   "cash": "badge-emerald",
   "bank": "badge-indigo",
@@ -11,3 +11,4 @@
 } %}
 <span class="badge {{ tones.get(method, 'badge-neutral') }}">{{ labels.get(method, method) }}</span>
 {% endmacro %}
+

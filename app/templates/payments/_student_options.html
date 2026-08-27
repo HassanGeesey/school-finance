@@ -1,4 +1,4 @@
-{% if rows %}
+﻿{% if rows %}
 <div class="board shadow-none overflow-hidden">
   <div class="max-h-[264px] overflow-y-auto">
     {% for row in rows %}
@@ -24,6 +24,7 @@
 </div>
 {% else %}
 <div class="board shadow-none">
-  <div class="muted p-3.5 text-center">No students found{% if q %} for “{{ q }}”{% endif %}</div>
+  <div class="muted p-3.5 text-center">No students found{% if q %} for "{{ q }}"{% endif %}</div>
 </div>
 {% endif %}
+

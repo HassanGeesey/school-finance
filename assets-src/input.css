@@ -142,7 +142,7 @@
   --sf-backdrop: rgba(15, 23, 42, 0.45);
   --sf-hairline-on-dark: rgba(255, 255, 255, 0.08);
   --sf-wash-on-dark: rgba(255, 255, 255, 0.05);
-  --sf-focus-ring: rgba(15, 23, 42, 0.12);
+  --sf-focus-ring: rgba(15, 23, 42, 0.25);
 
   /* -- Radii -------------------------------------------------------------- */
   --sf-radius-sm: 6px;
@@ -447,11 +447,15 @@ body {
 .kpi-meta.warning { color: var(--sf-amber-text); font-weight: 600; }
 .stat-value.green, .kpi-value.green { color: var(--sf-emerald-text); }
 .stat-value.amber, .kpi-value.amber { color: var(--sf-amber-text); }
+.kpi-card.tone-green { border-left: 3px solid var(--sf-emerald-base); }
+.kpi-card.tone-amber { border-left: 3px solid var(--sf-amber-base); }
+.kpi-card.tone-blue { border-left: 3px solid var(--sf-indigo-base); }
 .stat-value.red,   .kpi-value.red   { color: var(--sf-rose-text); }
 
 /* --------------------------------------------------------------------------
    Content panels (header / body). `.board` is the legacy alias.
    -------------------------------------------------------------------------- */
+/* content-panel is a legacy alias for .board — prefer .board / card() macro */
 .content-panel, .board {
   background: var(--sf-surface);
   border: 1px solid var(--sf-border-subtle);
@@ -480,7 +484,7 @@ body {
   font-size: 12px;
   color: var(--sf-text-muted);
 }
-.panel-body, .board-body { padding: 20px; }
+.panel-body, .board-body { padding: 20px 16px 20px 20px; }
 .pin { display: none; }  /* retired Private Office ornament */
 
 /* Page headers */
@@ -560,6 +564,8 @@ td.amount-cell, td.amount {
   letter-spacing: var(--sf-ls-num);
   white-space: nowrap;
 }
+.amount-positive { color: var(--sf-emerald-text) !important; }
+.amount-negative { color: var(--sf-rose-text) !important; }
 .table-sm th, .table-sm td { padding: 8px 12px; }
 
 /* --------------------------------------------------------------------------

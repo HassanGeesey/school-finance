@@ -1,4 +1,4 @@
-{% from "components/icons.html" import icon %}
+﻿{% from "components/icons.html" import icon %}
 
 {% macro month_filter(page_url, period_options, period, all_time=False) %}
 <form method="get" action="{{ page_url }}" class="no-print">
@@ -11,6 +11,22 @@
         {% endif %}
         {% for value, label in period_options %}
         <option value="{{ value }}" {% if value == period %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm">{{ icon("arrow-path", "w-4 h-4") }} Show</button>
+  </div>
+</form>
+{% endmacro %}
+
+{% macro year_filter(page_url, year_options, selected_year) %}
+<form method="get" action="{{ page_url }}" class="no-print">
+  <div class="flex flex-wrap items-end gap-3">
+    <div>
+      <label for="year" class="label"><span class="label-text">Year</span></label>
+      <select id="year" name="year" class="select select-sm w-full">
+        {% for value, label in year_options %}
+        <option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>
@@ -35,3 +51,4 @@
   </div>
 </form>
 {% endmacro %}
+

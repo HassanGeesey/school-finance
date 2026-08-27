@@ -1,6 +1,6 @@
-{# Add-waiver form, loaded into the account page's modal by the "Add waiver"
+﻿{# Add-waiver form, loaded into the account page's modal by the "Add waiver"
    action. Posts over htmx to ``/students/<id>/waivers``; the route re-renders
-   this partial with the error, or — on success — with a toast + ``waivers-changed``
+   this partial with the error, or - on success - with a toast + ``waivers-changed``
    event (which closes the modal and refreshes the account finance body). #}
 {% from "components/ui.html" import form_field, alert, btn %}
 {% from "components/icons.html" import icon %}
@@ -43,3 +43,4 @@
     </div>
   </form>
 </div>
+

@@ -1,9 +1,9 @@
-{#- ==========================================================================
-   payments/_record_modal.html — compact record-payment <dialog> + live
+﻿{#- ==========================================================================
+   payments/_record_modal.html - compact record-payment <dialog> + live
    receipt slip (ui-round 04). Self-contained: form, slip markup, and slip
    script travel together, so any surface that records payments can include it.
 
-   INCLUDE CONTRACT — set any of these before including (all optional; each
+   INCLUDE CONTRACT - set any of these before including (all optional; each
    falls back to the payments/record.html page context when present):
 
      record_modal_id        <dialog> id           (default "record-payment-modal")
@@ -31,9 +31,9 @@
 
    Submit posts the SAME fields as the classic record screen (student_id,
    amount, method, paid_on, month, year) to the existing endpoint; success
-   still lands on the printable receipt. Esc, the backdrop, and the ✕ close
+   still lands on the printable receipt. Esc, the backdrop, and the âœ• close
    without submitting (ui.js declarative hooks). The campus select posts
-   campus_id only when enabled — today's endpoint ignores that field, so
+   campus_id only when enabled - today's endpoint ignores that field, so
    record.html keeps it fixed to the acting campus.
    ========================================================================== -#}
 {#- Resolve parameters against the page context. -#}
@@ -55,7 +55,7 @@
     {% if rp_lines.append({"value": line.month|string, "label": line.period_label, "year": line.year, "rate_cents": line.amount_in_force_cents, "expected_cents": line.expected_cents, "paid_cents": line.paid_cents}) %}{% endif %}
   {% endfor %}
   {% set rp_rate = account.lines[-1].amount_in_force_cents if account.lines else 0 %}
-  {% if rp_students.append({"id": student.id|string, "label": student.full_name ~ ((" — " ~ money(rp_rate) ~ "/mo") if rp_rate else ""), "name": student.full_name}) %}{% endif %}
+  {% if rp_students.append({"id": student.id|string, "label": student.full_name ~ ((" - " ~ money(rp_rate) ~ "/mo") if rp_rate else ""), "name": student.full_name}) %}{% endif %}
 {% endif %}
 {% set rp_months = record_months if record_months is defined else [] %}
 {% if not rp_months and account is defined %}
@@ -179,16 +179,16 @@
       <div class="receipt-slip num" id="rp-slip" aria-live="polite">
         <div class="text-center font-bold">{{ school_name() }}</div>
         {% if school_contact() %}
-        <div class="text-center" style="color:var(--sf-text-muted)">{{ school_contact() | join(" · ") }}</div>
+        <div class="text-center" style="color:var(--sf-text-muted)">{{ school_contact() | join(" Â· ") }}</div>
         {% endif %}
         <div style="border-top:1px solid var(--sf-border-subtle);margin:var(--sf-space-sm) 0"></div>
-        <div class="receipt-row"><span>Student</span><b>{{ rp_first_student.name if rp_first_student else "—" }}</b></div>
-        <div class="receipt-row" data-rp-row="period"><span>Owed month</span><b>—</b></div>
-        <div class="receipt-row" data-rp-row="rate"><span>Monthly Amount</span><b>—</b></div>
-        <div class="receipt-row" data-rp-row="paid"><span>Amount paid</span><b>—</b></div>
+        <div class="receipt-row"><span>Student</span><b>{{ rp_first_student.name if rp_first_student else "-" }}</b></div>
+        <div class="receipt-row" data-rp-row="period"><span>Owed month</span><b>-</b></div>
+        <div class="receipt-row" data-rp-row="rate"><span>Monthly Amount</span><b>-</b></div>
+        <div class="receipt-row" data-rp-row="paid"><span>Amount paid</span><b>-</b></div>
         <div data-rp-slot></div>
         <div style="border-top:1px dashed var(--sf-border-subtle);margin:var(--sf-space-sm) 0"></div>
-        <div class="receipt-row font-bold" data-rp-row="status"><span>Status</span><span>Enter an amount…</span></div>
+        <div class="receipt-row font-bold" data-rp-row="status"><span>Status</span><span>Enter an amount...</span></div>
         <div class="receipt-row" style="color:var(--sf-text-muted)" data-rp-row="meta"><span>Method</span><span>Date</span></div>
       </div>
 
@@ -261,7 +261,7 @@
       var overdue = !isNaN(y) && !isNaN(m) &&
         (y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth() + 1)) &&
         Math.max(exp - paid, 0) > 0;
-      opt.textContent = opt.getAttribute('data-label') + (overdue ? ' · overdue' : '');
+      opt.textContent = opt.getAttribute('data-label') + (overdue ? ' Â· overdue' : '');
     });
   }
 
@@ -302,18 +302,18 @@
     var cents = Math.round(parseFloat(amountIn.value) * 100);
     var hasAmount = !isNaN(cents) && cents > 0;
 
-    setRow('period', [{ text: line ? line.label : '—', bold: true }]);
-    setRow('rate', [{ text: line ? fmt(line.rate) : '—', bold: true }]);
-    setRow('paid', [{ text: hasAmount ? fmt(cents) : '—', bold: true }]);
+    setRow('period', [{ text: line ? line.label : '-', bold: true }]);
+    setRow('rate', [{ text: line ? fmt(line.rate) : '-', bold: true }]);
+    setRow('paid', [{ text: hasAmount ? fmt(cents) : '-', bold: true }]);
 
     var slot = slip.querySelector('[data-rp-slot]');
     slot.textContent = '';
 
     var statusStyle = { full: 'color:var(--sf-emerald-text)', partial: 'color:var(--sf-amber-text)' };
     if (!stu) {
-      setRow('status', [{ text: 'Status' }, { text: 'Pick a student…' }]);
+      setRow('status', [{ text: 'Status' }, { text: 'Pick a student...' }]);
     } else if (!hasAmount) {
-      setRow('status', [{ text: 'Status' }, { text: 'Enter an amount…' }]);
+      setRow('status', [{ text: 'Status' }, { text: 'Enter an amount...' }]);
     } else if (line) {
       var shortfall = Math.max(line.expected - line.paid, 0);
       var applied = Math.min(cents, shortfall);
@@ -336,7 +336,7 @@
       if (credit > 0) {
         statusText = 'Paid in full + credit forwarded';
       } else if (applied < shortfall) {
-        statusText = 'Partial payment — remaining ' + fmt(shortfall - applied);
+        statusText = 'Partial payment - remaining ' + fmt(shortfall - applied);
       } else {
         statusText = 'Cleared in full';
       }
@@ -345,9 +345,9 @@
     }
 
     var methodName = methodSel && methodSel.options[methodSel.selectedIndex]
-      ? METHOD_LABELS[methodSel.options[methodSel.selectedIndex].value] || methodSel.options[methodSel.selectedIndex].textContent : '—';
+      ? METHOD_LABELS[methodSel.options[methodSel.selectedIndex].value] || methodSel.options[methodSel.selectedIndex].textContent : '-';
     setRow('meta', [
-      { text: (DATA.campus || '') + ' · ' + methodName },
+      { text: (DATA.campus || '') + ' Â· ' + methodName },
       { text: paidOn ? ('Paid ' + paidOn.value) : '' }
     ]);
   }
@@ -369,3 +369,4 @@
   renderSlip();
 })();
 </script>
+

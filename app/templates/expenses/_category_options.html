@@ -1,6 +1,7 @@
-<select id="expense-category" name="category_id" class="select w-full">
-  <option value="" disabled selected>Choose a category…</option>
+﻿<select id="expense-category" name="category_id" class="select w-full">
+  <option value="" disabled selected>Choose a category...</option>
   {% for category in categories %}
   <option value="{{ category.id }}">{{ category.name }}</option>
   {% endfor %}
 </select>
+

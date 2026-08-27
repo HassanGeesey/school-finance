@@ -1,4 +1,4 @@
-{# The school identity block for printed documents (receipts, statements).
+﻿{# The school identity block for printed documents (receipts, statements).
    Rendered from the current profile at print time, so reprints always carry
    today's school name, logo, and contact details. The logo sits centred and
    padded in its box; with no logo set only the name and contact print. The
@@ -18,7 +18,7 @@
       <p class="text-lg font-bold text-base-content">{{ name }}</p>
       <p class="mt-0.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">{{ document_label }}</p>
       {% if contact %}
-      <p class="num mt-1 text-xs text-base-content/50">{{ contact|join(" · ") }}</p>
+      <p class="num mt-1 text-xs text-base-content/50">{{ contact|join(" Â· ") }}</p>
       {% endif %}
     </div>
   </div>
@@ -27,3 +27,4 @@
   </div>
 </div>
 {% endmacro %}
+

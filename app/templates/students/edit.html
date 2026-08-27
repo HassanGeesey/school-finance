@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% from "components/icons.html" import icon %}
 {% from "components/ui.html" import page_header, btn, alert, form_field %}
 
-{% block title %}Edit {{ student.full_name }} — {{ school_name() }}{% endblock %}
+{% block title %}Edit {{ student.full_name }} - {{ school_name() }}{% endblock %}
 {% block topbar_title %}Edit student{% endblock %}
 
 {% block content %}
@@ -35,7 +35,7 @@
           <div>
             <label for="edit-template" class="label"><span class="label-text">Fee template</span></label>
             <select id="edit-template" name="fee_template_id" class="select w-full">
-              <option value="">— Keep current —</option>
+              <option value="">- Keep current -</option>
               {% for id, label in template_options %}
               <option value="{{ id }}">{{ label }}</option>
               {% endfor %}
@@ -64,3 +64,4 @@
   </section>
 </div>
 {% endblock %}
+

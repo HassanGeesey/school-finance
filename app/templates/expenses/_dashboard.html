@@ -1,4 +1,4 @@
-{% from "components/ui.html" import card, btn, empty_state, table_scroll %}
+﻿{% from "components/ui.html" import card, btn, empty_state, table_scroll %}
 {% from "payments/_badges.html" import payment_method_badge %}
 
 <form id="expense-filters" method="get" action="/expenses" class="flex flex-wrap items-end gap-3">
@@ -29,7 +29,7 @@
   </div>
 </form>
 
-{% call card(title="Expenses", subtitle="Total for the current filter: " ~ money(total_cents) ~ " · " ~ (expenses | length) ~ " expense" ~ ("s" if expenses | length != 1 else "")) %}
+{% call card(title="Expenses", subtitle="Total for the current filter: " ~ money(total_cents) ~ " Â· " ~ (expenses | length) ~ " expense" ~ ("s" if expenses | length != 1 else "")) %}
   {% call table_scroll() %}
     <table class="table">
       <thead>
@@ -61,3 +61,4 @@
     </table>
   {% endcall %}
 {% endcall %}
+
